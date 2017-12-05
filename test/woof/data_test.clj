@@ -46,13 +46,12 @@
   ;; TODO: add empty selector
   ;; TODO: add map selector
 
-  (let [data { :nested-selector (d/selector [:nested :a :b :c])}
-        defaults { :nested {:a {:b {:c :boo}}} }
+  (let [data { :foo :bar }
+        defaults { :baz (d/selector [:foo])}
         ]
-    (is (= {:nested {:a {:b {:c :boo}}}, :nested-selector :boo}
-           (d/substitute data defaults))))
-
-
+    (is (= {:baz :bar}
+           (d/substitute data defaults)))
+    )
   )
 
 
