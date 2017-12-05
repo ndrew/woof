@@ -1,3 +1,5 @@
+[![CircleCI](https://circleci.com/gh/ndrew/woof.svg?style=svg)](https://circleci.com/gh/ndrew/woof)
+
 # woof
 
 reusable workflow implementation in clojure/clojurescript.
@@ -14,25 +16,25 @@ The goal of woof is to test the hypothesis that finite computations ('work', you
 
 Flat workflow is a flat (no nested keys) map (possibly ordered) with finite numbers of steps, where each step has a unique id (step-id) and a certain function associated with it - step handler.
 
-Step handler is a 
+Step handler is a
 
     (fn [param]), where param can an step-id or any other data
 
 There can be certain kinds of step handlers
 
-* compute: 
+* compute:
 
-does some work and return value (sync/async) based upon param passed. These will be stored in workflow under step-id. 
+does some work and return value (sync/async) based upon param passed. These will be stored in workflow under step-id.
 
 'Compute' steps can be run parallel and in any particular order.
 
-* expand: 
- 
-adds new steps to the workflow. 
+* expand:
+
+adds new steps to the workflow.
 
 It's the way to 'flatten' the collection/seq passed as param, so the processing will done always on colleaction items, not collection itself — think of this as loop
 
-* compose: 
+* compose:
 
 If param is a step-id, then workflow will wait until that step is processed and pass the result as a param.
 
@@ -44,17 +46,17 @@ Flat workflow can be executed and will produce the flattened map with step-handl
 
 ### Hammock stuff
 
-Flat workflows may be described in a declarative way via hiccup-like DSL. 
+Flat workflows may be described in a declarative way via hiccup-like DSL.
 
-Also flat workflows may be configured via generic ui. 
+Also flat workflows may be configured via generic ui.
 
-Step handler type check may be done via spec. 
+Step handler type check may be done via spec.
 
 
 
 ### Implementation
 
-the workflow is represented as 
+the workflow is represented as
 
     {
         ::step-id [:handler-id param]
@@ -62,7 +64,7 @@ the workflow is represented as
         ::step-id [:handler-id-N param]
     }
 
-where step handlers live in execution context, like 
+where step handlers live in execution context, like
 
     {
         :handler-id {
@@ -72,16 +74,16 @@ where step handlers live in execution context, like
 
     }
 
-These can be executed via executor protocol. 
+These can be executed via executor protocol.
 
 Details later.
 
 
 ## Setup
 
-WIP: use at your own risk. 
+WIP: use at your own risk.
 
-For now use 
+For now use
 
     lein test
 
