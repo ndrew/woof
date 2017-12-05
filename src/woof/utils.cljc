@@ -2,7 +2,6 @@
   "helper and utils."
   (:require
     [woof.data :as d]
-    [woof.pipeline :as P]
 
     #?(:clj  [clojure.core.async :as async :refer [go go-loop]])
     #?(:cljs [cljs.core.async :as async]))
