@@ -48,6 +48,56 @@
   (every? action-id? keyz))
 
 
+;;
+;; workflow transducers
+
+(defn chunk-update-xf
+  "passes one :process items  "
+  [buf-size]
+  (fn [rf]
+    (let [ctr (volatile! 0)]
+      (fn
+        ([] (rf)) ; init (arity 0) - should call the init arity on the nested transform xf, which will eventually call out to the transducing process
+        ([result] ; completion (arity 1)
+         ; why this is never called?
+         ; (println "COMPLETE" result)
+         (rf result))
+        ; Step (arity 2) - this is a standard reduction function but it is expected to call the xf step arity 0 or more times as appropriate in the transducer.
+        ; For example, filter will choose (based on the predicate) whether to call xf or not. map will always call it exactly once. cat may call it many times depending on the inputs.
+        ([result v]                         ; we ignore the input as
+         (let [[status data] v]
+           ;;(println "~~~" @ctr "~" status "~~~")
+           (if-not (= :process status)
+             (rf result v)
+             (do
+               (vswap! ctr inc)
+               (when (= buf-size @ctr)
+                 (vreset! ctr 0)
+                 (rf result v)
+               ))
+             )
+           ))))))
+
+
+(defn time-update-xf [interval]
+  (fn [rf]
+    (let [ctr (volatile! 0)]
+      (fn
+        ([] (rf))              ; init (arity 0)
+        ([result] (rf result)) ; completion (arity 1)
+        ; Step (arity 2) - this is a standard reduction function but it is expected to call the xf step arity 0 or more times as appropriate in the transducer.
+        ; For example, filter will choose (based on the predicate) whether to call xf or not. map will always call it exactly once. cat may call it many times depending on the inputs.
+        ([result v]                         ; we ignore the input as
+         (let [[status data] v]
+           ;;(println "~~~" @ctr "~" status "~~~")
+           (if-not (= :process status)
+             (rf result v)
+             (when (-> (u/now) (- @ctr) (> interval))
+               (vreset! ctr (u/now))
+               (rf result v)))))))))
+
+
+
 
 
 (defn- do-commit!

@@ -11,7 +11,6 @@
 
 ;; TODO: test async expaning
 
-
 (defn- handle-result [wait-chan result-chan]
   "shorthand for processing workflow results from result-chan and pass the final result via wait-chan"
   (go-loop []
@@ -99,29 +98,7 @@
           )))))
 
 
-(defn chunk-update-xf [buf-size]
-  (fn [rf]
-    (let [ctr (volatile! 0)]
-      (fn
-        ([] (rf)) ; init (arity 0) - should call the init arity on the nested transform xf, which will eventually call out to the transducing process
-        ([result] ; completion (arity 1)
-         (println "COMPLETE" result)
-         (rf result))
-        ; Step (arity 2) - this is a standard reduction function but it is expected to call the xf step arity 0 or more times as appropriate in the transducer.
-        ; For example, filter will choose (based on the predicate) whether to call xf or not. map will always call it exactly once. cat may call it many times depending on the inputs.
-        ([result v]                         ; we ignore the input as
-         (let [[status data] v]
-           ;;(println "~~~" @ctr "~" status "~~~")
-           (if-not (= :process status)
-             (rf result v)
-             (do
-               (vswap! ctr inc)
-               (when (= buf-size @ctr)
-                 (vreset! ctr 0)
-                 (rf result v)
-               ))
-             )
-           ))))))
+
 
 
 (deftest executor-test
@@ -140,7 +117,8 @@
           exec-chann-0 (wf/execute! executor)
 
           ;; wrap
-          z (async/chan 1 (chunk-update-xf 20))
+          ;z (async/chan 1 (wf/chunk-update-xf 20))
+          z (async/chan 1 (wf/time-update-xf 500))
           exec-chann (async/pipe exec-chann-0 z)]
 
        (go
@@ -177,7 +155,8 @@
   )
 
 
-;; (run-tests)
+
+;(run-tests)
 
 
 
