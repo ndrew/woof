@@ -6,13 +6,21 @@
 
   :min-lein-version "2.7.1"
 
-  :dependencies [[org.clojure/clojure "1.9.0-RC2"]
+  :dependencies [[org.clojure/clojure "1.9.0"]
                  [org.clojure/clojurescript "1.9.946"]
                  [org.clojure/core.async  "0.3.443"
                   :exclusions [org.clojure/tools.reader]]
                  [rum "0.10.8"]
                  [fipp "0.6.9"]
-                 [clj-async-test "0.0.5"]]
+                 [clj-async-test "0.0.5"]
+
+                 ;; benchmarking stuff
+                 [criterium "0.4.4"]
+
+                 [viz-cljc "0.1.3"]
+
+                 ;; [com.clojure-goes-fast/clj-async-profiler "0.1.0"]
+                 ]
 
 
 

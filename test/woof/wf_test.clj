@@ -7,6 +7,11 @@
     [woof.wf :as wf]
     [woof.utils :as u]
     [woof.test-data :as test-data]
+
+    [criterium.core :as criterium]
+
+    [woof.graph :as g]
+
 ))
 
 ;; TODO: test async expaning
@@ -100,26 +105,32 @@
 
 
 
+(defn- async-wf [test-context test-steps]
+  (println "async-wf!")
 
-(deftest executor-test
-  ;; TODO: play with backpressure
   (let [c (async/chan)
-        N 90
-        {
-          test-context :context
-           test-steps :steps
-        } (test-data/get-test-steps-and-context N)
-
-        executor (wf/cached-executor (atom test-context) test-steps)
+        ;executor (wf/cached-executor (atom test-context) test-steps)
+        executor (wf/executor (atom test-context) test-steps)
         ]
 
     (let [*result (atom nil)
-          exec-chann-0 (wf/execute! executor)
-
+          *done (atom nil)
+          ;exec-chann (wf/execute! executor)
           ;; wrap
+          exec-chann-0 (wf/execute! executor)
           ;z (async/chan 1 (wf/chunk-update-xf 20))
-          z (async/chan 1 (wf/time-update-xf 500))
-          exec-chann (async/pipe exec-chann-0 z)]
+          z (async/chan 1 (wf/time-update-xf 300))
+          exec-chann (async/pipe exec-chann-0 z)
+
+          ]
+
+       (go
+         (async/<! (u/timeout 3500))
+         ;;(println "timeout" (d/pretty @*result))
+         (if-not (nil? @*done)
+           (async/put! exec-chann [:error :timeout]))
+
+         )
 
        (go
         (loop [] ; can handle state via loop bindings
@@ -129,13 +140,18 @@
           ;; todo: can these be done via transducer?
             (condp = status
               :init (recur)
-              :error (println "ERROR" r)
+              :error (do
+                        (println "ERROR" r)
+                        (async/close! exec-chann)
+                        (async/>! c :timeout)
+                       )
               :process (do
                          ;(println "PROCESS:")
                          ;(println (d/pretty data))
                          (recur))
               :done (do
                       (reset! *result data)
+                      (reset! *done true)
                       (async/>! c :ok))
 
               (do ; other events like :wf-update
@@ -154,9 +170,62 @@
     )
   )
 
+(defn executor-test []
+
+  ;; hand written
+
+  ;; TODO: play with backpressure
+  (let [test-context {
+                  :hello {:fn (fn [s]
+                                  (str "Hello " s "!")
+                                )}
+                  :expand {:fn (fn [vs]
+                                 (into (array-map)
+                                    (map-indexed (fn[i a] [(test-data/gen-ns-id (str "hello-" i))
+                                                           [:hello a]])
+                                         vs)))
+                           :expands? true}
+
+                  :wait {:fn (fn [s]
+                             (println "wait" s )
+                             (let [c (async/chan)
+                                       t (int (rand 1500))]
+                                   (go
+                                     (async/<! (u/timeout t))
+                                     (println s "DONE!")
+                                     (async/put! c s))
+                                   c)
+                               )}
+                  }
+        ; workflow is described by a finite number of steps, each of calls to an action
+        test-steps (assoc (array-map)
+                    ::0 [:expand ["world" "universe"]]
+                    ::1 [:wait "1"]
+                    ::2 [:wait "2"]
+                    ::3 [:wait ::2]
+
+                     )
+        ]
+    (async-wf test-context test-steps)
+    )
+
+  )
+
+(defn wf-test-data []
+  (let [N 80
+        {
+          test-context :context
+           test-steps :steps
+        } (test-data/get-test-steps-and-context N)]
+
+    (async-wf test-context test-steps)))
 
 
-;(run-tests)
-
-
+(deftest test-data-test
+  ;; TODO: test profiling
+  ;(prof/start {})
+  (dotimes [i 3]
+    (wf-test-data))
+  ;(prof/stop {})
+  )
 

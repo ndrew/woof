@@ -39,14 +39,6 @@
 
 
 
-;; predicates that check parameter in workflow is a link to other action
-(defn action-id? [params]
-  ;; FIXME: for now, action-id should be a qualified keyword (so we can distinguish it as parameter)
-  (qualified-keyword? params))
-
-(defn action-id-list? [keyz]
-  (every? action-id? keyz))
-
 
 ;;
 ;; workflow transducers
@@ -125,7 +117,7 @@
 
     (cond
       (nil? existing-result) ;; no result -> run step
-      (if (action-id? params)
+      (if (u/action-id? params)
         (let [new-params (get! params)]
           (cond
             (nil? new-params) [id [step-id params]]
@@ -467,7 +459,7 @@
 
 (defn- extract-result [result k]
   (let [r (get result k)]
-      (if (action-id-list? r)
+      (if (u/action-id-list? r)
         (mapcat (fn [a]
                  (let [u (extract-result result a)]
                    (if (seq? u) u [u]))) r)

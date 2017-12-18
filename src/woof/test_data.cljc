@@ -2,6 +2,7 @@
   (:require
     [woof.data :as d]
     [woof.wf :as exec]
+    [woof.graph :as g]
     [woof.utils :as u]
 
     #?(:clj [clojure.core.async :as async :refer [go]])
@@ -102,7 +103,7 @@
 
         ;(println @*idx i v [(keyword (str "s-" v)) {}])
         (if (or (> 0.75 (rand))
-                (nil? lv))
+                (or (nil? lv) (= lv j)))
           (swap! *r assoc (gen-ns-id (str "step-" j)) [(gen-id (str "s-" v)) {}])
           (swap! *r assoc (gen-ns-id (str "step-" j)) [(gen-id (str "s-" v)) (gen-ns-id (str "step-" lv))]))
 
@@ -115,7 +116,7 @@
 
 
 
-(defn get-test-steps-and-context [N]
+(defn- gen-steps-and-context [N ]
   (let [xpand-sample-fn (fn[x]
                           (random-sample 0.333 x))
         expand-step-sample-fn (fn[x]
@@ -135,6 +136,14 @@
                (reduce (fn[a [i x]]
                          (assoc a (gen-ns-id (str "x-" i)) [(keyword (str "xpand-" x)) {}]))
                        (array-map)
-                       (map-indexed vector xpand-idxs)))}))
+                       (map-indexed vector xpand-idxs)))}
+      )
+)
+
+(defn get-test-steps-and-context [N]
+  (let [d (gen-steps-and-context N)]
+    (if (g/has-cycles (:steps d))
+      (recur N)
+      d)))
 
 
