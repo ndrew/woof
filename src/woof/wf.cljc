@@ -30,6 +30,70 @@
 
 
 
+
+
+
+(defprotocol IState
+  (get-initial-steps [this])
+  (get-steps [this])
+  (get-steps2add [this])
+  (get-steps-left [this])
+  (get-results [this])
+
+  (save! [this id result])
+  (expand! [this id actions])
+  )
+
+
+(defn wf-do-save!
+  [*results *steps-left id result]
+  (swap! *results assoc id result)
+  (swap! *steps-left dissoc id)
+  )
+
+(defn wf-do-expand! [*results *steps-left *steps2add id actions]
+  ;;(println "DO EXPAND: " id actions)
+  (swap! *steps2add into actions)
+  (swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
+  (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
+  (swap! *steps-left dissoc id))
+
+
+
+(defrecord WFState [steps *steps *steps2add *steps-left *results]
+  IState
+  ;;
+  (get-initial-steps [this] steps)
+  (get-steps [this] *steps)
+  (get-steps2add [this] *steps2add)
+  (get-steps-left [this] *steps-left)
+  (get-results [this] *results)
+
+  (save! [this id result]
+    #?(:clj  (dosync (wf-do-save! *results *steps-left id result)))
+    #?(:cljs (wf-do-save! *results *steps-left  id result)))
+
+  (expand! [this id actions]
+    #?(:clj (dosync (wf-do-expand! *results *steps-left *steps2add id actions)))
+    #?(:cljs (wf-do-expand! *results *steps-left *steps2add id actions)))
+
+)
+
+
+
+
+(defn make-state! [steps]
+  (let [*steps (atom steps)
+        *steps2add (atom (array-map))
+        *steps-left (atom (reduce-kv (fn [a k v] (assoc a k :pending)) {} steps))
+        *results (atom (array-map))]
+    (->WFState steps *steps *steps2add *steps-left *results)))
+
+
+
+
+
+
 ;; kinda debugger
 (def ^:dynamic *consumer-debugger* nil)
 (def ^:dynamic *producer-debugger* nil)
@@ -147,41 +211,29 @@
 
 
 
+
+
+
+
+
+
+
 (defn async-exec
   "workflow running algorithm"
   [executor steps ready-channel process-channel]
-  (let [;; TODO: move the state needed into a model
-         *steps (atom steps)
-         *steps2add (atom (array-map))
-         *steps-left (atom (reduce-kv (fn [a k v] (assoc a k :pending)) {} steps))
-         *results (atom (array-map))
+  (let [
+         R (make-state! steps)
+
+         *steps (get-steps R)
+         *steps2add (get-steps2add R)
+         *steps-left (get-steps-left R)
+         *results (get-results R)
+
 
          cycle-detector (volatile! (u/now))
 
          get-freqs (fn []
                      (merge {:working 0} (frequencies (vals @*steps-left))))
-
-         do-save! (fn [id result]
-                    ;; (println "DO SAVE " id result)
-                    (swap! *results assoc id result)
-                    (swap! *steps-left dissoc id))
-
-         save! (fn [id result]
-                 #?(:clj (dosync (do-save! id result)))
-                 #?(:cljs (do-save! id result)))
-
-
-         do-expand! (fn [id actions]
-                      ;;(println "DO EXPAND: " id actions)
-                      (swap! *steps2add into actions)
-                      (swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
-                      (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
-                      (swap! *steps-left dissoc id))
-
-         expand! (fn [id actions]
-                   #?(:clj (dosync (do-expand! id actions)))
-                   #?(:cljs (do-expand! id actions)))
-
 
 
 
@@ -200,7 +252,7 @@
                                     (put! process-channel [:save [id step-id params v]]))))
 
                               (swap! *steps-left assoc id :working)))
-                          (save! id result)))
+                          (save! R id result)))
 
          sync-expand! (fn [id step-id params actions]
                         (if (u/channel? actions)
@@ -214,7 +266,7 @@
                                 (println "retrying")
                                 (put! process-channel [:expand [id step-id params v]]))))
                           (do
-                            (expand! id actions))))
+                            (expand! R id actions))))
 
          get! (fn [id]  ; get!
                  (let [rr @*results
@@ -315,7 +367,7 @@
             (condp = op
               :save (let [[id step-id params result] v]
                       ; got single items via async channel
-                      (save! id result))
+                      (save! R id result))
 
 
               :steps (do
@@ -328,7 +380,7 @@
 
               :expand (let [[id step-id params result] v]
                         ;; got steps after sequential processing
-                        (expand! id result))
+                        (expand! R id result))
 
               :back-pressure (do
                         ;; TODO: is this actually needed?
@@ -402,7 +454,15 @@
 
   (get-step-fn [this step-id]
     (let [step-cfg (get @*context step-id)]
-      (:fn step-cfg)))
+        (if-let [f (:fn step-cfg)]
+          f
+          (fn [v]
+            (throw
+              #?(:clj (Exception. (str "No step handler " step-id " in context" )))
+              #?(:cljs (js/Error. (str "No step handler " step-id " in context" )))
+            )
+          )
+      )))
 
   (execute! [this]
             (let [steps (:steps this)]
