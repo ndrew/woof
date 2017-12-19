@@ -46,9 +46,26 @@
      :cljs (.getTime (js/Date.))))
 
 
+;; tries to put a payload into channel, if failed - retries after timeout t
+;; as a macro - it should work in go block
+(defmacro put!? [process-channel payload t]
+  `(when-not (async/put! ~process-channel ~payload)
+    (async/<! (timeout ~t))
+    (async/put! ~process-channel ~payload)))
+
+;; debug macro
+(defmacro debug! [c payload]
+  `(when (channel? ~c)
+        (async/<! ~c)
+        (async/put! ~c
+                    ~payload)))
+
+
+
 (defn make-channel []
   ;; our channel impl
   (async/chan))
+
 
 
 (comment
