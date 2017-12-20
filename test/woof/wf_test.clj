@@ -211,6 +211,8 @@
 
   )
 
+
+
 (defn wf-test-data []
   (let [N 80
         {
@@ -228,4 +230,50 @@
     (wf-test-data))
   ;(prof/stop {})
   )
+
+
+(deftest cycle-detection-test
+
+  (let [context {:f {:fn (fn [s] (str "Hello " s "!")) }}
+        steps (assoc (array-map)
+                ::0 [:f ::1]
+                ::1 [:f ::2]
+                ::2 [:wait ::0]
+                )]
+    (let [c (async/chan)
+          executor (wf/executor (atom context) steps)]
+
+
+      (let [exec-chann (wf/execute! executor)]
+        (go-loop [] ; can handle state via loop bindings
+                 (let [r (async/<! exec-chann)
+                       [status data] r]
+
+                   ;; todo: can these be done via transducer?
+                   (condp = status
+                     :init (recur)
+                     :error (do
+                              ;; (println "ERROR" r)
+                              (async/close! exec-chann)
+                              (async/>! c :error)
+                              )
+                     :process (do
+                                (recur))
+                     :done (do
+                             (async/>! c :ok))
+
+                     (do ; other events like :wf-update
+                       (recur)))))
+        )
+
+
+
+
+      (let [v (async/<!! c)]
+        (is (= v :error))
+        )
+      )
+
+    ))
+
 

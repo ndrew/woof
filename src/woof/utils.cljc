@@ -67,6 +67,12 @@
   (async/chan))
 
 
+(defn throw! [s]
+  (throw
+    #?(:cljs (js/Error. s))
+    #?(:clj  (Exception. s))
+    ))
+
 
 (comment
 ;; TODO: do the following functions are needed?

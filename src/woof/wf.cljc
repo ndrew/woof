@@ -2,6 +2,7 @@
   "woof workflows"
   (:require [woof.data :as d]
             [woof.cache :as cache]
+            [woof.graph :as g]
             [woof.utils :as u]
 
             #?(:clj [clojure.core.async :as async :refer [go]])
@@ -41,6 +42,8 @@
   (commit! [this id step-id params result])
   (expand! [this id step-id params result])
 
+  (update-steps! [this added-steps])
+
   (ready? [this])
 
   (get! [this id])
@@ -79,6 +82,14 @@
     #?(:clj (dosync (wf-do-expand! *results *steps-left *steps2add id actions)))
     #?(:cljs (wf-do-expand! *results *steps-left *steps2add id actions)))
 
+  (update-steps! [this added-steps]
+                 (let [new-steps @*steps2add]
+                   ; (println "new steps" (d/pretty added-steps) "\nvs\n" (d/pretty new-steps))
+                   (when-not (empty? new-steps)
+                     (swap! *steps merge new-steps)
+                     (reset! *steps2add (array-map))))
+                 )
+
   (commit! [this id step-id params result]
            (if (u/channel? result)
              (let [status (get @*steps-left id)]
@@ -116,7 +127,6 @@
           (if (nil? r)
             (if (contains? rr id) ::nil nil)
             r)))
-
 )
 
 
@@ -174,6 +184,7 @@
                ))
              )
            ))))))
+
 
 
 (defn time-update-xf [interval]
@@ -252,13 +263,6 @@
 
 
 
-
-
-
-
-
-
-
 (defn async-exec
   "workflow running algorithm"
   [executor steps ready-channel process-channel]
@@ -266,12 +270,8 @@
          R (make-state! steps process-channel)
 
          *steps (get-steps R)
-         *steps2add (get-steps2add R)
          *steps-left (get-steps-left R)
          *results (get-results R)
-
-
-         cycle-detector (volatile! (u/now))
 
          get-freqs (fn []
                      (merge {:working 0} (frequencies (vals @*steps-left))))
@@ -281,8 +281,12 @@
          process-step! (partial do-process-step! (partial get! R) commit!)
 
          process-steps! (fn [steps]
+
+                          (if-let [cycles (g/has-cycles steps)]
+                            (u/throw! (str "cycle detected " (d/pretty cycles))))
+
                           ;; TODO: should this be a stateful transducer
-                          (let [*new-steps (atom (array-map))
+                          (let [*new-steps (volatile! (array-map))
                                 i (volatile! 0)
                                 backpressure-update (volatile! 0)
                                 start-freqs (get-freqs)
@@ -307,7 +311,7 @@
                                 ;; TODO: extract back pressure logic
                                 (if (> WORKING-MAX (:working freqs))
                                   (let [[k v] (process-step! step)]
-                                      (swap! *new-steps assoc k v))
+                                      (vswap! *new-steps assoc k v))
                                   (do
                                     ;; send process on first backpressure
                                     (when-not (> 10 (- @i @backpressure-update))
@@ -327,7 +331,6 @@
                               )
 
                             (u/put!? process-channel [:steps @*new-steps] PUT_RETRY_T)
-
 
                             ))]
 
@@ -364,12 +367,7 @@
                       (do-commit! R id result))
 
 
-              :steps (do
-                       ;; loop completed, merge steps and add new ones (if any)
-                       (let [new-steps @*steps2add]
-                         (when-not (empty? new-steps)
-                           (swap! *steps merge new-steps) ;; TODO: check for cycles
-                           (reset! *steps2add (array-map)))))
+              :steps (update-steps! R v) ;; loop completed, merge steps and add new ones (if any)
 
 
               :expand (let [[id step-id params result] v]
@@ -377,8 +375,7 @@
                         (do-expand! R id result))
 
               :back-pressure (do
-                        ;; TODO: is this actually needed?
-                               (when-not @first-update
+                               (when-not @first-update ;; TODO: is this actually needed?
                                  (vreset! first-update true)
                                  (async/>! ready-channel [:wf-update @*results])))
 
@@ -404,14 +401,21 @@
                 ;; send the processed results
                 (async/>! ready-channel [:process new-results])
 
-                (when (not-empty steps-left)
+                (when (not-empty steps-left) ;; restart produce
                   (go
-
                     ;; pause the producer if needed
                     (u/debug! *producer-debugger* {:producer {:steps @*steps}})
 
                     ;; handle next loop iteration
-                    (process-steps! @*steps)))))
+                    (try
+                      (process-steps! @*steps)
+                      (catch
+                        #?(:cljs js/Error) #?(:clj  Exception) e
+                        (async/>! ready-channel [:error e])))
+
+                    )))
+
+              )
 
           ;; send done, or keep processing the result
           (if (ready? R)
@@ -423,12 +427,18 @@
     ;; producer goroutine
     (go
 
+      (async/>! ready-channel [:init @*results]) ;; is this needed?
+
       ;; wait before producing
       (u/debug! *producer-debugger* {:producer {:steps steps}})
 
-      (async/>! ready-channel [:init @*results]) ;; is this needed?
+      (try
+        (process-steps! steps)
+        (catch
+          #?(:cljs js/Error) #?(:clj  Exception) e
+          (async/>! ready-channel [:error e])))
 
-      (process-steps! steps))
+      )
 
     ; return channel, first there will be list of pending actions, then the completed ones be added, then channel will be close on the last
     ready-channel))

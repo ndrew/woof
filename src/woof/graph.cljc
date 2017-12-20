@@ -42,9 +42,13 @@
     (tarjan (keys graph) graph)))
 
 
+
 (defn has-cycles [steps]
-  (let [components (graph-component steps)]
-    (not (empty? (filter #(> (count %) 1) components)))))
+  (let [components (graph-component steps)
+        cycles (filter #(> (count %) 1) components)]
+    (if-not (empty? cycles)
+      cycles)))
+
 
 
 (defn graph-to-svg [steps rfn]
