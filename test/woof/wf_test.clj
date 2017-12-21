@@ -128,9 +128,7 @@
          (async/<! (u/timeout 3500))
          ;;(println "timeout" (d/pretty @*result))
          (if-not (nil? @*done)
-           (async/put! exec-chann [:error :timeout]))
-
-         )
+           (async/put! exec-chann [:error :timeout])))
 
        (go
         (loop [] ; can handle state via loop bindings
@@ -209,18 +207,19 @@
     (async-wf test-context test-steps)
     )
 
-  )
+)
 
 
 
 (defn wf-test-data []
-  (let [N 80
+  (let [N 120
         {
           test-context :context
            test-steps :steps
         } (test-data/get-test-steps-and-context N)]
 
     (async-wf test-context test-steps)))
+
 
 
 (deftest test-data-test
@@ -276,4 +275,77 @@
 
     ))
 
+
+
+
+(deftest infite-actions-test
+
+  (let [context (atom {:f {:fn (fn [s]
+                                 ; (str "Hello " s "!")
+                                 (let [chan (async/chan)]
+
+                                   (go
+                                     (async/<! (u/timeout 1000))
+                                     (async/>! chan "1")
+                                     (println "1")
+
+                                     (async/<! (u/timeout 3000))
+                                     (async/>! chan "2")
+
+                                     (println "2")
+                                     )
+
+                                   chan))
+                           :infinite true
+                           }
+
+                       ;;:infinite true
+                       })
+        steps (assoc (array-map) ::0 [:f "hello"])
+
+        ;; result-chan
+        process-chan (async/chan)
+
+        MODEL (wf/make-state! context (wf/make-state-cfg steps process-chan))]
+
+
+    (let [c (async/chan)
+          executor
+          (wf/executor context
+                       MODEL
+                       (async/chan)
+                       process-chan)]
+
+
+      (let [exec-chann (wf/execute! executor)]
+
+        (go
+          (async/<! (u/timeout 5000))
+          (wf/end! executor))
+
+        (go-loop [] ; can handle state via loop bindings
+                 (let [r (async/<! exec-chann)
+                       [status data] r]
+
+                   ;; todo: can these be done via transducer?
+                   (condp = status
+                     :init (recur)
+                     :error (do
+                              ;; (println "ERROR" r)
+                              (async/close! exec-chann)
+                              (async/>! c [:error data] )
+                              )
+                     :process (do
+                                (recur))
+                     :done (do
+                             (async/>! c [:done data]))
+
+                     (do ; other events like :wf-update
+                       (recur))))))
+
+
+
+
+      (let [[status data] (async/<!! c)]
+        (is (= :done status))))))
 

@@ -12,7 +12,6 @@
       (:require-macros [cljs.core.async.macros :refer (go)])))
 
 
-;; TODO: handle infinite work
 ;; TODO: handle stuck workflows after certain timeout
 ;; TODO: parametrize backpressure handling
 
@@ -25,7 +24,10 @@
   "protocol for running workflows"
   ;; the steps are passed via constructor
   (execute! [this])
-  (get-step-fn [this step-id]))
+  (get-step-fn [this step-id])
+
+  (end! [this])
+  )
 
 
 
@@ -47,12 +49,15 @@
   (ready? [this])
 
   (get! [this id])
+
+  (get-context* [this])
   )
 
 
 (defn wf-do-save!
   [*results *steps-left id result]
   (swap! *results assoc id result)
+;; todo: dissoc only if not infinite mode
   (swap! *steps-left dissoc id)
   )
 
@@ -65,10 +70,12 @@
 
 
 
-(defrecord WFState [steps process-channel *steps *steps2add *steps-left *results]
+(defrecord WFState [*state *context cfg *steps *steps2add *steps-left *results ]
   IState
   ;;
-  (get-initial-steps [this] steps)
+  (get-initial-steps [this] (:steps cfg))
+  (get-context* [this] *context)
+
   (get-steps [this] *steps)
   (get-steps2add [this] *steps2add)
   (get-steps-left [this] *steps-left)
@@ -92,15 +99,29 @@
 
   (commit! [this id step-id params result]
            (if (u/channel? result)
-             (let [status (get @*steps-left id)]
-               (when-not (= :working status)
-                 (swap! *results assoc id result) ;; store channel
-                 (swap! *steps-left assoc id :working)
-                 (go
-                   (let [v (async/<! result)] ;; u/<?
-                     ;; TODO: do we need to close the channel
-                     (u/put!? process-channel [:save [id step-id params v]] 1000)))
-                 ))
+             (let [status (get @*steps-left id)
+                   infinite? (:infinite (get @*context step-id))]
+               (if-not (= :working status)
+                 (do
+                   (swap! *results assoc id result)
+                   (swap! *steps-left assoc id :working)
+                   (if infinite?
+                     (do
+                       (swap! *state update-in [:infinite] assoc id result) ;; ;; store channel
+                       (go
+                         (loop []
+                           (let [v (async/<! result)] ;; u/<?
+                             ;; TODO: do we need to close the channel
+                             (u/put!? (:process-channel cfg) [:save [id step-id params v]] 1000))
+                             (recur))))
+                    (go
+                     (let [v (async/<! result)] ;; u/<?
+                       ;; TODO: do we need to close the channel
+                       (u/put!? (:process-channel cfg) [:save [id step-id params v]] 1000))) ;;
+                     )
+                   )
+                 )
+               )
              (do-commit! this id result)))
 
   (expand! [this id step-id params actions]
@@ -113,13 +134,15 @@
                    (let [v (async/<! actions)]
                      ;; TODO: handle if > 1000 actions are added
                      ;; TODO: handle if cycle is being added
-                     (u/put!? process-channel [:expand [id step-id params v]] 1000)))
+                     (u/put!? (:process-channel cfg) [:expand [id step-id params v]] 1000)))
                  ))
              (do-expand! this id actions)))
 
   (ready? [this]
-          ;; TODO: handle infinite workflow
-          (every? #(= % :ok) (vals @*steps-left)))
+          (println "READY?" (get @*state :infinite {}) (every? #(= % :ok) (vals @*steps-left)))
+          (and
+            (empty? (get @*state :infinite {}))
+            (every? #(= % :ok) (vals @*steps-left))))
 
   (get! [this id]  ; get!
         (let [rr @*results
@@ -132,13 +155,20 @@
 
 
 
-(defn make-state! [steps process-channel]
-  (let [*steps (atom steps)
+(defn make-state-cfg [steps process-channel]
+  {:steps steps
+   :process-channel process-channel}
+  )
+
+(defn make-state! [*context state-config]
+  (let [*state (atom {:infinite {}})
+        steps (:steps state-config)
+        *steps (atom steps)
         *steps2add (atom (array-map))
         *steps-left (atom (reduce-kv (fn [a k v] (assoc a k :pending)) {} steps))
         *results (atom (array-map))]
-    (->WFState steps process-channel
-               *steps *steps2add *steps-left *results)))
+    (->WFState *state *context state-config
+               *steps *steps2add *steps-left *results )))
 
 
 
@@ -265,9 +295,10 @@
 
 (defn async-exec
   "workflow running algorithm"
-  [executor steps ready-channel process-channel]
+  ([executor R ready-channel process-channel]
   (let [ PUT_RETRY_T 1000
-         R (make-state! steps process-channel)
+         steps (get-initial-steps R)
+         ;R (make-state! steps process-channel)
 
          *steps (get-steps R)
          *steps-left (get-steps-left R)
@@ -348,7 +379,9 @@
                                                             :steps steps
                                                             :steps-left @*steps-left}})
 
-      (let [first-update (volatile! false)]
+      (let [first-update (volatile! false)
+            force-stop   (volatile! false)
+            ]
         ;; wait for results via process-channel
         (loop [i 0
                old-results @*results
@@ -378,6 +411,12 @@
                                (when-not @first-update ;; TODO: is this actually needed?
                                  (vreset! first-update true)
                                  (async/>! ready-channel [:wf-update @*results])))
+              :stop (do
+                      ;; todo: close the channels in :infinite
+
+                      (vreset! force-stop true)
+                      )
+
 
               ;; TODO: handle IllegalArgumentException - if unknown op is being sent
               )
@@ -418,7 +457,7 @@
               )
 
           ;; send done, or keep processing the result
-          (if (ready? R)
+          (if (or @force-stop (ready? R))
               (async/>! ready-channel [:done @*results])
               (recur (inc i) @*results @*steps @*steps-left))))))
 
@@ -441,12 +480,12 @@
       )
 
     ; return channel, first there will be list of pending actions, then the completed ones be added, then channel will be close on the last
-    ready-channel))
+    ready-channel)))
 
 
 
 
-(defrecord AsyncExecutor [*context steps ready-channel process-channel]
+(defrecord AsyncExecutor [*context model ready-channel process-channel]
   IExecutor
 
   (get-step-fn [this step-id]
@@ -462,11 +501,16 @@
       )))
 
   (execute! [this]
-            (let [steps (:steps this)]
-              (async-exec this steps ready-channel process-channel))))
+            (async-exec this model ready-channel process-channel))
+
+  (end! [this]
+        (println "END!!!")
+        (go
+          (async/>! process-channel [:stop this])))
+  )
 
 
-(defrecord CachedAsyncExecutor [cache *context steps ready-channel process-channel]
+(defrecord CachedAsyncExecutor [cache *context model ready-channel process-channel]
   IExecutor
 
   (get-step-fn [this step-id]
@@ -476,21 +520,28 @@
         (cache/memoize! cache (:fn step-cfg) step-id))))
 
   (execute! [this]
-            (let [steps (:steps this)]
-              (async-exec this steps ready-channel process-channel))))
+            (async-exec this model ready-channel process-channel))
+
+  (end! [this]
+        (go
+          (async/>! process-channel [:stop this])))
+
+  )
 
 
 
 (defn executor
   "workflow constuctor"
   ([*context steps]
+   (let [process-chan (u/make-channel)]
     (executor *context
-                    steps
+                    (make-state! *context (make-state-cfg steps process-chan))
                     (u/make-channel)
-                    (u/make-channel)))
-  ([*context steps ready-channel process-channel]
+                    process-chan)))
+
+  ([*context model ready-channel process-channel]
     (->AsyncExecutor *context
-                     steps
+                     model
                      ready-channel
                      process-channel)))
 
@@ -498,13 +549,14 @@
 (defn cached-executor
   "workflow constuctor, step function results are memoized"
   ([*context steps]
+   (let [process-chan (u/make-channel)]
     (cached-executor *context
-                    steps
+                    (make-state! *context (make-state-cfg steps process-chan))
                     (u/make-channel)
-                    (u/make-channel)))
-  ([*context steps ready-channel process-channel]
+                    process-chan)))
+  ([*context model ready-channel process-channel]
     (->CachedAsyncExecutor (cache/->Cache (atom {}))
-                     *context steps
+                     *context model
                      ready-channel
                      process-channel)))
 
