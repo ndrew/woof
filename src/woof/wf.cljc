@@ -139,7 +139,6 @@
              (do-expand! this id actions)))
 
   (ready? [this]
-          (println "READY?" (get @*state :infinite {}) (every? #(= % :ok) (vals @*steps-left)))
           (and
             (empty? (get @*state :infinite {}))
             (every? #(= % :ok) (vals @*steps-left))))
