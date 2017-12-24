@@ -42,12 +42,27 @@
     (tarjan (keys graph) graph)))
 
 
-
 (defn has-cycles [steps]
   (let [components (graph-component steps)
         cycles (filter #(> (count %) 1) components)]
     (if-not (empty? cycles)
       cycles)))
+
+
+(defn get-dependant-steps [steps initial-step]
+  (let [graph (reduce (fn [a [k [op p]]]
+                        (if (u/action-id? p)
+                          (assoc a p (conj (get a p []) k))
+                          a)) {} steps)]
+
+    (loop [in [initial-step]
+           out []]
+
+      (let [z (mapcat #(get graph %) in)]
+        (if (empty? z)
+          (concat out in)
+          (recur z (concat out in)))
+        ))))
 
 
 

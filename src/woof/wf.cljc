@@ -39,6 +39,8 @@
   (get-results [this])
 
   (do-commit! [this id result])
+  (do-update! [this msg])
+
   (do-expand! [this id actions])
 
   (commit! [this id step-id params result])
@@ -85,17 +87,52 @@
     #?(:clj  (dosync (wf-do-save! *results *steps-left id result)))
     #?(:cljs (wf-do-save! *results *steps-left  id result)))
 
+
+  (do-update! [this msg]
+              (let [[id step-id params result] msg]
+                ;(println "UPDATE: " (d/pretty msg))
+
+
+                (let [d-steps (rest (g/get-dependant-steps @*steps id))]
+
+                  (swap! *results (partial apply dissoc) d-steps)
+                  (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} d-steps))
+
+
+
+                  (do-commit! this id result)
+
+                  (go
+                    (u/put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
+
+                  )))
+
+
   (do-expand! [this id actions]
     #?(:clj (dosync (wf-do-expand! *results *steps-left *steps2add id actions)))
     #?(:cljs (wf-do-expand! *results *steps-left *steps2add id actions)))
 
-  (update-steps! [this added-steps]
+  (update-steps! [this [op nu-steps]]
+                (cond
+                  (= op :add)
                  (let [new-steps @*steps2add]
                    ; (println "new steps" (d/pretty added-steps) "\nvs\n" (d/pretty new-steps))
                    (when-not (empty? new-steps)
                      (swap! *steps merge new-steps)
                      (reset! *steps2add (array-map))))
-                 )
+
+                  (= op :update)
+
+                  (do
+                    ;;(swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} nu-steps))
+                    ;;(swap! *results (partial apply dissoc) nu-steps)
+
+                    ;;(println (d/pretty @*steps-left))
+                    ;;(println (d/pretty @*results))
+                    ;;(println "===========")
+                    )))
+
+
 
   (commit! [this id step-id params result]
            (if (u/channel? result)
@@ -112,7 +149,7 @@
                          (loop []
                            (let [v (async/<! result)] ;; u/<?
                              ;; TODO: do we need to close the channel
-                             (u/put!? (:process-channel cfg) [:save [id step-id params v]] 1000))
+                             (u/put!? (:process-channel cfg) [:update [id step-id params v]] 1000))
                              (recur))))
                     (go
                      (let [v (async/<! result)] ;; u/<?
@@ -258,7 +295,7 @@
 ;; step processing function. parametrized by get! and commit! fns.
 (defn- do-process-step! [get! commit! [id [step-id params]]]
   (let [existing-result (get! id)]
-   ;; (println "PROCESSING " [id [step-id params]] existing-result )
+   ;;(println "PROCESSING " [id [step-id params]] existing-result )
 
     (cond
       (nil? existing-result) ;; no result -> run step
@@ -360,7 +397,7 @@
 
                               )
 
-                            (u/put!? process-channel [:steps @*new-steps] PUT_RETRY_T)
+                            (u/put!? process-channel [:steps [:add @*new-steps]] PUT_RETRY_T)
 
                             ))]
 
@@ -380,6 +417,8 @@
 
       (let [first-update (volatile! false)
             force-stop   (volatile! false)
+            force-update (volatile! false)
+
             ]
         ;; wait for results via process-channel
         (loop [i 0
@@ -398,8 +437,17 @@
                       ; got single items via async channel
                       (do-commit! R id result))
 
+              :update (do-update! R v)
 
-              :steps (update-steps! R v) ;; loop completed, merge steps and add new ones (if any)
+              :steps (let [[steps-op _] v]
+                       (update-steps! R v) ;; loop completed, merge steps and add new ones (if any)
+
+                       (if (= :update steps-op)
+                         (vreset! force-update true)
+                         )
+
+
+                       )
 
 
               :expand (let [[id step-id params result] v]
@@ -423,9 +471,12 @@
 
             ;; process the result
             (let [processed-steps @*steps
-                  new-results @*results]
+                  new-results @*results
+                  same-results? (= old-results new-results)
+                  ]
 
-              (when-not (= old-results new-results)
+
+              (when (or (not same-results?) @force-update)
 
                 ;; TODO: debugging via macro/transducer
                 (when (u/channel? *consumer-debugger*)
@@ -436,13 +487,15 @@
                                                                        :steps processed-steps
                                                                        :steps-left @*steps-left}}))
 
-                ;; send the processed results
-                (async/>! ready-channel [:process new-results])
+                (if-not same-results?
+                  ;; send the processed results
+                  (async/>! ready-channel [:process new-results]))
 
                 (when (not-empty steps-left) ;; restart produce
                   (go
                     ;; pause the producer if needed
                     (u/debug! *producer-debugger* {:producer {:steps @*steps}})
+
 
                     ;; handle next loop iteration
                     (try

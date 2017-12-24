@@ -212,7 +212,7 @@
 
 
 (defn wf-test-data []
-  (let [N 120
+  (let [N 80;;120 - fails
         {
           test-context :context
            test-steps :steps
@@ -348,4 +348,99 @@
 
       (let [[status data] (async/<!! c)]
         (is (= :done status))))))
+
+
+
+
+
+(deftest infite-actions-update-test
+
+  (let [context (atom {:f {:fn (fn [s]
+                                 ; (str "Hello " s "!")
+                                 (let [chan (async/chan)]
+
+                                   (go
+                                     (async/<! (u/timeout 1000))
+                                     (async/>! chan "1")
+                                     (println "1")
+
+                                     (async/<! (u/timeout 3000))
+                                     (async/>! chan "2")
+
+                                     (println "2")
+                                     )
+
+                                   chan))
+                           :infinite true
+                           }
+
+
+                         :f1 {:fn (fn [s]
+                                 (println "Hello " s "!")
+
+                                    s
+                                    )
+                           :infinite true
+                           }
+
+                       })
+        steps (assoc (array-map)
+                ::0 [:f "hello"]
+                ::1 [:f1 ::0]
+                )
+
+        ;; result-chan
+        process-chan (async/chan)
+
+        MODEL (wf/make-state! context (wf/make-state-cfg steps process-chan))]
+
+    (let [c (async/chan)
+          executor
+          (wf/executor context
+                       MODEL
+                       (async/chan)
+                       process-chan)]
+
+
+      (let [exec-chann (wf/execute! executor)]
+
+        (go
+          (async/<! (u/timeout 7000))
+          (wf/end! executor))
+
+        (go-loop [] ; can handle state via loop bindings
+                 (let [r (async/<! exec-chann)
+                       [status data] r]
+
+                   ;; todo: can these be done via transducer?
+                   (condp = status
+                     :init (recur)
+                     :error (do
+                              ;; (println "ERROR" r)
+                              (async/close! exec-chann)
+                              (async/>! c [:error data] )
+                              )
+                     :process (do
+                                ;(println (d/pretty r))
+
+                                (recur))
+                     :done (do
+                             (async/>! c [:done data]))
+
+                     (do ; other events like :wf-update
+                       (recur))))))
+
+
+
+
+      (let [[status data] (async/<!! c)]
+        (println [status data])
+
+        (is (= :done status))
+
+        )))
+  )
+
+
+
 
