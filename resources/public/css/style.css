@@ -1,0 +1,56 @@
+body {
+  font-smooth: always;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body, pre, input, button {
+  font-family: "Liberation Mono", "DejaVu Sans Mono";
+  font-size: 9pt;
+  line-height: 1.33;
+}
+
+
+body { padding: 1rem; }
+
+#app {
+/*   outline: 3px solid lightgrey; */
+  min-height: 95vh;
+/*   display: flex; */
+}
+
+
+.menubar {
+  box-sizing: content-box;
+
+  display: inline-flex;
+  align-content: flex-end;
+  align-items: baseline;
+
+}
+
+
+
+
+.menubar .menu-item {
+  font-weight: 100;
+
+  padding: .1rem .33rem 0 .33rem;
+
+  color: rgb(220,20,60);
+  text-decoration: none;
+  border: 1px solid crimson;
+  margin-left: .5rem;
+
+}
+
+
+.menubar .menu-item:hover,
+.menubar .menu-item.selected {
+  color: #fff;
+  background-color: rgba(255,128,128,.75);
+}
+
+.menubar > .header {
+  font-weight: bolder;
+}

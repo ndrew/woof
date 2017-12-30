@@ -3,13 +3,22 @@
   (:require [woof.data :as d]
             [woof.cache :as cache]
             [woof.graph :as g]
-            [woof.utils :as u]
 
-            #?(:clj [clojure.core.async :as async :refer [go]])
-            #?(:cljs [cljs.core.async :as async]))
+
+            #?(:clj [woof.utils :as u :refer [put!? debug!]])
+            #?(:cljs [woof.utils :as u])
+
+
+            #?(:clj [clojure.core.async :as async :refer [go go-loop]])
+            #?(:cljs [cljs.core.async :as async])
+            )
 
   #?(:cljs
-      (:require-macros [cljs.core.async.macros :refer (go)])))
+      (:require-macros
+          [cljs.core.async.macros :refer [go go-loop]]
+          [woof.utils-macros :refer [put!? debug!]]
+        )))
+
 
 
 ;; TODO: handle stuck workflows after certain timeout
@@ -103,7 +112,7 @@
                   (do-commit! this id result)
 
                   (go
-                    (u/put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
+                    (put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
 
                   )))
 
@@ -135,6 +144,8 @@
 
 
   (commit! [this id step-id params result]
+           ;;(println "commit!" id step-id params result)
+
            (if (u/channel? result)
              (let [status (get @*steps-left id)
                    infinite? (:infinite (get @*context step-id))]
@@ -149,12 +160,14 @@
                          (loop []
                            (let [v (async/<! result)] ;; u/<?
                              ;; TODO: do we need to close the channel
-                             (u/put!? (:process-channel cfg) [:update [id step-id params v]] 1000))
-                             (recur))))
+                             (put!? (:process-channel cfg) [:update [id step-id params v]] 1000))
+                             (recur)))
+
+                       )
                     (go
                      (let [v (async/<! result)] ;; u/<?
                        ;; TODO: do we need to close the channel
-                       (u/put!? (:process-channel cfg) [:save [id step-id params v]] 1000))) ;;
+                       (put!? (:process-channel cfg) [:save [id step-id params v]] 1000))) ;;
                      )
                    )
                  )
@@ -171,7 +184,7 @@
                    (let [v (async/<! actions)]
                      ;; TODO: handle if > 1000 actions are added
                      ;; TODO: handle if cycle is being added
-                     (u/put!? (:process-channel cfg) [:expand [id step-id params v]] 1000)))
+                     (put!? (:process-channel cfg) [:expand [id step-id params v]] 1000)))
                  ))
              (do-expand! this id actions)))
 
@@ -348,7 +361,6 @@
          process-step! (partial do-process-step! (partial get! R) commit!)
 
          process-steps! (fn [steps]
-
                           (if-let [cycles (g/has-cycles steps)]
                             (u/throw! (str "cycle detected " (d/pretty cycles))))
 
@@ -397,7 +409,7 @@
 
                               )
 
-                            (u/put!? process-channel [:steps [:add @*new-steps]] PUT_RETRY_T)
+                            (put!? process-channel [:steps [:add @*new-steps]] PUT_RETRY_T)
 
                             ))]
 
@@ -409,7 +421,7 @@
     (go
 
       ;; wait if needed, before producing any results
-      (u/debug! *consumer-debugger* { :process-loop-start {
+      (debug! *consumer-debugger* { :process-loop-start {
                                                             :i 0
                                                             :old-results @*results
                                                             :steps steps
@@ -445,8 +457,6 @@
                        (if (= :update steps-op)
                          (vreset! force-update true)
                          )
-
-
                        )
 
 
@@ -494,7 +504,7 @@
                 (when (not-empty steps-left) ;; restart produce
                   (go
                     ;; pause the producer if needed
-                    (u/debug! *producer-debugger* {:producer {:steps @*steps}})
+                    (debug! *producer-debugger* {:producer {:steps @*steps}})
 
 
                     ;; handle next loop iteration
@@ -521,7 +531,7 @@
       (async/>! ready-channel [:init @*results]) ;; is this needed?
 
       ;; wait before producing
-      (u/debug! *producer-debugger* {:producer {:steps steps}})
+      (debug! *producer-debugger* {:producer {:steps steps}})
 
       (try
         (process-steps! steps)

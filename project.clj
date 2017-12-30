@@ -24,7 +24,7 @@
 
 
 
-  :plugins [[lein-figwheel "0.5.12"]
+  :plugins [[lein-figwheel "0.5.14"]
             [lein-cljsbuild "1.1.7" :exclusions [[org.clojure/clojure]]]]
 
   :source-paths ["src"]
