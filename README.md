@@ -10,9 +10,9 @@ The idea is to use have a 'unit of work' implemented as a very specific, yet gen
 
 The goal of woof is to test the hypothesis that finite computations ('work', you know) can be organized via *flat workflows*.
 
-## Flat workflows
+## Theory
 
-### Theory
+### Flat workflows
 
 Flat workflow is a flat (no nested keys) map (possibly ordered) with finite numbers of steps, where each step has a unique id (step-id) and a certain function associated with it - step handler.
 
@@ -43,6 +43,13 @@ This is similar to function composition, the types should match. Or the adapter 
 'Compose' steps will run in certain order.
 
 Flat workflow can be executed and will produce the flattened map with step-handler results under corresponding step-id.
+
+### Infinite workflows
+
+### Adjusting params for step function from UI
+
+
+
 
 ### Hammock stuff
 

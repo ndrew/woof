@@ -20,6 +20,48 @@ body { padding: 1rem; }
 }
 
 
+.context-ui {
+  margin-right: 1rem;
+}
+
+
+
+
+.tip {
+  opacity: 0.66667;
+  margin: .5rem 0;
+  font-size: smaller;
+}
+
+.tag {
+  border-radius: 3px;
+  padding: 5px 7px;
+  margin-right: .5rem;
+
+  font-weight: 900;
+}
+
+.tag.done {
+  background-color: aquamarine;
+  color: #000;
+}
+
+.tag.pending {
+  background-color: peachpuff;
+  color: #000;
+}
+
+.tag.error {
+  background-color: orangered;
+  color: #fff;
+}
+
+
+.hbox {
+  display: flex;
+}
+
+
 .menubar {
   box-sizing: content-box;
 
@@ -28,9 +70,6 @@ body { padding: 1rem; }
   align-items: baseline;
 
 }
-
-
-
 
 .menubar .menu-item {
   font-weight: 100;
