@@ -23,6 +23,8 @@
 
 ;; TODO: handle stuck workflows after certain timeout
 ;; TODO: parametrize backpressure handling
+;;          Assert failed: No more than 1024 pending puts are allowed on a single channel. Consider using a windowed buffer.
+
 
 (comment
   "TODO: write introduction to workflows")
@@ -73,7 +75,7 @@
   )
 
 (defn wf-do-expand! [*results *steps-left *steps2add id actions]
-  ;;(println "DO EXPAND: " id actions)
+  ;(println "DO EXPAND: " id actions)
   (swap! *steps2add into actions)
   (swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
   (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
@@ -118,8 +120,9 @@
 
 
   (do-expand! [this id actions]
-    #?(:clj (dosync (wf-do-expand! *results *steps-left *steps2add id actions)))
-    #?(:cljs (wf-do-expand! *results *steps-left *steps2add id actions)))
+              #?(:clj (dosync (wf-do-expand! *results *steps-left *steps2add id actions)))
+              #?(:cljs (wf-do-expand! *results *steps-left *steps2add id actions))
+              )
 
   (update-steps! [this [op nu-steps]]
                 (cond
@@ -184,9 +187,16 @@
                    (let [v (async/<! actions)]
                      ;; TODO: handle if > 1000 actions are added
                      ;; TODO: handle if cycle is being added
+
+                     ;(println (d/pretty [:expand [id step-id params v]]))
+
                      (put!? (:process-channel cfg) [:expand [id step-id params v]] 1000)))
                  ))
-             (do-expand! this id actions)))
+             (do
+               (do-expand! this id actions)
+                 (go
+                   (put!? (:process-channel cfg) [:expand [id step-id params actions]] 1000))
+               )))
 
   (ready? [this]
           (and
@@ -462,7 +472,12 @@
 
               :expand (let [[id step-id params result] v]
                         ;; got steps after sequential processing
-                        (do-expand! R id result))
+                        (do-expand! R id result)
+                        (println "EXPAND!!!!!")
+
+                        ;; send result
+                        (async/>! ready-channel [:expand [id result]])
+                        )
 
               :back-pressure (do
                                (when-not @first-update ;; TODO: is this actually needed?
@@ -518,6 +533,7 @@
 
               )
 
+          ;; todo: stop not immediately when force stop
           ;; send done, or keep processing the result
           (if (or @force-stop (ready? R))
               (async/>! ready-channel [:done @*results])

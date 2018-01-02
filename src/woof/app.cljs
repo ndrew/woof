@@ -56,7 +56,7 @@
           :context {
                      :hello {:fn (fn [a]
                                    (println ":hello" (pr-str a))
-                                  ;"Hello!"
+                                   ;"Hello!"
 
                                    (let [c (async/chan)]
 
@@ -66,16 +66,32 @@
 
                                      c
                                      )
-                                )}
+                                   )}
+                     :async-expand {:fn (fn [a]
+                                          (let [c (async/chan)]
+                                            (go
+                                              (async/put! c
+                                                          {::xpanded [:hello (str "xpand--" a)]}))
+                                            c
+                                            ))
+                                    :expands? true}
+                     :xpand {:fn (fn [a]
+                                   {::xxx [:hello "YYY"]}
+                                   )
+                             :expands? true
+                             }
+
                      }
           :workflow {
                       :name "test workflow"
                       :steps (assoc (array-map)
-                                ::0 [:hello {}]
-                                ;; ::1 [:hello {}]
+                               ::0 [:hello {}]
+                               ::1 [:async-expand "yo!"]
+                               ::2 [:xpand {}]
+                               ;; ::1 [:hello {}]
                                )
                       }
-        }))
+          }))
 
 
 
@@ -124,12 +140,14 @@
              ::done        "done"
              ::running     "pending"
              ::stopped     "error"
+             ::error       "error"
              )}
    (condp = status
              ::not-started "…"
              ::done        "done!"
              ::running     "running"
              ::stopped     "stopped!"
+             ::error       "error!"
              )]
 )
 
@@ -144,9 +162,10 @@
   (rum/local nil         ::exec-chan)
 
   (rum/local {::wf-status ::not-started
-              ::history []
-              ::result {}
-              ::header ""
+              ::steps      {}
+              ::history    []
+              ::result     {}
+              ::header     ""
               } ::result)
 
   [local *context *workflow]
@@ -171,6 +190,7 @@
                               {
                                 ::header header
                                 ::wf-status ::running
+                                ::steps steps
                                 })
 
                        (reset! (::status local) ::results-ui)
@@ -180,29 +200,40 @@
                                   (let [[status data] r
                                         done? (= :done status)
                                         ]
-                                    ;; ::wf-status ::running
+
+                                    ;; todo: how to handle new steps added
+
+                                    (when (= :error status)
+                                      (swap! (::result local) assoc-in [::wf-status] ::error)
+                                      (swap! (::result local) assoc-in [::result] data))
+
+
+                                    (when (= :expand status)
+                                      (let [[x-id nu-steps] data]
+                                        (swap! (::result local) update-in [::steps] merge nu-steps)))
+
+                                                                        ;; ::wf-status ::running
                                     (when done?
                                       (swap! (::result local) assoc-in [::wf-status] ::done)
-                                      (swap! (::result local) assoc-in [::result] data)
-                                      )
+                                      (swap! (::result local) assoc-in [::result] data))
 
                                     (swap! (::result local) update-in [::history] conj r)
 
+                                    (not done?))))))
 
-                                    (not done?)
-                                    )))))
         generate-wf-fn (fn []
                          (swap! (::result local)
                                 merge {
                                         ::wf-status ::not-started
                                         ::history []
-                                        ::result {}
-                                        ::header "test wf (10)"
+                                        ::steps   []
+                                        ::result  {}
+                                        ::header  "test wf (10)"
                                         })
                          (reset! (::status local) ::steps-ui)
                          ((gen-new-wf-f! 10)))
         stop-fn (fn []
-                  (wf/end! @(::executor local))
+                  (wf/end! @(::executor local)) ;; todo:
 
                   ;; use different key, as stop is not immidiate
                   ;;(swap! (::result local) assoc-in [::wf-status] ::stopped)
@@ -221,12 +252,9 @@
                                           (swap! (::result local) conj r)
                                           true
                                           ))))
-        [:pre (d/pretty @(::result local))]
-        )
-
+        [:pre (d/pretty @(::result local))])
 
     [:div
-
      (when (#{::steps-ui} status)
        [:div
         (menubar header [["steps ready!" steps-ready-fn]
@@ -235,14 +263,10 @@
         [:div.hbox
          [:div.context-ui
           (menubar "context" [])
-
-          [:div (d/pretty (keys @*context))]
-          ]
+          [:div (d/pretty (keys @*context))]]
          [:div.steps-ui
           (menubar "steps" [])
-
-          [:div (d/pretty steps)]
-          ]
+          [:div (d/pretty steps)]]
          ]])
 
      (when (#{::workflow-ui} status)
@@ -252,15 +276,14 @@
                          ["run (with cache)" (fn[])]
                          ["debug" (fn[])]
                          ])
-        [:div.tip "Configure workflow execution options."]
-
-        ])
+        [:div.tip "Configure workflow execution options."]])
 
      (when (#{::results-ui} status)
        (let [{status  ::wf-status
               history ::history
               header  ::header
               result  ::result
+              actual-steps ::steps
               } @(::result local)
              actions (if (= status ::done)
                        [["generate new" generate-wf-fn]]
@@ -269,13 +292,17 @@
          [:div
           (wf-status-ui status)
           (menubar header actions)
-          (if (= status ::done)
-            [:pre (d/pretty result)]
-            )
+
+            [:div.hbox
+             [:pre (d/pretty actual-steps)]
+             [:pre
+              (if (or (= status ::done) (= status ::error))
+                (d/pretty result)
+                ""
+                ) ]]
+
           ;[:pre (d/pretty history)]
-          ]
-         )
-       )
+          ]))
      ]
     ))
 
