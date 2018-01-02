@@ -134,41 +134,20 @@
 )
 
 
-(rum/defcs results-ui
-  < rum/reactive
-  [local *results stop-fn]
-
-  (let [{status  ::wf-status
-         history ::history
-         header  ::header
-
-         } @*results
-        actions (if (= status ::done)
-                  []
-                  [["stop" stop-fn]])
-        ]
-    [:div
-     (wf-status-ui status)
-     (menubar header actions)
-     [:pre (d/pretty history)]
-     ]
-    )
-  )
-
 
 
 (rum/defcs wf-ui
   < rum/reactive
-    (rum/local ::steps-ui  ::status)
+  (rum/local ::steps-ui  ::status)
 
-    (rum/local nil         ::executor)
-    (rum/local nil         ::exec-chan)
+  (rum/local nil         ::executor)
+  (rum/local nil         ::exec-chan)
 
-    (rum/local {::wf-status ::not-started
-                ::history []
-                ::result {}
-                ::header ""
-                } ::result)
+  (rum/local {::wf-status ::not-started
+              ::history []
+              ::result {}
+              ::header ""
+              } ::result)
 
   [local *context *workflow]
 
@@ -181,9 +160,7 @@
          } @*workflow
 
         steps-ready-fn (fn []
-                          (reset! (::status local) ::workflow-ui)
-
-                         )
+                         (reset! (::status local) ::workflow-ui))
         execute-wf (fn []
                      ;; todo: choose executor
                      (reset! (::executor local) (wf/executor *context steps))
@@ -194,7 +171,7 @@
                               {
                                 ::header header
                                 ::wf-status ::running
-                               })
+                                })
 
                        (reset! (::status local) ::results-ui)
 
@@ -206,6 +183,7 @@
                                     ;; ::wf-status ::running
                                     (when done?
                                       (swap! (::result local) assoc-in [::wf-status] ::done)
+                                      (swap! (::result local) assoc-in [::result] data)
                                       )
 
                                     (swap! (::result local) update-in [::history] conj r)
@@ -213,6 +191,22 @@
 
                                     (not done?)
                                     )))))
+        generate-wf-fn (fn []
+                         (swap! (::result local)
+                                merge {
+                                        ::wf-status ::not-started
+                                        ::history []
+                                        ::result {}
+                                        ::header "test wf (10)"
+                                        })
+                         (reset! (::status local) ::steps-ui)
+                         ((gen-new-wf-f! 10)))
+        stop-fn (fn []
+                  (wf/end! @(::executor local))
+
+                  ;; use different key, as stop is not immidiate
+                  ;;(swap! (::result local) assoc-in [::wf-status] ::stopped)
+                  )
         ]
 
 
@@ -231,46 +225,58 @@
         )
 
 
-      [:div
+    [:div
 
-       (when (#{::steps-ui} status)
+     (when (#{::steps-ui} status)
+       [:div
+        (menubar header [["steps ready!" steps-ready-fn]
+                         ["generate new" generate-wf-fn]])
+        [:div.tip "Here workflow will be ui for defining and manipulating workflow."]
+        [:div.hbox
+         [:div.context-ui
+          (menubar "context" [])
+
+          [:div (d/pretty (keys @*context))]
+          ]
+         [:div.steps-ui
+          (menubar "steps" [])
+
+          [:div (d/pretty steps)]
+          ]
+         ]])
+
+     (when (#{::workflow-ui} status)
+       [:div
+        (menubar header [["run (normal)" execute-wf]
+                         ["run (timeout)" (fn[])]
+                         ["run (with cache)" (fn[])]
+                         ["debug" (fn[])]
+                         ])
+        [:div.tip "Configure workflow execution options."]
+
+        ])
+
+     (when (#{::results-ui} status)
+       (let [{status  ::wf-status
+              history ::history
+              header  ::header
+              result  ::result
+              } @(::result local)
+             actions (if (= status ::done)
+                       [["generate new" generate-wf-fn]]
+                       [["stop" stop-fn]])
+             ]
          [:div
-          (menubar header [["steps ready!" steps-ready-fn] ["generate new" (gen-new-wf-f! 10)]])
-          [:div.tip "Here workflow will be ui for defining and manipulating workflow."]
-          [:div.hbox
-           [:div.context-ui
-            (menubar "context" [])
-
-            [:div (d/pretty (keys @*context))]
-            ]
-           [:div.steps-ui
-            (menubar "steps" [])
-
-            [:div (d/pretty steps)]
-            ]
-           ]])
-
-      (when (#{::workflow-ui} status)
-        [:div
-         (menubar header [["run (normal)" execute-wf]
-                           ["run (timeout)" (fn[])]
-                           ["run (with cache)" (fn[])]
-                           ["debug" (fn[])]
-                          ])
-         [:div.tip "Configure workflow execution options."]
-
-         ])
-
-       (when (#{::results-ui} status)
-         (results-ui (::result local)
-                     (fn []
-                       (wf/end! @(::executor local))
-
-                       ;; use different key, as stop is not immidiate
-                       ;;(swap! (::result local) assoc-in [::wf-status] ::stopped)
-                       )
-                     ))
-      ]
+          (wf-status-ui status)
+          (menubar header actions)
+          (if (= status ::done)
+            [:pre (d/pretty result)]
+            )
+          ;[:pre (d/pretty history)]
+          ]
+         )
+       )
+     ]
     ))
 
 
