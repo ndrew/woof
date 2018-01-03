@@ -449,6 +449,8 @@
           (let [r (async/<! process-channel)
                 [op v] r]
 
+            ;; (println "OP:" op)
+
             ;; process the 'message'
             (condp = op
               :save (let [[id step-id params result] v]
@@ -457,19 +459,24 @@
 
               :update (do-update! R v)
 
-              :steps (let [[steps-op _] v]
+              :steps (let [[steps-op zzz] v]
+                       ;; (println v)
+                       ;; (println R)
+
                        (update-steps! R v) ;; loop completed, merge steps and add new ones (if any)
 
                        (if (= :update steps-op)
-                         (vreset! force-update true)
-                         )
+                         (vreset! force-update true))
+
+                       (async/>! ready-channel [:wf-update @*results])
+
                        )
 
 
               :expand (let [[id step-id params result] v]
                         ;; got steps after sequential processing
                         (do-expand! R id result)
-                        (println "EXPAND!!!!!")
+                        ;; (println "EXPAND!!!!!")
 
                         ;; send result
                         (async/>! ready-channel [:expand [id result]])

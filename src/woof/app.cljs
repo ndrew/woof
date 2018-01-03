@@ -10,6 +10,9 @@
     [woof.utils :as u]
 
     [woof.test-data :as test-data]
+
+    [goog.string :as gstring]
+    [goog.string.format]
     )
 
   (:require-macros
@@ -46,8 +49,6 @@
 
 
 
-
-
 (enable-console-print!)
 
 (defonce *APP-STATE
@@ -61,7 +62,21 @@
                                    (let [c (async/chan)]
 
                                      (go
-                                       (async/put! c "Hello!")
+                                       (async/put! c (str "Hello! " (pr-str a)))
+                                       )
+
+                                     c
+                                     )
+                                   )}
+                     :hello-wait {:fn (fn [a]
+                                   ;(println ":hello" (pr-str a))
+                                   ;"Hello!"
+
+                                   (let [c (async/chan)]
+                                      (go
+                                        (async/<! (u/timeout 5000))
+
+                                       (async/put! c (str "Hello! " (pr-str a)))
                                        )
 
                                      c
@@ -81,14 +96,37 @@
                              :expands? true
                              }
 
+                     :8 {:fn (fn [s]
+                                 ; (str "Hello " s "!")
+                                 (let [chan (async/chan)]
+
+                                   (go
+                                     (async/<! (u/timeout 1000))
+                                     (async/>! chan "1")
+                                     (println "1")
+
+                                     (async/<! (u/timeout 3000))
+                                     (async/>! chan "2")
+
+                                     (println "2")
+                                     )
+
+                                   chan))
+                           :infinite true
+                           }
+
                      }
           :workflow {
                       :name "test workflow"
                       :steps (assoc (array-map)
-                               ::0 [:hello {}]
+                               ::0 [:hello-wait "123"]
+                               ::0_1 [:hello ::0]
+
                                ::1 [:async-expand "yo!"]
                                ::2 [:xpand {}]
-                               ;; ::1 [:hello {}]
+
+                               ::8 [:8 {}]
+                               ::9 [:hello ::8]
                                )
                       }
           }))
@@ -185,6 +223,7 @@
   )
 
 
+;; todo: add css animation on value update
 
 (rum/defc wf-results-ui
   < rum/reactive
@@ -197,6 +236,7 @@
          header  ::header
          result  ::result
          actual-steps ::steps
+         start   ::start
          } @*results]
     ;[:div.hbox
      ;[:pre (d/pretty actual-steps)]
@@ -209,7 +249,6 @@
     ;(println "wf-results-ui" (u/now))
 
     (into [:div.steps
-           ;[:header (pr-str status)]
            ]
           (map (fn [[k v]]
                  ;(menu-item label action)
@@ -220,6 +259,18 @@
     ))
 
 
+
+(defn done-percentage [result actual-steps]
+  (* 100 (/ (reduce (fn[acc [k v]]
+                                   (+ acc
+                                      (if (u/channel? v)
+                                        0
+                                        1)
+                                      )
+                                )
+                              0 result
+                              )
+                      (count actual-steps))))
 
 
 (rum/defcs wf-ui
@@ -234,6 +285,7 @@
               ::history    []
               ::result     {}
               ::header     ""
+              ::start      0
               } ::result)
 
   [local *context *workflow]
@@ -255,7 +307,7 @@
                      ;; todo: choose executor
                      (reset! (::executor local) (wf/executor *context steps))
                      (let [exec-chan-0 (wf/execute! @(::executor local))
-                           exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf 500)))]
+                           exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf 750)))]
                        (reset! (::exec-chan local) exec-chan)
 
                        (swap! (::result local) merge
@@ -263,6 +315,7 @@
                                 ::header header
                                 ::wf-status ::running
                                 ::steps steps
+                                ::start (u/now)
                                 })
 
                        (reset! (::status local) ::results-ui)
@@ -275,6 +328,8 @@
 
                                     ;; todo: how to handle new steps added
 
+                                    ;; (println "STATUS: " (pr-str status))
+
                                     (when (= :error status)
                                       (swap! (::result local) assoc-in [::wf-status] ::error)
                                       (swap! (::result local) assoc-in [::result] data))
@@ -282,10 +337,16 @@
 
                                     (when (= :expand status)
                                       (let [[x-id nu-steps] data]
-                                        (swap! (::result local) update-in [::steps] merge nu-steps)))
+                                        (swap! (::result local) update-in [::steps] merge nu-steps)
+                                        (swap! (::result local) assoc-in [::result] data)
+                                        ))
 
                                     (when (= :process status)
                                       (swap! (::result local) assoc-in [::result] data))
+
+                                    (when (= :wf-update status)
+                                      (swap! (::result local) assoc-in [::result] data)
+                                      )
 
                                     (when done?
                                       (swap! (::result local) assoc-in [::wf-status] ::done)
@@ -303,6 +364,7 @@
                                         ::steps   []
                                         ::result  {}
                                         ::header  "test wf (40)"
+                                        ::start (u/now)
                                         })
                          (reset! (::status local) ::steps-ui)
                          ((gen-new-wf-f! 40)))
@@ -358,18 +420,20 @@
               header  ::header
               result  ::result
               actual-steps ::steps
+              start   ::start
               } @(::result local)
              actions (if (= status ::done)
-                       [["generate new" generate-wf-fn]]
+                       [["re-run" (fn [] (reset! (::status local) ::steps-ui))] ["generate new" generate-wf-fn]]
                        [["stop" stop-fn]])
              ]
          [:div
           (wf-status-ui status)
+          [:span
+           (str (gstring/format "%.2f" (done-percentage result actual-steps)) "% " (- (u/now) start) "ms.   ")]
+
           (menubar header actions)
 
           (wf-results-ui (::result local))
-
-          ;[:pre (d/pretty history)]
           ]))
      ]
     ))
