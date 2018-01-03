@@ -50,7 +50,7 @@
                                  (println "FN" k i v)
                                  (let [c (async/chan)
                                        t (+ (int (rand 50))
-                                            (if (odd? i) (int (rand 3000)) 0))]
+                                            (if (odd? i) (int (rand 4000)) 0))]
                                    (go
                                      (async/<! (u/timeout t))
                                      (println k "DONE!")

@@ -58,3 +58,10 @@
   (throw
     (Exception. s)))
 
+
+(defn nil-get [rr id]
+  (let [r (get rr id)]
+    (if (nil? r)
+      (if (contains? rr id) :nil nil)
+      r)))
+

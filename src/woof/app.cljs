@@ -154,6 +154,74 @@
 
 
 
+
+(rum/defc step-ui
+  < rum/reactive
+  { :key-fn (fn [k _ _]
+              (str "step-" k))}
+  [k step r]
+
+  ;(println "step-ui" (u/now))
+  (let [ch? (u/channel? r)]
+    [:div.step
+     [:span.hbox
+      [:span.k (pr-str k)]
+      [:span.action
+       (d/pretty step)]
+      ]
+     [:div.result
+      (if ch?
+         "…"
+         (pr-str r)
+         )
+      ]
+     (wf-status-ui
+       (cond (nil? r) ::not-started
+             (= :nil r) ::error ;; actual nil
+             ch? ::running
+             :else ::done)
+       )
+     ])
+  )
+
+
+
+(rum/defc wf-results-ui
+  < rum/reactive
+  { :key-fn (fn [*results]
+                  (str (::header @*results)))}
+  "resulting map"
+  [*results]
+  (let [{status  ::wf-status
+         history ::history
+         header  ::header
+         result  ::result
+         actual-steps ::steps
+         } @*results]
+    ;[:div.hbox
+     ;[:pre (d/pretty actual-steps)]
+     ;[:pre
+     ; (if (or (= status ::done) (= status ::error))
+     ;   (d/pretty result)
+     ;   "") ]
+     ;]
+
+    ;(println "wf-results-ui" (u/now))
+
+    (into [:div.steps
+           ;[:header (pr-str status)]
+           ]
+          (map (fn [[k v]]
+                 ;(menu-item label action)
+                 (step-ui k v (u/nil-get result k))
+                 )
+               actual-steps))
+
+    ))
+
+
+
+
 (rum/defcs wf-ui
   < rum/reactive
   (rum/local ::steps-ui  ::status)
@@ -170,6 +238,9 @@
 
   [local *context *workflow]
 
+  ; (println "wf-ui" (u/now))
+
+
   (let [status    @(::status local)
         executor  @(::executor local)
         exec-chan @(::exec-chan local)
@@ -183,7 +254,8 @@
         execute-wf (fn []
                      ;; todo: choose executor
                      (reset! (::executor local) (wf/executor *context steps))
-                     (let [exec-chan (wf/execute! @(::executor local))]
+                     (let [exec-chan-0 (wf/execute! @(::executor local))
+                           exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf 500)))]
                        (reset! (::exec-chan local) exec-chan)
 
                        (swap! (::result local) merge
@@ -212,7 +284,9 @@
                                       (let [[x-id nu-steps] data]
                                         (swap! (::result local) update-in [::steps] merge nu-steps)))
 
-                                                                        ;; ::wf-status ::running
+                                    (when (= :process status)
+                                      (swap! (::result local) assoc-in [::result] data))
+
                                     (when done?
                                       (swap! (::result local) assoc-in [::wf-status] ::done)
                                       (swap! (::result local) assoc-in [::result] data))
@@ -228,10 +302,10 @@
                                         ::history []
                                         ::steps   []
                                         ::result  {}
-                                        ::header  "test wf (10)"
+                                        ::header  "test wf (40)"
                                         })
                          (reset! (::status local) ::steps-ui)
-                         ((gen-new-wf-f! 10)))
+                         ((gen-new-wf-f! 40)))
         stop-fn (fn []
                   (wf/end! @(::executor local)) ;; todo:
 
@@ -293,13 +367,7 @@
           (wf-status-ui status)
           (menubar header actions)
 
-            [:div.hbox
-             [:pre (d/pretty actual-steps)]
-             [:pre
-              (if (or (= status ::done) (= status ::error))
-                (d/pretty result)
-                ""
-                ) ]]
+          (wf-results-ui (::result local))
 
           ;[:pre (d/pretty history)]
           ]))
@@ -310,7 +378,7 @@
 
 
 (rum/defcs app-ui
-  < [local *STATE]
+  < rum/reactive [local *STATE]
   [:div#app
     ;[:header (str "Hello! " (:hello @*STATE))]
 

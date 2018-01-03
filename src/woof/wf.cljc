@@ -204,11 +204,7 @@
             (every? #(= % :ok) (vals @*steps-left))))
 
   (get! [this id]  ; get!
-        (let [rr @*results
-              r (get rr id)]
-          (if (nil? r)
-            (if (contains? rr id) ::nil nil)
-            r)))
+        (u/nil-get @*results id))
 )
 
 
