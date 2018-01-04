@@ -51,6 +51,7 @@
 
 (enable-console-print!)
 
+
 (defonce *APP-STATE
   (atom {
           :hello :woof
@@ -202,23 +203,24 @@
   ;(println "step-ui" (u/now))
   (let [ch? (u/channel? r)]
     [:div.step
-     [:span.hbox
-      [:span.k (pr-str k)]
-      [:span.action
-       (d/pretty step)]
-      ]
      [:div.result
       (if ch?
          "…"
          (pr-str r)
          )
       ]
+     [:div.info
+      [:span.k (pr-str k)]
+      [:span.action
+       (d/pretty step)]
+
      (wf-status-ui
        (cond (nil? r) ::not-started
              (= :nil r) ::error ;; actual nil
              ch? ::running
              :else ::done)
        )
+      ]
      ])
   )
 
@@ -227,17 +229,20 @@
 
 (rum/defc wf-results-ui
   < rum/reactive
-  { :key-fn (fn [*results]
+  { :key-fn (fn [_ *results]
                   (str (::header @*results)))}
   "resulting map"
-  [*results]
+  [*editors *results]
   (let [{status  ::wf-status
          history ::history
          header  ::header
          result  ::result
          actual-steps ::steps
          start   ::start
-         } @*results]
+         } @*results
+        {param-editors :pre
+         previews :post} @*editors
+        ]
     ;[:div.hbox
      ;[:pre (d/pretty actual-steps)]
      ;[:pre
@@ -252,7 +257,20 @@
            ]
           (map (fn [[k v]]
                  ;(menu-item label action)
-                 (step-ui k v (u/nil-get result k))
+                 (if (get param-editors k)
+                   [:.editor
+                     [:button
+                      {:on-click (fn[e]
+                                   (go
+                                       (async/put! (get param-editors k) (str "foo-" (rand 10)))
+                                       )
+                                   )}
+                      "yo!"]
+                     (step-ui k v (u/nil-get result k))
+                    ]
+                   (step-ui k v (u/nil-get result k))
+                   )
+
                  )
                actual-steps))
 
@@ -273,12 +291,16 @@
                       (count actual-steps))))
 
 
+
 (rum/defcs wf-ui
   < rum/reactive
   (rum/local ::steps-ui  ::status)
 
   (rum/local nil         ::executor)
   (rum/local nil         ::exec-chan)
+
+  (rum/local {:pre   {}
+               :post {}}  ::editors)
 
   (rum/local {::wf-status ::not-started
               ::steps      {}
@@ -297,6 +319,7 @@
         executor  @(::executor local)
         exec-chan @(::exec-chan local)
 
+
         {steps :steps
          header :name
          } @*workflow
@@ -305,7 +328,10 @@
                          (reset! (::status local) ::workflow-ui))
         execute-wf (fn []
                      ;; todo: choose executor
-                     (reset! (::executor local) (wf/executor *context steps))
+
+                     (reset! (::executor local) (wf/executor *context
+                                                             (:steps @*workflow)))
+
                      (let [exec-chan-0 (wf/execute! @(::executor local))
                            exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf 750)))]
                        (reset! (::exec-chan local) exec-chan)
@@ -374,6 +400,34 @@
                   ;; use different key, as stop is not immidiate
                   ;;(swap! (::result local) assoc-in [::wf-status] ::stopped)
                   )
+
+
+        editor-test-fn (fn []
+          (let [editor-chan (async/chan)]
+                (swap! (::editors local) update-in [:pre] assoc ::azaza editor-chan)
+
+                       ;(reset! (::editor-chan local) editor-chan)
+                       (swap! *context assoc :edit-params
+                              {:fn (fn [s]
+                                     ; (str "Hello " s "!")
+                                     (go
+                                         (async/<! (u/timeout 5000))
+                                         (async/>! editor-chan "1")
+                                         ; (println "1")
+                                         ; (async/<! (u/timeout 3000))
+                                         ; (async/>! chan "2")
+                                         ; (println "2")
+                                         )
+                                       editor-chan)
+                               :infinite true
+                               })
+
+                         (swap! *workflow update-in [:steps]
+                                merge { ::azaza [:edit-params {}]
+                                        ::test  [:hello ::azaza]})
+                       )
+                         )
+
         ]
 
 
@@ -394,15 +448,16 @@
      (when (#{::steps-ui} status)
        [:div
         (menubar header [["steps ready!" steps-ready-fn]
-                         ["generate new" generate-wf-fn]])
+                         ["generate new" generate-wf-fn]
+                         ["editor" editor-test-fn]])
         [:div.tip "Here workflow will be ui for defining and manipulating workflow."]
         [:div.hbox
          [:div.context-ui
           (menubar "context" [])
-          [:div (d/pretty (keys @*context))]]
+          [:pre (d/pretty (keys @*context))]]
          [:div.steps-ui
           (menubar "steps" [])
-          [:div (d/pretty steps)]]
+          [:pre (d/pretty steps)]]
          ]])
 
      (when (#{::workflow-ui} status)
@@ -433,7 +488,7 @@
 
           (menubar header actions)
 
-          (wf-results-ui (::result local))
+          (wf-results-ui (::editors local) (::result local))
           ]))
      ]
     ))
