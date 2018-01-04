@@ -25,6 +25,9 @@
 ;; TODO: parametrize backpressure handling
 ;;          Assert failed: No more than 1024 pending puts are allowed on a single channel. Consider using a windowed buffer.
 
+;; TODO: collect expanded steps results
+
+;; TODO: counting puts
 
 (comment
   "TODO: write introduction to workflows")

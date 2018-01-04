@@ -6,6 +6,9 @@
     [cljs.test :as test :refer-macros [deftest is testing run-tests async]]
 
     [woof.data :as d]
+
+    [woof.graph :as g]
+
     [woof.wf :as wf]
     [woof.utils :as u]
 
@@ -41,11 +44,41 @@
   (into [:span.menubar
            [:.header menu-header]]
         (map (fn [[label action]]
-               (menu-item label action)
+               (if (and (nil? label) (nil? action))
+                 [:.separator]
+                 (menu-item label action)
+                 )
+
                )
              menu-items)))
 
 ;; todo: menu input (next to a menu button)
+
+; primitive type editor
+(rum/defcs data-ui < rum/reactive
+                      (rum/local false ::editing)
+                      (rum/local nil ::value)
+  [{*EDITING? ::editing
+    *NEW-VALUE ::value} change-fn d]
+
+  (let [is-data true] ; (satisfies? c/DATA d)
+
+    (if @*EDITING?
+      (let [change (fn[new-value] ; editor
+                       (change-fn new-value)
+                       (reset! *EDITING? false))]
+
+        [:div.edn.data.edit [:input {:on-change (fn [s] (reset! *NEW-VALUE (.. s -target -value)))
+                                     :on-blur (fn[e] (change (d/to-primitive @*NEW-VALUE)))
+                                     :on-key-press (fn[e] (if (== 13 (.-charCode e)) (change (d/to-primitive @*NEW-VALUE))))
+                                     :value @*NEW-VALUE}]])
+
+        ;; data
+      [:div.edn.data
+       {on-double-click (fn[e] (swap! *EDITING? not)
+                          (reset! *NEW-VALUE d))}
+       (d/pretty d)])))
+
 
 
 (enable-console-print!)
@@ -117,16 +150,17 @@
 
                      }
           :workflow {
-                      :name "test workflow"
+                      :name "TEST WORKFLOW"
                       :steps (assoc (array-map)
-                               ::0 [:hello-wait "123"]
-                               ::0_1 [:hello ::0]
+                               ;;::0 [:hello-wait "123"]
+                               ;;::0_1 [:hello ::0]
 
-                               ::1 [:async-expand "yo!"]
-                               ::2 [:xpand {}]
+                               ;;::1 [:async-expand "yo!"]
+                               ;;::2 [:xpand {}]
 
-                               ::8 [:8 {}]
-                               ::9 [:hello ::8]
+                               ;;::8 [:8 {}]
+                               ;;::9 [:hello ::8]
+                               ::woof [:hello "test wf!"]
                                )
                       }
           }))
@@ -226,12 +260,15 @@
 
 ;; todo: add css animation on value update
 
-(rum/defc wf-results-ui
+(rum/defcs wf-results-ui
   < rum/reactive
   { :key-fn (fn [_ *results]
                   (str (::header @*results)))}
+
+  (rum/local {} ::updated-params)
+
   "resulting map"
-  [*editors *results]
+  [local *editors *results]
   (let [{status  ::wf-status
          history ::history
          header  ::header
@@ -244,39 +281,50 @@
         ]
     ;(println "wf-results-ui" (u/now))
 
+    ;; todo: store changed params
+
     (into [:div.steps
            ]
           (map (fn [[k v]]
                  ;(menu-item label action)
 
-                   [:div
-                    (if (get param-editors k)
-                     [:.editor
-                      [:header "Editor:"]
-                      [:button
-                      {:on-click (fn[e]
-                                   (go
-                                       (async/put! (get param-editors k) (str "foo" (rand 10)))
-                                       )
-                                   )}
-                      (str "yo!" (pr-str v)) ]]
+                 (let [[action params] v]
+                   [:.step-ui {:class (str
+                               (if (get param-editors k) "edit" "")
+                               (if (get previews k) "prev" "")
+                               )
+                               }
+                    (when (get param-editors k)
+
+                      (if-not (get @(::updated-params local) k)
+                        ;(if-not (u/action-id? params)
+                          (swap! (::updated-params local) assoc k params)
+                        ;)
                       )
-                     (step-ui k v (u/nil-get result k))
 
-                      (if (get previews k)
+                    (if (get @(::updated-params local) k)
+                     [:.editor
+                      [:header (str (name k) action ": ")]
+                      (data-ui (fn[new-v]
+                                 (swap! (::updated-params local) assoc k new-v)
+                                 (go (async/put! (get param-editors k) new-v)))
+                               (get @(::updated-params local) k))]))
+
+                     (if (get previews k)
                         [:.preview
-                         [:header "Preview:"]
-                         [:pre (u/nil-get result k)]
-                         ]
-                        )
-                    ]
+                         (menubar "Preview" [["ok" (fn[]
+                                                     (go
+                                                       (async/>! (get previews k) :ok))
+                                                     (swap! *editors update-in [:post] dissoc k)
+                                                     )]])
+                         [:marquee
+                          (pr-str (u/nil-get result params))]
+                         ])
 
-                   )
+                      (step-ui k v (u/nil-get result k))
+                    ])))
 
-                 )
-               actual-steps)
-
-    ))
+               actual-steps)))
 
 
 
@@ -326,8 +374,6 @@
          header :name
          } @*workflow
 
-        steps-ready-fn (fn []
-                         (reset! (::status local) ::workflow-ui))
         execute-wf (fn []
                      ;; todo: choose executor
 
@@ -384,6 +430,14 @@
 
                                     (not done?))))))
 
+        steps-ready-fn (fn []
+                         ;; uncomment these
+                         ;; (reset! (::status local) ::workflow-ui)
+
+                         (execute-wf)
+                         )
+
+
         generate-wf-fn (fn []
                          (swap! (::result local)
                                 merge {
@@ -404,14 +458,41 @@
                   )
 
 
+        preview-test-fn
+        (fn []
+          (let [
+                 preview-chan (async/chan)] ;; todo: use different channel for ui
+            (swap! (::editors local) update-in [:post] assoc ::preview preview-chan)
+
+            (swap! *context merge
+                   {:preview {:fn (fn [s]
+                                    (let [c (async/chan)]
+                                      ;(println "PREVIEW" s)
+
+                                      (go-loop []
+                                        (let [v (async/<! preview-chan)] ; read from preview chan
+                                          (async/>! c s)
+                                          (recur))
+                                        )
+                                      c
+                                      )
+                                    ;(str "PREVIEW: " s)
+
+                                    ) :infinite true}})
+
+            (swap! *workflow update-in [:steps]
+                                  merge {
+                                          ::test-preview  [:hello "woof"]
+                                          ::preview [:preview ::test-preview]
+                                          })
+
+            ))
+
         editor-test-fn (fn []
-                         (let [editor-chan (async/chan)
-                               preview-chan (async/chan)] ;; todo: use different channel for ui
+                         (let [editor-chan (async/chan)]
 
-                           (swap! (::editors local) update-in [:pre] assoc ::azaza editor-chan)
-                           (swap! (::editors local) update-in [:post] assoc ::test preview-chan)
+                           (swap! (::editors local) update-in [:pre] assoc ::editor editor-chan)
 
-                           ;(reset! (::editor-chan local) editor-chan)
                            (swap! *context merge
                                   {:edit-params
                                    {:fn (fn [s]
@@ -425,11 +506,12 @@
                                     }
                                    })
 
-
-
                            (swap! *workflow update-in [:steps]
-                                  merge { ::azaza [:edit-params {}]
-                                          ::test  [:hello ::azaza]})
+                                  merge {
+                                          ::editor [:edit-params ::woof]
+                                          ::editor-result  [:hello ::editor]
+
+                                          })
                            )
                          )
 
@@ -454,16 +536,36 @@
        [:div
         (menubar header [["steps ready!" steps-ready-fn]
                          ["generate new" generate-wf-fn]
-                         ["editor" editor-test-fn]])
+                         []
+                         ["editor test" editor-test-fn]
+                         ["preview test" preview-test-fn]
+                         ])
         [:div.tip "Here workflow will be ui for defining and manipulating workflow."]
         [:div.hbox
-         [:div.context-ui
-          (menubar "context" [])
-          [:pre (d/pretty (keys @*context))]]
          [:div.steps-ui
           (menubar "steps" [])
           [:pre (d/pretty steps)]]
-         ]])
+         [:div.context-ui
+          (menubar "context" [])
+          [:pre (d/pretty (keys @*context))]]
+         ]
+
+        [:div.graph
+
+         {:dangerouslySetInnerHTML
+          {:__html (g/graph-to-svg steps (fn [gviz [k [action param]]]
+                                           (if (u/action-id? param)
+                                             (str gviz " "
+                                                  (clojure.string/replace (name param) #"-" "_")
+                                                  " -> "
+                                                  (clojure.string/replace (name k) #"-" "_")
+                                                  ";\n")
+                                             gviz
+                                             )
+                                           ))}}
+         ]
+
+        ])
 
      (when (#{::workflow-ui} status)
        [:div

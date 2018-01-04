@@ -49,8 +49,8 @@
     (gen-step-fn #(str "s-" %) (fn [k i v]
                                  (println "FN" k i v)
                                  (let [c (async/chan)
-                                       t (+ (int (rand 50))
-                                            (if (odd? i) (int (rand 4000)) 0))]
+                                       t (+ (int (rand 1000))
+                                            (if (odd? i) (int (rand 10000)) 0))]
                                    (go
                                      (async/<! (u/timeout t))
                                      (println k "DONE!")
