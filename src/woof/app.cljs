@@ -48,7 +48,6 @@
 ;; todo: menu input (next to a menu button)
 
 
-
 (enable-console-print!)
 
 
@@ -243,36 +242,39 @@
         {param-editors :pre
          previews :post} @*editors
         ]
-    ;[:div.hbox
-     ;[:pre (d/pretty actual-steps)]
-     ;[:pre
-     ; (if (or (= status ::done) (= status ::error))
-     ;   (d/pretty result)
-     ;   "") ]
-     ;]
-
     ;(println "wf-results-ui" (u/now))
 
     (into [:div.steps
            ]
           (map (fn [[k v]]
                  ;(menu-item label action)
-                 (if (get param-editors k)
-                   [:.editor
-                     [:button
+
+                   [:div
+                    (if (get param-editors k)
+                     [:.editor
+                      [:header "Editor:"]
+                      [:button
                       {:on-click (fn[e]
                                    (go
-                                       (async/put! (get param-editors k) (str "foo-" (rand 10)))
+                                       (async/put! (get param-editors k) (str "foo" (rand 10)))
                                        )
                                    )}
-                      "yo!"]
+                      (str "yo!" (pr-str v)) ]]
+                      )
                      (step-ui k v (u/nil-get result k))
+
+                      (if (get previews k)
+                        [:.preview
+                         [:header "Preview:"]
+                         [:pre (u/nil-get result k)]
+                         ]
+                        )
                     ]
-                   (step-ui k v (u/nil-get result k))
+
                    )
 
                  )
-               actual-steps))
+               actual-steps)
 
     ))
 
@@ -403,29 +405,32 @@
 
 
         editor-test-fn (fn []
-          (let [editor-chan (async/chan)]
-                (swap! (::editors local) update-in [:pre] assoc ::azaza editor-chan)
+                         (let [editor-chan (async/chan)
+                               preview-chan (async/chan)] ;; todo: use different channel for ui
 
-                       ;(reset! (::editor-chan local) editor-chan)
-                       (swap! *context assoc :edit-params
-                              {:fn (fn [s]
-                                     ; (str "Hello " s "!")
-                                     (go
-                                         (async/<! (u/timeout 5000))
-                                         (async/>! editor-chan "1")
-                                         ; (println "1")
-                                         ; (async/<! (u/timeout 3000))
-                                         ; (async/>! chan "2")
-                                         ; (println "2")
-                                         )
-                                       editor-chan)
-                               :infinite true
-                               })
+                           (swap! (::editors local) update-in [:pre] assoc ::azaza editor-chan)
+                           (swap! (::editors local) update-in [:post] assoc ::test preview-chan)
 
-                         (swap! *workflow update-in [:steps]
-                                merge { ::azaza [:edit-params {}]
-                                        ::test  [:hello ::azaza]})
-                       )
+                           ;(reset! (::editor-chan local) editor-chan)
+                           (swap! *context merge
+                                  {:edit-params
+                                   {:fn (fn [s]
+                                          ; (str "Hello " s "!")
+                                          (go
+                                            (async/<! (u/timeout 1000))
+                                            (async/>! editor-chan "1")
+                                            )
+                                          editor-chan)
+                                    :infinite true
+                                    }
+                                   })
+
+
+
+                           (swap! *workflow update-in [:steps]
+                                  merge { ::azaza [:edit-params {}]
+                                          ::test  [:hello ::azaza]})
+                           )
                          )
 
         ]
