@@ -130,15 +130,18 @@
 
                 (cond
                   (= op :add)
-                 (let [new-steps @*steps2add]
+                   (let [new-steps @*steps2add]
                    ; (println "new steps" (d/pretty added-steps) "\nvs\n" (d/pretty new-steps))
                    (when-not (empty? new-steps)
                      (swap! *steps merge new-steps)
                      (reset! *steps2add (array-map))))
 
                   (= op :update)
-
                   (do
+                    #?(:cljs
+                        (.error js/console (pr-str [op nu-steps "local " (empty? @*steps2add)])))
+
+                    ; (reset! *steps2add (array-map))
                     ;;(swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} nu-steps))
                     ;;(swap! *results (partial apply dissoc) nu-steps)
 
@@ -168,6 +171,9 @@
                          (go-loop []
                            (let [v (async/<! result)] ;; u/<?
                              ;; TODO: do we need to close the channel
+                             ;; #?(:cljs (.warn js/console "infinite!" (pr-str [:update [id step-id params v]]) ))
+
+
                              (put!? (:process-channel cfg) [:update [id step-id params v]] 1000))
                              (recur))
                          )
@@ -322,6 +328,8 @@
   (let [existing-result (get! id)]
    ;;(println "PROCESSING " [id [step-id params]] existing-result )
 
+    ;;#?(:cljs (.warn js/console "PROCESSING: " (pr-str [id params "---" (get! params)]) ) )
+
     (cond
       (nil? existing-result) ;; no result -> run step
       (if (u/action-id? params)
@@ -379,9 +387,10 @@
 
 
          *prev-added-steps (volatile! (array-map))
+         *prev-results (volatile! @*results)
          process-steps! (fn [steps]
                           ;; <?> detect if steps are looped?
-                          ;;#?(:cljs (.warn js/console "processing steps"))
+                          ;; #?(:cljs (.warn js/console "processing steps"))
 
                           (if-let [cycles (g/has-cycles steps)]
                             (u/throw! (str "cycle detected " (d/pretty cycles))))
@@ -431,10 +440,32 @@
 
                               )
 
-                            (let [new-steps @*new-steps]
-                              (when-not (= @*prev-added-steps new-steps)
+                            (let [new-steps @*new-steps
+                                  results @*results
+
+                                  steps-added? (not (= @*prev-added-steps new-steps))
+                                  results-changed? (not (= @*prev-results results))
+                                  ]
+
+
+                              (when (or steps-added?
+                                         results-changed? )
+
+
                                 (vreset! *prev-added-steps new-steps)
-                                (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
+
+                                ;; #?(:cljs (.warn js/console ""))
+
+                                (vreset! *prev-results results)
+
+                                ;;
+                                (if steps-added?
+                                   (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T)
+                                    ;; todo: how to trigger reprocess here?
+                                    ; (put!? process-channel [:update [id step-id params v]] PUT_RETRY_T)
+                                  )
+
+                                )
 
                             )))]
 

@@ -220,20 +220,24 @@
 
 (rum/defcs wf-step-editor < rum/reactive {:key-fn (fn [k _ _ _] k)}
   (rum/local nil ::updated-v)
+  (rum/local false ::manually-entered)
 
   [local header params editor-chan]
 
-  (if-not @(::updated-v local)
-    ;(if-not (u/action-id? params)
-    (reset! (::updated-v local) params)
-    ;)
-    )
+  ;; todo: store both params and manually entered value if any
+
+  (if-let [local-params @(::updated-v local)]
+    (if-not (or (= local-params params) @(::manually-entered local))
+      (reset! (::updated-v local) params))
+    (reset! (::updated-v local) params))
+
 
   (if-let [v @(::updated-v local)]
     [:.editor
      [:header header]
      (ui/data-editor (fn[new-v]
                        (reset! (::updated-v local) new-v)
+                       (reset! (::manually-entered local) true)
                        (go
                          (async/put! editor-chan new-v)))
                      v)])
@@ -250,14 +254,18 @@
                        (if editor-chan "edit" "")
                        (if preview-fn "prev" ""))}
 
-   (when editor-chan
-     (wf-step-editor (str (name k) action ": ") params editor-chan))
+   (when (and editor-chan
+              (if (u/action-id? params) (not (u/channel? (get result params))) true))
+     (if (u/action-id? params)
+       (if-let [nu-params (get result params)]
+         (wf-step-editor (str (name k) action ": ") nu-params editor-chan))
+       (wf-step-editor (str (name k) action ": ") params editor-chan)))
 
    (if preview-fn
      (preview-fn))
 
    (step-ui k v (u/nil-get result k))
-   ]))
+]))
 
 
 
@@ -265,8 +273,6 @@
 (rum/defc wf-results-ui
   < rum/reactive
   { :key-fn (fn [header _ _] header)}
-
-  "resulting map"
 
   [header result actual-steps *editors]
 
@@ -454,13 +460,24 @@
 
                            (swap! *context merge
                                   {:edit-params
-                                   {:fn (partial passthought-fn editor-chan)
+                                   {:fn (fn [s]
+                                          (let [c (async/chan)]
+                                            (go-loop []
+                                                     (let [v (async/<! editor-chan)] ; read from preview chan
+
+                                                       ;;(.warn js/console (pr-str v))
+
+                                                       (async/put! c v)
+                                                       (recur)))
+                                            c)
+                                          )
                                     :infinite true}
                                    })
 
                            (swap! *workflow update-in [:steps]
                                   merge {
-                                          ::editor [:edit-params ::woof]
+                                          ::editor-source  [:8 10]
+                                          ::editor [:edit-params ::editor-source]
                                           ::editor-result  [:hello ::editor]
                                           })
                            )
