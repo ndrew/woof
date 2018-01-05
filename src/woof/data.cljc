@@ -41,13 +41,16 @@
        (partial substitute substitute data) {} data)))
 
 
-(defn pretty
+(defn pretty!
   "pretty print edn as string"
   [data]     ;; TODO: maybe use fipp here
   #?(:cljs
      (with-out-str (cljs-pprint/pprint data)))
   #?(:clj
      (with-out-str (clj-pprint/pprint data))))
+
+
+(def pretty (memoize pretty!))
 
 
 (defn to-primitive [s]     ;; FIXME: provide proper implementation

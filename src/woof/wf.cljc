@@ -354,6 +354,12 @@
 
 
 
+(defn- freq-map! [steps-left]
+  (merge {:working 0} (frequencies steps-left)))
+
+(def freq-map (memoize freq-map!))
+
+
 (defn async-exec
   "workflow running algorithm"
   ([executor R ready-channel process-channel]
@@ -366,9 +372,7 @@
          *steps-left (get-steps-left R)
          *results (get-results R)
 
-         get-freqs (fn []
-                     (merge {:working 0} (frequencies (vals @*steps-left))))
-
+         get-freqs (fn [] (freq-map (vals @*steps-left)))
 
          commit! (partial handle-commit! executor (partial commit! R) (partial expand! R))
          process-step! (partial do-process-step! (partial get! R) commit!)
@@ -387,7 +391,8 @@
                                 i (volatile! 0)
                                 backpressure-update (volatile! 0)
                                 start-freqs (get-freqs)
-                                prev-freqs (volatile! start-freqs)]
+                                prev-freqs (volatile! start-freqs) ;; TODO: this should be part of backpressure logic
+                                ]
 
                             ;; iterate through each
                             ;; TODO: randomize steps?
@@ -409,13 +414,12 @@
                                 (if (> WORKING-MAX (:working freqs))
                                   (let [[k v] (process-step! step)]
                                       (vswap! *new-steps assoc k v))
-                                  (do
                                     ;; send process on first backpressure
                                     (when-not (> 10 (- @i @backpressure-update))
                                       ;(println "backpressure!")
                                       (put! process-channel [:back-pressure freqs]) ;; FIXME: does this really help
                                       (vreset! backpressure-update @i)
-                                      ))))
+                                      )))
 
                               (vswap! i inc))
 
@@ -535,9 +539,8 @@
                     ;; handle next loop iteration
                     (try
 
-                      (if @force-update
-                        (async/<! (u/timeout 500))
-                        )
+                      #_(if @force-update
+                        (async/<! (u/timeout 500)))
 
                       (process-steps! @*steps)
                       (catch

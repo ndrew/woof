@@ -144,132 +144,59 @@
     (swap! *APP-STATE assoc-in [:workflow :steps] test-steps))))
 
 
-(rum/defc wf-status-ui
-    < { :key-fn (fn [status]
-                  (str status))}
+(defonce status-classes-map {
+                              ::not-started ""
+                              ::done        "done"
+                              ::running     "pending"
+                              ::stopped     "error"
+                              ::error       "error"
+                              })
+
+(defonce status-caption-map {
+                              ::not-started "…"
+                              ::done        "done!"
+                              ::running     "running"
+                              ::stopped     "stopped!"
+                              ::error       "error!"
+                              })
+
+(rum/defc wf-status-ui  < rum/static
+      ;{ :key-fn (fn [status] (str status))}
   [status]
 
   [:span.tag
-   {:class (condp = status
-             ::not-started ""
-             ::done        "done"
-             ::running     "pending"
-             ::stopped     "error"
-             ::error       "error"
-             )}
-   (condp = status
-             ::not-started "…"
-             ::done        "done!"
-             ::running     "running"
-             ::stopped     "stopped!"
-             ::error       "error!"
-             )]
-)
+   {:class (get status-classes-map status "")}
+   (get status-caption-map status "")])
 
 
 
 
-
-(rum/defc step-ui
-  < rum/reactive
-  { :key-fn (fn [k _ _]
-              (str "step-" k))}
+(rum/defc step-ui   <   rum/static
+                        {:key-fn (fn [k _ _] k)}
   [k step r]
 
-  ;(println "step-ui" (u/now))
-  (let [ch? (u/channel? r)]
+  (let [ch? (u/channel? r)
+        status (if ch? ::running
+                 (get {nil ::not-started, :nil ::error} r ::done))]
     [:div.step
      [:div.result
-      (if ch?
-         "…"
-         (pr-str r)
-         )
-      ]
+      (if ch? "…" (pr-str r))]
      [:div.info
       [:span.k (pr-str k)]
-      [:span.action
-       (d/pretty step)]
+      [:span.action (d/pretty step)]
 
-     (wf-status-ui
-       (cond (nil? r) ::not-started
-             (= :nil r) ::error ;; actual nil
-             ch? ::running
-             :else ::done)
-       )
-      ]
-     ])
-  )
+     (wf-status-ui status)]]))
 
 
 ;; todo: add css animation on value update
 
-(rum/defcs wf-results-ui
-  < rum/reactive
-  { :key-fn (fn [_ *results]
-                  (str (::header @*results)))}
 
-  (rum/local {} ::updated-params)
 
-  "resulting map"
-  [local *editors *results]
-  (let [{status  ::wf-status
-         history ::history
-         header  ::header
-         result  ::result
-         actual-steps ::steps
-         start   ::start
-         } @*results
-        {param-editors :pre
-         previews :post} @*editors
-        ]
-    ;(println "wf-results-ui" (u/now))
-
-    ;; todo: store changed params
-    (into [:div.steps]
-          (map (fn [[k v]]
-                 ;(menu-item label action)
-
-                 (let [[action params] v]
-                   [:.step-ui {:class (str
-                               (if (get param-editors k) "edit" "")
-                               (if (get previews k) "prev" "")
-                               )
-                               }
-                    (when (get param-editors k)
-
-                      (if-not (get @(::updated-params local) k)
-                        ;(if-not (u/action-id? params)
-                          (swap! (::updated-params local) assoc k params)
-                        ;)
-                      )
-
-                    (if (get @(::updated-params local) k)
-                     [:.editor
-                      [:header (str (name k) action ": ")]
-                      (ui/data-editor (fn[new-v]
-                                 (swap! (::updated-params local) assoc k new-v)
-                                 (go (async/put! (get param-editors k) new-v)))
-                               (get @(::updated-params local) k))]))
-
-                     (if (get previews k)
-                        [:.preview
-                         (ui/menubar "Preview" [["ok" (fn[]
-                                                     (go
-                                                       (async/>! (get previews k) :ok))
-                                                     (swap! *editors update-in [:post] dissoc k)
-                                                     )]])
-                         [:div (pr-str (u/nil-get result params))]
-                         ])
-
-                      (step-ui k v (u/nil-get result k))
-                    ])))
-
-               actual-steps)))
 
 
 
 (defn done-percentage [result actual-steps]
-  (* 100 (/ (reduce (fn[acc [k v]]
+  (* 100 (/ (reduce (fn [acc [k v]]
                                    (+ acc
                                       (if (u/channel? v)
                                         0
@@ -281,9 +208,106 @@
                       (count actual-steps))))
 
 
+(rum/defc wf-progress-ui < { :key-fn (fn [start _] start)} ;; todo: make it timer based
+  "shows workflow progress status - time elapsed, done percentage"
 
-(rum/defcs wf-ui
+  [start-t percent-done]
+  [:span (str (gstring/format "%.2f" percent-done) "% " (- (u/now) start-t) "ms.   ")])
+
+
+
+
+
+(rum/defcs wf-step-editor < rum/reactive {:key-fn (fn [k _ _ _] k)}
+  (rum/local nil ::updated-v)
+
+  [local header params editor-chan]
+
+  (if-not @(::updated-v local)
+    ;(if-not (u/action-id? params)
+    (reset! (::updated-v local) params)
+    ;)
+    )
+
+  (if-let [v @(::updated-v local)]
+    [:.editor
+     [:header header]
+     (ui/data-editor (fn[new-v]
+                       (reset! (::updated-v local) new-v)
+                       (go
+                         (async/put! editor-chan new-v)))
+                     v)])
+  )
+
+
+(rum/defc wf-step-ui < rum/reactive {:key-fn (fn [k _ _ _] k)}
+
+
+  [k v result editor-chan preview-fn]
+
+  (let [[action params] v]
+  [:.step-ui {:class (str
+                       (if editor-chan "edit" "")
+                       (if preview-fn "prev" ""))}
+
+   (when editor-chan
+     (wf-step-editor (str (name k) action ": ") params editor-chan))
+
+   (if preview-fn
+     (preview-fn))
+
+   (step-ui k v (u/nil-get result k))
+   ]))
+
+
+
+
+(rum/defc wf-results-ui
   < rum/reactive
+  { :key-fn (fn [header _ _] header)}
+
+  "resulting map"
+
+  [header result actual-steps *editors]
+
+  ;; FIXME:
+  (let [{param-editors :pre
+         previews :post} @*editors]
+    ;(println "wf-results-ui" (u/now))
+
+    ;; todo: store changed params
+    (into [:div.steps]
+          (map (fn [[k v]]
+                 (let [editor-chan (get param-editors k)
+
+                       preview-chan (get previews k)
+                       preview-fn (if preview-chan
+                         (fn []
+                           [:.preview
+                                (ui/menubar "Preview"
+                                            [["ok" (fn[]
+                                                     (go
+                                                       (async/>! preview-chan :ok))
+                                                     ;; TODO:
+                                                     (swap! *editors update-in [:post] dissoc k)
+                                                     )]])
+                                [:div (pr-str (u/nil-get result (second v)))]])
+                         nil)
+
+                       ]
+
+                   (wf-step-ui k v result editor-chan preview-fn)
+                   )))
+          actual-steps)))
+
+
+(defonce UI-UPDATE-RATE 50)
+
+
+(rum/defcs wf-ui   <   rum/reactive
+
+  {:key-fn (fn [_ *workflow] (get @*workflow :name))}
+
   (rum/local ::steps-ui  ::status)
 
   (rum/local nil         ::executor)
@@ -321,7 +345,7 @@
                                                              (:steps @*workflow)))
 
                      (let [exec-chan-0 (wf/execute! @(::executor local))
-                           exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf 50)))]
+                           exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf UI-UPDATE-RATE)))]
                        (reset! (::exec-chan local) exec-chan)
 
                        (swap! (::result local) merge
@@ -385,11 +409,11 @@
                                         ::history []
                                         ::steps   []
                                         ::result  {}
-                                        ::header  "test wf (40)"
+                                        ::header  "test wf (20)"
                                         ::start (u/now)
                                         })
                          (reset! (::status local) ::steps-ui)
-                         ((gen-new-wf-f! 40)))
+                         ((gen-new-wf-f! 20)))
         stop-fn (fn []
                   (wf/end! @(::executor local)) ;; todo:
 
@@ -398,7 +422,7 @@
                   )
 
 
-        preview-fn-base (fn [preview-chan s] ;; base function for preview
+        passthought-fn (fn [preview-chan s] ;; todo: maybe there is pipe fn for channel?
 
                           (let [c (async/chan)]
                             (go-loop []
@@ -412,8 +436,9 @@
             (swap! (::editors local) update-in [:post] assoc ::preview preview-chan)
 
             (swap! *context merge
-                   {:preview {:fn (partial preview-fn-base preview-chan) :infinite true}})
+                   {:preview {:fn (partial passthought-fn preview-chan) :infinite true}})
 
+            ;; todo: pass rum component into preview fn
             (swap! *workflow update-in [:steps]
                                   merge {
                                           ::test-preview  [:8 10]
@@ -429,22 +454,14 @@
 
                            (swap! *context merge
                                   {:edit-params
-                                   {:fn (fn [s]
-                                          ; (str "Hello " s "!")
-                                          (go
-                                            (async/<! (u/timeout 1000))
-                                            (async/>! editor-chan "1")
-                                            )
-                                          editor-chan)
-                                    :infinite true
-                                    }
+                                   {:fn (partial passthought-fn editor-chan)
+                                    :infinite true}
                                    })
 
                            (swap! *workflow update-in [:steps]
                                   merge {
                                           ::editor [:edit-params ::woof]
                                           ::editor-result  [:hello ::editor]
-
                                           })
                            )
                          )
@@ -524,15 +541,11 @@
              ]
          [:div
           (wf-status-ui status)
-          [:span
-           (str (gstring/format "%.2f" (done-percentage result actual-steps)) "% " (- (u/now) start) "ms.   ")]
-
+          (wf-progress-ui start (done-percentage result actual-steps))
           (ui/menubar header actions)
 
-          (wf-results-ui (::editors local) (::result local))
-          ]))
-     ]
-    ))
+          (wf-results-ui header result actual-steps (::editors local) )]))
+]))
 
 
 

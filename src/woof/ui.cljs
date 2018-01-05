@@ -33,7 +33,7 @@
     *NEW-VALUE  ::value} change-fn d]
 
   (let [is-data (satisfies? c/DATA d)
-        change (fn[new-value] ; editor
+        change (fn [new-value] ; editor
                        (change-fn new-value)
                        (reset! *EDITING? false))]
 
@@ -41,13 +41,14 @@
         [:div.edn.data.edit [:input {:on-change    (fn [s] (reset! *NEW-VALUE (.. s -target -value)))
                                      :on-blur      (fn[e] (change (d/to-primitive @*NEW-VALUE)))
                                      :on-key-press (fn[e] (if (== 13 (.-charCode e)) (change (d/to-primitive @*NEW-VALUE))))
-                                     :value @*NEW-VALUE}]])
+                                     :value @*NEW-VALUE}]]
 
         ;; data
       [:div.edn.data
-       {on-double-click (fn[e] (swap! *EDITING? not)
-                          (reset! *NEW-VALUE d))}
-       (d/pretty d)]))
+       {:on-double-click (fn[e]
+                           (swap! *EDITING? not)
+                           (reset! *NEW-VALUE d))}
+       (d/pretty d)])))
 
 
 ;;;;;;;;;;;

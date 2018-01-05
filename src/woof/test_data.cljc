@@ -12,6 +12,12 @@
 
 
 
+(def DEBUG-TO-PRINT false)
+
+(defn- debug-out! [& args]
+  (if DEBUG-TO-PRINT
+    (apply println args)))
+
 
 (defn gen-id [id]
   (keyword (str id)))
@@ -47,13 +53,13 @@
   [idx]
   (reduce
     (gen-step-fn #(str "s-" %) (fn [k i v]
-                                 (println "FN" k i v)
+                                 (debug-out! "FN" k i v)
                                  (let [c (async/chan)
                                        t (+ (int (rand 1000))
                                             (if (odd? i) (int (rand 10000)) 0))]
                                    (go
                                      (async/<! (u/timeout t))
-                                     (println k "DONE!")
+                                     (debug-out! k "DONE!")
                                      (async/put! c i))
                                    c)))
     {} idx))
@@ -139,6 +145,7 @@
                        (map-indexed vector xpand-idxs)))}
       )
 )
+
 
 (defn get-test-steps-and-context [N]
   (let [d (gen-steps-and-context N)]
