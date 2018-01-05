@@ -107,15 +107,14 @@
                 ;(println "UPDATE: " (d/pretty msg))
 
 
-                (let [d-steps (rest (g/get-dependant-steps @*steps id))]
 
+                (let [d-steps (rest (g/get-dependant-steps @*steps id))]
                   (swap! *results (partial apply dissoc) d-steps)
                   (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} d-steps))
 
-
-
                   (do-commit! this id result)
 
+                  ;; put update only if things had changed
                   (go
                     (put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
 
@@ -128,6 +127,7 @@
               )
 
   (update-steps! [this [op nu-steps]]
+
                 (cond
                   (= op :add)
                  (let [new-steps @*steps2add]
@@ -155,19 +155,22 @@
            (if (u/channel? result)
              (let [status (get @*steps-left id)
                    infinite? (:infinite (get @*context step-id))]
+
                (if-not (= :working status)
                  (do
                    (swap! *results assoc id result)
                    (swap! *steps-left assoc id :working)
                    (if infinite?
                      (do
-                       (swap! *state update-in [:infinite] assoc id result) ;; ;; store channel
-                       (go
-                         (loop []
+
+                       (when-not (get-in @*state [:infinite id])
+                         (swap! *state update-in [:infinite] assoc id result) ;; ;; store channel
+                         (go-loop []
                            (let [v (async/<! result)] ;; u/<?
                              ;; TODO: do we need to close the channel
                              (put!? (:process-channel cfg) [:update [id step-id params v]] 1000))
-                             (recur)))
+                             (recur))
+                         )
 
                        )
                     (go
@@ -354,9 +357,10 @@
 (defn async-exec
   "workflow running algorithm"
   ([executor R ready-channel process-channel]
+   ;; todo: add notification channel for ui updates
+   ;; todo: rename R to something better
   (let [ PUT_RETRY_T 1000
          steps (get-initial-steps R)
-         ;R (make-state! steps process-channel)
 
          *steps (get-steps R)
          *steps-left (get-steps-left R)
@@ -369,7 +373,12 @@
          commit! (partial handle-commit! executor (partial commit! R) (partial expand! R))
          process-step! (partial do-process-step! (partial get! R) commit!)
 
+
+         *prev-added-steps (volatile! (array-map))
          process-steps! (fn [steps]
+                          ;; <?> detect if steps are looped?
+                          ;;#?(:cljs (.warn js/console "processing steps"))
+
                           (if-let [cycles (g/has-cycles steps)]
                             (u/throw! (str "cycle detected " (d/pretty cycles))))
 
@@ -418,9 +427,12 @@
 
                               )
 
-                            (put!? process-channel [:steps [:add @*new-steps]] PUT_RETRY_T)
+                            (let [new-steps @*new-steps]
+                              (when-not (= @*prev-added-steps new-steps)
+                                (vreset! *prev-added-steps new-steps)
+                                (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
 
-                            ))]
+                            )))]
 
 
 
@@ -437,10 +449,8 @@
                                                             :steps-left @*steps-left}})
 
       (let [first-update (volatile! false)
-            force-stop   (volatile! false)
             force-update (volatile! false)
-
-            ]
+            force-stop   (volatile! false)]
         ;; wait for results via process-channel
         (loop [i 0
                old-results @*results
@@ -460,27 +470,22 @@
                       ; got single items via async channel
                       (do-commit! R id result))
 
-              :update (do-update! R v)
+              :update (do
+                        (do-update! R v)
+                        )
 
               :steps (let [[steps-op zzz] v]
-                       ;; (println v)
-                       ;; (println R)
-
                        (update-steps! R v) ;; loop completed, merge steps and add new ones (if any)
 
                        (if (= :update steps-op)
                          (vreset! force-update true))
 
-                       (async/>! ready-channel [:wf-update @*results])
-
-                       )
+                       (async/>! ready-channel [:wf-update @*results]))
 
 
               :expand (let [[id step-id params result] v]
                         ;; got steps after sequential processing
                         (do-expand! R id result)
-                        ;; (println "EXPAND!!!!!")
-
                         ;; send result
                         (async/>! ready-channel [:expand [id result]])
                         )
@@ -503,8 +508,7 @@
             ;; process the result
             (let [processed-steps @*steps
                   new-results @*results
-                  same-results? (= old-results new-results)
-                  ]
+                  same-results? (= old-results new-results)]
 
 
               (when (or (not same-results?) @force-update)
@@ -530,6 +534,11 @@
 
                     ;; handle next loop iteration
                     (try
+
+                      (if @force-update
+                        (async/<! (u/timeout 500))
+                        )
+
                       (process-steps! @*steps)
                       (catch
                         #?(:cljs js/Error) #?(:clj  Exception) e

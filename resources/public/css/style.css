@@ -35,7 +35,7 @@ body { padding: 1rem; }
 
 .tag {
   border-radius: 3px;
-  padding: 5px 7px;
+  padding: 3px 5px;
   margin-right: .5rem;
 
   font-weight: 900;
@@ -83,7 +83,6 @@ body { padding: 1rem; }
 
 }
 
-
 .menubar .menu-item:hover,
 .menubar .menu-item.selected {
   color: #fff;
@@ -92,4 +91,116 @@ body { padding: 1rem; }
 
 .menubar > .header {
   font-weight: bolder;
+}
+
+.menubar .separator {
+  width: 1rem;
+}
+
+.edn.data {
+  border-bottom: 1px solid red;
+  display: inline-flex;
+}
+
+.edn.data.edit {
+  border-bottom: 1px solid rgba(255,0,0,.13333);
+}
+
+
+
+
+
+
+
+
+
+.steps {
+  display: flex;
+  flex-flow: column;
+}
+
+#app .steps {
+  margin-top: 1rem;
+}
+
+.steps .step-ui {
+  box-sizing: content-box;
+  display: flex;
+  flex-direction: column;
+
+  padding: .2rem;
+
+  border-bottom: 1px dotted rgba(0,0,0,.133);
+}
+
+.steps .step-ui:hover {
+  border-bottom: 1px dotted rgba(0,0,0,.433);
+
+  background-color: rgba(0,255,255,.08111)
+}
+
+
+.step-ui > .step {
+  display: flex;
+
+  align-self: baseline;
+}
+
+.step-ui > .step > .result {
+/*   flex: 2 0; */
+/*   font-weight: bold; */
+
+  min-width: 200px;
+
+  margin-right: 1.5rem;
+}
+
+
+.step-ui > .step .info {
+  min-width: 350px;
+
+
+}
+
+.step-ui > .step .k {
+  min-width: 100px;
+  margin-right: .5rem;
+  opacity: .5;
+}
+
+.step-ui > .step .action {
+
+}
+
+
+.step-ui > .editor header,
+.step-ui > .preview header {
+  display: inline-flex;
+  font-weight: bolder;
+}
+
+.step-ui > .editor header {
+  margin-right: .5rem;
+  margin-bottom: .5rem;
+}
+
+
+
+.step-ui.edit,
+.step-ui.prev
+{
+
+  margin-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+
+.step-ui > .preview {
+  background-color: rgba(128,127,127,.1333);
+  margin-bottom: .5rem;
+}
+
+
+.graph svg {
+  width: 80vw;
 }

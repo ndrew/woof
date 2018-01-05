@@ -1,87 +1,27 @@
 (ns woof.app
   (:require
     [cljs.core.async :as async]
-
-    [rum.core :as rum]
     [cljs.test :as test :refer-macros [deftest is testing run-tests async]]
-
-    [woof.data :as d]
-
-    [woof.graph :as g]
-
-    [woof.wf :as wf]
-    [woof.utils :as u]
-
-    [woof.test-data :as test-data]
 
     [goog.string :as gstring]
     [goog.string.format]
-    )
 
+    [rum.core :as rum]
+
+    [woof.data :as d]
+    [woof.graph :as g]
+    [woof.wf :as wf]
+    [woof.ui :as ui]
+    [woof.utils :as u]
+    [woof.test-data :as test-data])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]
     [woof.utils-macros :refer [put!?]]))
 
 
-;; ui
-
-(rum/defc menu-item
-    < { :key-fn (fn [label _]
-                  (str label))}
-  [label action-fn]
-    [:a.menu-item {:href "#"
-                   :on-click (fn [e]
-                               (action-fn)
-                               (.preventDefault e)
-                               false)}
-     label])
 
 
-(rum/defc menubar
-  < rum/reactive
-  "build a menubar"
-  [menu-header menu-items]
-  (into [:span.menubar
-           [:.header menu-header]]
-        (map (fn [[label action]]
-               (if (and (nil? label) (nil? action))
-                 [:.separator]
-                 (menu-item label action)
-                 )
-
-               )
-             menu-items)))
-
-;; todo: menu input (next to a menu button)
-
-; primitive type editor
-(rum/defcs data-ui < rum/reactive
-                      (rum/local false ::editing)
-                      (rum/local nil ::value)
-  [{*EDITING? ::editing
-    *NEW-VALUE ::value} change-fn d]
-
-  (let [is-data true] ; (satisfies? c/DATA d)
-
-    (if @*EDITING?
-      (let [change (fn[new-value] ; editor
-                       (change-fn new-value)
-                       (reset! *EDITING? false))]
-
-        [:div.edn.data.edit [:input {:on-change (fn [s] (reset! *NEW-VALUE (.. s -target -value)))
-                                     :on-blur (fn[e] (change (d/to-primitive @*NEW-VALUE)))
-                                     :on-key-press (fn[e] (if (== 13 (.-charCode e)) (change (d/to-primitive @*NEW-VALUE))))
-                                     :value @*NEW-VALUE}]])
-
-        ;; data
-      [:div.edn.data
-       {on-double-click (fn[e] (swap! *EDITING? not)
-                          (reset! *NEW-VALUE d))}
-       (d/pretty d)])))
-
-
-
-(enable-console-print!)
+;(enable-console-print!)
 
 
 (defonce *APP-STATE
@@ -129,19 +69,22 @@
                              :expands? true
                              }
 
-                     :8 {:fn (fn [s]
+                     :8 {:fn (fn [max-num]
+                                 (.warn js/console "max-num" max-num)
+
                                  ; (str "Hello " s "!")
-                                 (let [chan (async/chan)]
+                                 (let [chan (async/chan)
+                                       t (volatile! (u/now))]
 
-                                   (go
-                                     (async/<! (u/timeout 1000))
-                                     (async/>! chan "1")
-                                     (println "1")
+                                   (go-loop [i 0]
+                                     (async/<! (u/timeout 500))
+                                     (.warn js/console "i" i (< i max-num) (- (u/now) @t) )
+                                     (vreset! t (u/now))
 
-                                     (async/<! (u/timeout 3000))
-                                     (async/>! chan "2")
+                                     (async/>! chan (str i ": " (int (rand 100))))
 
-                                     (println "2")
+                                    (if (< i max-num)
+                                     (recur (inc i)))
                                      )
 
                                    chan))
@@ -158,7 +101,7 @@
                                ;;::1 [:async-expand "yo!"]
                                ;;::2 [:xpand {}]
 
-                               ;;::8 [:8 {}]
+                               ;; ::8 [:8 20]
                                ;;::9 [:hello ::8]
                                ::woof [:hello "test wf!"]
                                )
@@ -282,9 +225,7 @@
     ;(println "wf-results-ui" (u/now))
 
     ;; todo: store changed params
-
-    (into [:div.steps
-           ]
+    (into [:div.steps]
           (map (fn [[k v]]
                  ;(menu-item label action)
 
@@ -305,20 +246,19 @@
                     (if (get @(::updated-params local) k)
                      [:.editor
                       [:header (str (name k) action ": ")]
-                      (data-ui (fn[new-v]
+                      (ui/data-editor (fn[new-v]
                                  (swap! (::updated-params local) assoc k new-v)
                                  (go (async/put! (get param-editors k) new-v)))
                                (get @(::updated-params local) k))]))
 
                      (if (get previews k)
                         [:.preview
-                         (menubar "Preview" [["ok" (fn[]
+                         (ui/menubar "Preview" [["ok" (fn[]
                                                      (go
                                                        (async/>! (get previews k) :ok))
                                                      (swap! *editors update-in [:post] dissoc k)
                                                      )]])
-                         [:marquee
-                          (pr-str (u/nil-get result params))]
+                         [:div (pr-str (u/nil-get result params))]
                          ])
 
                       (step-ui k v (u/nil-get result k))
@@ -381,7 +321,7 @@
                                                              (:steps @*workflow)))
 
                      (let [exec-chan-0 (wf/execute! @(::executor local))
-                           exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf 750)))]
+                           exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf 50)))]
                        (reset! (::exec-chan local) exec-chan)
 
                        (swap! (::result local) merge
@@ -458,31 +398,25 @@
                   )
 
 
-        preview-test-fn
-        (fn []
-          (let [
-                 preview-chan (async/chan)] ;; todo: use different channel for ui
+        preview-fn-base (fn [preview-chan s] ;; base function for preview
+
+                          (let [c (async/chan)]
+                            (go-loop []
+                                     (let [v (async/<! preview-chan)] ; read from preview chan
+                                       (async/put! c s)
+                                       (recur)))
+                            c))
+
+        preview-test-fn (fn []
+          (let [preview-chan (async/chan)] ;; todo: use different channel for ui
             (swap! (::editors local) update-in [:post] assoc ::preview preview-chan)
 
             (swap! *context merge
-                   {:preview {:fn (fn [s]
-                                    (let [c (async/chan)]
-                                      ;(println "PREVIEW" s)
-
-                                      (go-loop []
-                                        (let [v (async/<! preview-chan)] ; read from preview chan
-                                          (async/>! c s)
-                                          (recur))
-                                        )
-                                      c
-                                      )
-                                    ;(str "PREVIEW: " s)
-
-                                    ) :infinite true}})
+                   {:preview {:fn (partial preview-fn-base preview-chan) :infinite true}})
 
             (swap! *workflow update-in [:steps]
                                   merge {
-                                          ::test-preview  [:hello "woof"]
+                                          ::test-preview  [:8 10]
                                           ::preview [:preview ::test-preview]
                                           })
 
@@ -534,24 +468,24 @@
     [:div
      (when (#{::steps-ui} status)
        [:div
-        (menubar header [["steps ready!" steps-ready-fn]
-                         ["generate new" generate-wf-fn]
-                         []
-                         ["editor test" editor-test-fn]
-                         ["preview test" preview-test-fn]
-                         ])
+        (ui/menubar header [["steps ready!" steps-ready-fn]
+                             ["generate new" generate-wf-fn]
+                             []
+                             ["editor test" editor-test-fn]
+                             ["preview test" preview-test-fn]])
         [:div.tip "Here workflow will be ui for defining and manipulating workflow."]
         [:div.hbox
          [:div.steps-ui
-          (menubar "steps" [])
+          (ui/menubar "steps" [])
+
           [:pre (d/pretty steps)]]
          [:div.context-ui
-          (menubar "context" [])
+          (ui/menubar "context" [])
           [:pre (d/pretty (keys @*context))]]
          ]
 
+        #_(comment ;; todo: show via settings
         [:div.graph
-
          {:dangerouslySetInnerHTML
           {:__html (g/graph-to-svg steps (fn [gviz [k [action param]]]
                                            (if (u/action-id? param)
@@ -562,14 +496,14 @@
                                                   ";\n")
                                              gviz
                                              )
-                                           ))}}
-         ]
+                                           ))}}])
+
 
         ])
 
      (when (#{::workflow-ui} status)
        [:div
-        (menubar header [["run (normal)" execute-wf]
+        (ui/menubar header [["run (normal)" execute-wf]
                          ["run (timeout)" (fn[])]
                          ["run (with cache)" (fn[])]
                          ["debug" (fn[])]
@@ -593,7 +527,7 @@
           [:span
            (str (gstring/format "%.2f" (done-percentage result actual-steps)) "% " (- (u/now) start) "ms.   ")]
 
-          (menubar header actions)
+          (ui/menubar header actions)
 
           (wf-results-ui (::editors local) (::result local))
           ]))
@@ -625,7 +559,9 @@
 
 
 (defn on-js-reload []
-  #_(.clear js/console))
+  ;; todo: force close all channels
+
+  (.clear js/console))
 
 
 

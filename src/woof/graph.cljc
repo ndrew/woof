@@ -34,19 +34,25 @@
     (::sccs (reduce sc {::stack () ::sccs #{}} nodes))))
 
 
-(defn graph-component [steps]
+
+
+(defn- graph-component! [steps]
   (let [graph (reduce (fn [a [k [op p]]]
                         (if (u/action-id? p)
                           (assoc a k (conj (get a k []) p))
                           a)) {} steps)]
     (tarjan (keys graph) graph)))
 
+(def graph-component (memoize graph-component!))
 
-(defn has-cycles [steps]
+
+(defn has-cycles! [steps]
   (let [components (graph-component steps)
         cycles (filter #(> (count %) 1) components)]
     (if-not (empty? cycles)
       cycles)))
+
+(def has-cycles (memoize has-cycles!))
 
 
 (defn get-dependant-steps [steps initial-step]
