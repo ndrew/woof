@@ -452,13 +452,12 @@
                                          results-changed? )
 
 
-                                (vreset! *prev-added-steps new-steps)
-
 ; #?(:cljs (.warn js/console (d/pretty["STEPS:" "added?" steps-added? "results-changed?" results-changed?])))
 
 
                                 ;; if only added
-                                (if (and steps-added? (not results-changed?))
+                                (when steps-added? ;(and steps-added? (not results-changed?))
+                                   (vreset! *prev-added-steps new-steps)
                                    (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
 
                                 (when results-changed?

@@ -7,10 +7,10 @@
     [woof.wf :as wf]
     [woof.utils :as u]
     [woof.test-data :as test-data]
+    [woof.graph :as g]
 
     [criterium.core :as criterium]
 
-    [woof.graph :as g]
 
 ))
 
@@ -98,9 +98,14 @@
         (let [tk1 (test-data/gen-ns-id "hello-0")
               tk2 (test-data/gen-ns-id "hello-1")
               data (wf/extract-results v [tk1 tk2])]
-           (is (= data {tk1 "Hello world!" tk2 "Hello universe!"}))
-           (= (::0 v) '(tk1 tk2))
-          )))))
+
+          data
+
+           ;(is (= data {tk1 "Hello world!" tk2 "Hello universe!"}))
+           ;(= (::0 v) '(tk1 tk2))
+          ))))
+
+  )
 
 
 
@@ -168,6 +173,7 @@
     )
   )
 
+
 (defn executor-test []
 
   ;; hand written
@@ -212,7 +218,7 @@
 
 
 (defn wf-test-data []
-  (let [N 80;;120 - fails
+  (let [N 20;;120 - fails
         {
           test-context :context
            test-steps :steps
@@ -225,8 +231,11 @@
 (deftest test-data-test
   ;; TODO: test profiling
   ;(prof/start {})
-  (dotimes [i 3]
-    (wf-test-data))
+  (dotimes [i 2]
+    (wf-test-data)
+    ;(println "Yo!")
+
+    )
   ;(prof/stop {})
   )
 
@@ -360,14 +369,14 @@
                                  (let [chan (async/chan)]
 
                                    (go
-                                     (async/<! (u/timeout 1000))
-                                     (async/>! chan "1")
-                                     (println "1")
+                                     (async/<! (u/timeout (int (rand 1000))))
+                                     (async/>! chan (str "1__" s))
+                                     ; (println "1" s )
 
-                                     (async/<! (u/timeout 3000))
-                                     (async/>! chan "2")
+                                     (async/<! (u/timeout (int (rand 3000))))
+                                     (async/>! chan (str "2__" s))
 
-                                     (println "2")
+                                     ; (println "2" s)
                                      )
 
                                    chan))
@@ -385,8 +394,9 @@
 
                        })
         steps (assoc (array-map)
-                ::0 [:f "hello"]
+                ::0 [:f "_1"]
                 ::1 [:f1 ::0]
+                ::2 [:f "_2"]
                 )
 
         ;; result-chan
@@ -435,11 +445,10 @@
 
       (let [[status data] (async/<!! c)]
         (println [status data])
-
         (is (= :done status))
 
         )))
-  )
+)
 
 
 

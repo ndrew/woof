@@ -111,7 +111,7 @@
 
                                ;; ::8 [:8 20]
                                ;;::9 [:hello ::8]
-                               ::woof [:hello "test wf!"]
+                               ::woof [:identity "test wf!"]
                                )
                       }
           }))
@@ -384,8 +384,7 @@
                        (run-wf! executor exec-chan
                                 (fn [r]
                                   (let [[status data] r
-                                        done? (= :done status)
-                                        ]
+                                        done? (= :done status)]
 
                                     ;; todo: how to handle new steps added
 
@@ -471,6 +470,30 @@
 
             ))
 
+        expand-test-fn (fn []
+                         (swap! *context merge {
+                                                 :h {:fn (fn [s]
+                                                               (str s)
+                                                               )}
+                                                 :exp {:fn (fn [vs]
+                                                                (into (array-map)
+                                                                      (map-indexed (fn[i a] [(test-data/gen-ns-id (str "hello-" i))
+                                                                                             [:h a]])
+                                                                                   vs)))
+                                                          :expands? true}
+                                                 })
+
+          (swap! *workflow update-in [:steps]
+                            merge {
+                                    ::xpdand [:exp "hello"]
+                                    ::t [:identity ::hello-2]
+
+
+                                    ;;::z [:hello-wait "1234"]
+                                    })
+
+                         )
+
         editor-test-fn (fn []
                          (let [editor-chan (async/chan)]
 
@@ -532,7 +555,10 @@
                              ["generate new" generate-wf-fn]
                              []
                              ["editor test" editor-test-fn]
-                             ["preview test" preview-test-fn]])
+                             ["preview test" preview-test-fn]
+                             []
+                             ["expand test" expand-test-fn]
+                            ])
         [:div.tip "Here workflow will be ui for defining and manipulating workflow."]
         [:div.hbox
          [:div.steps-ui
