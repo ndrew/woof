@@ -109,10 +109,14 @@
 
 
                 (let [d-steps (rest (g/get-dependant-steps @*steps id))]
+                  ;;
+
                   (swap! *results (partial apply dissoc) d-steps)
                   (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} d-steps))
 
                   (do-commit! this id result)
+
+;; #?(:cljs (.error js/console (d/pretty ["send :steps" id d-steps])))
 
                   ;; put update only if things had changed
                   (go
@@ -138,16 +142,10 @@
 
                   (= op :update)
                   (do
-                    #?(:cljs
-                        (.error js/console (pr-str [op nu-steps "local " (empty? @*steps2add)])))
+                    ;; <?> should we do ?
+                    ;; (swap! *steps merge new-steps)
 
-                    ; (reset! *steps2add (array-map))
-                    ;;(swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} nu-steps))
-                    ;;(swap! *results (partial apply dissoc) nu-steps)
-
-                    ;;(println (d/pretty @*steps-left))
-                    ;;(println (d/pretty @*results))
-                    ;;(println "===========")
+                    ;; #?(:cljs (.error js/console (pr-str [op nu-steps "local " (empty? @*steps2add)])))
                     )))
 
 
@@ -387,7 +385,10 @@
 
 
          *prev-added-steps (volatile! (array-map))
+
+
          *prev-results (volatile! @*results)
+
          process-steps! (fn [steps]
                           ;; <?> detect if steps are looped?
                           ;; #?(:cljs (.warn js/console "processing steps"))
@@ -444,8 +445,7 @@
                                   results @*results
 
                                   steps-added? (not (= @*prev-added-steps new-steps))
-                                  results-changed? (not (= @*prev-results results))
-                                  ]
+                                  results-changed? (not (= @*prev-results results))]
 
 
                               (when (or steps-added?
@@ -454,17 +454,16 @@
 
                                 (vreset! *prev-added-steps new-steps)
 
-                                ;; #?(:cljs (.warn js/console ""))
+; #?(:cljs (.warn js/console (d/pretty["STEPS:" "added?" steps-added? "results-changed?" results-changed?])))
 
-                                (vreset! *prev-results results)
 
-                                ;;
-                                (if steps-added?
-                                   (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T)
-                                    ;; todo: how to trigger reprocess here?
-                                    ; (put!? process-channel [:update [id step-id params v]] PUT_RETRY_T)
-                                  )
+                                ;; if only added
+                                (if (and steps-added? (not results-changed?))
+                                   (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
 
+                                (when results-changed?
+                                  (vreset! *prev-results results)
+                                  (put!? process-channel [:steps [:update new-steps]] PUT_RETRY_T))
                                 )
 
                             )))]
@@ -497,7 +496,7 @@
           (let [r (async/<! process-channel)
                 [op v] r]
 
-            ;; (println "OP:" op)
+; #?(:cljs (.warn js/console (d/pretty ["consumer" op v])))
 
             ;; process the 'message'
             (condp = op
@@ -509,9 +508,11 @@
                         (do-update! R v)
                         )
 
-              :steps (let [[steps-op zzz] v]
-                       (update-steps! R v) ;; loop completed, merge steps and add new ones (if any)
+              :steps (let [[steps-op _] v]
+                       ;; loop completed, merge steps and add new ones (if any)
+                       (update-steps! R v)
 
+                       ;; if update is received - force loop one more time
                        (if (= :update steps-op)
                          (vreset! force-update true))
 
@@ -545,41 +546,29 @@
                   new-results @*results
                   same-results? (= old-results new-results)]
 
+; #?(:cljs (.warn js/console (d/pretty ["same-results?" same-results?
+;                                      "force-update" @force-update
+;                                      "steps-left before" steps-left
+;                                      "steps left after" @*steps-left
+;                                      ])))
 
               (when (or (not same-results?) @force-update)
+                (debug! *consumer-debugger* {:process-loop-end {:i i :new-results new-results :steps processed-steps :steps-left @*steps-left}})
 
-                ;; TODO: debugging via macro/transducer
-                (when (u/channel? *consumer-debugger*)
-                  (async/<! *consumer-debugger*)
-                  (async/put! *consumer-debugger* {:process-loop-end {
-                                                                       :i i
-                                                                       :new-results new-results
-                                                                       :steps processed-steps
-                                                                       :steps-left @*steps-left}}))
-
-                (if-not same-results?
-                  ;; send the processed results
+                (if-not same-results?                               ;; send the processed results
                   (async/>! ready-channel [:process new-results]))
 
-                (when (not-empty steps-left) ;; restart produce
+                (when (not-empty @*steps-left) ;; restart produce
                   (go
-                    ;; pause the producer if needed
-                    (debug! *producer-debugger* {:producer {:steps @*steps}})
+                    (debug! *producer-debugger* {:producer {:steps @*steps}}) ;; pause the producer if needed
 
-
-                    ;; handle next loop iteration
-                    (try
-
-                      #_(if @force-update
-                        (async/<! (u/timeout 500)))
-
+                    (try                             ;; handle next loop iteration
                       (process-steps! @*steps)
                       (catch
                         #?(:cljs js/Error) #?(:clj  Exception) e
                         (async/>! ready-channel [:error e])))
 
                     )))
-
               )
 
           ;; todo: stop not immediately when force stop
@@ -597,6 +586,8 @@
 
       ;; wait before producing
       (debug! *producer-debugger* {:producer {:steps steps}})
+
+      ;; <?> send action that wf had started ?
 
       (try
         (process-steps! steps)

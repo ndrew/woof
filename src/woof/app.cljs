@@ -28,6 +28,14 @@
   (atom {
           :hello :woof
           :context {
+                     :identity {:fn (fn [a] a)}
+
+                     :identity-async {:fn (fn [a]
+                                            (let [c (async/chan)]
+                                              (go
+                                                (async/put! c a))
+                                              c))}
+
                      :hello {:fn (fn [a]
                                    (println ":hello" (pr-str a))
                                    ;"Hello!"
@@ -196,7 +204,8 @@
 
 
 (defn done-percentage [result actual-steps]
-  (* 100 (/ (reduce (fn [acc [k v]]
+  (if (map? result)
+    (* 100 (/ (reduce (fn [acc [k v]]
                                    (+ acc
                                       (if (u/channel? v)
                                         0
@@ -205,7 +214,15 @@
                                 )
                               0 result
                               )
-                      (count actual-steps))))
+                      (count actual-steps)))
+    (do
+      (.warn js/console (d/pretty
+                          [actual-steps result]
+                          ))
+      0
+      )
+
+    ))
 
 
 (rum/defc wf-progress-ui < { :key-fn (fn [start _] start)} ;; todo: make it timer based
@@ -382,6 +399,7 @@
                                     (when (= :expand status)
                                       (let [[x-id nu-steps] data]
                                         (swap! (::result local) update-in [::steps] merge nu-steps)
+                                         ;; todo: check if this breaks done-percentage
                                         (swap! (::result local) assoc-in [::result] data)
                                         ))
 
@@ -476,9 +494,17 @@
 
                            (swap! *workflow update-in [:steps]
                                   merge {
-                                          ::editor-source  [:8 10]
-                                          ::editor [:edit-params ::editor-source]
-                                          ::editor-result  [:hello ::editor]
+                                          ;::editor-source-1  [:8 3]
+                                          ;::editor-source  [:8 ::editor-source-1]
+
+                                          ::nested-1  [:identity-async ::nested-e]
+                                          ::nested-e [:hello ::e-result-1]
+
+                                          ::e-result  [:identity ::editor]
+                                          ::editor [:edit-params "Hello!"]
+                                          ::e-result-1  [:identity-async ::editor]
+
+
                                           })
                            )
                          )
