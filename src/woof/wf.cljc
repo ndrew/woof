@@ -45,6 +45,7 @@
 
 
 
+;; todo: refactor IState into model and behaviour
 (defprotocol IState
   (get-initial-steps [this])
   (get-steps [this])
@@ -366,6 +367,133 @@
 (def freq-map (memoize freq-map!))
 
 
+
+
+(defprotocol IStepProcessor
+
+  (process-step! [this step])
+
+  (process-steps! [this process-channel steps])
+)
+
+(defrecord WFStepProcessor [R commit! get! *prev-added-steps *prev-results]
+  IStepProcessor
+
+  (process-step!
+    [this [id [step-id params]]]
+    (let [existing-result (get! id)]
+      ;;(println "PROCESSING " [id [step-id params]] existing-result )
+
+      ;;#?(:cljs (.warn js/console "PROCESSING: " (pr-str [id params "---" (get! params)]) ) )
+
+      (cond
+        (nil? existing-result) ;; no result -> run step
+        (if (u/action-id? params)
+          (let [new-params (get! params)]
+            (cond
+              (nil? new-params) [id [step-id params]]
+              (u/channel? new-params) [id [step-id params]]
+              :else (commit! id step-id new-params)))
+
+          (commit! id step-id params))
+
+        (u/channel? existing-result) ;; waiting for channel to process result
+        [id [step-id params]]
+
+        :else ;; already processed
+        [id [step-id params]]))
+    )
+
+  (process-steps!
+    [this process-channel steps]
+
+    (if-let [cycles (g/has-cycles steps)]
+      (u/throw! (str "cycle detected " (d/pretty cycles))))
+
+    (let [ PUT_RETRY_T 1000
+         *steps (get-steps R)
+         *steps-left (get-steps-left R)
+         *results (get-results R)
+
+          get-freqs (fn [] (freq-map (vals @*steps-left)))
+
+          *new-steps (volatile! (array-map))
+
+          i (volatile! 0)
+          backpressure-update (volatile! 0)
+
+          ;; TODO: this should be part of backpressure logic
+          start-freqs (get-freqs)
+          prev-freqs (volatile! start-freqs)]
+
+      ;; iterate through each
+      ;; TODO: randomize steps?
+      (doseq [step steps]
+
+        (let [freqs (get-freqs)] ;; TODO: do we need to change freqs on each step?
+          (vreset! prev-freqs freqs)
+
+;                                #_(if (= @prev-freqs freqs) ;; debug output if wf is stuck
+;                                    (let [pending-steps (keys (into {} (filter #(-> % val u/channel?)) @*results))]
+;                                      (println  "waiting for "
+;                                                  (if (< 5 (count pending-steps))
+;                                                    (count pending-steps)
+;                                                    (str (d/pretty @*results) "\n" (d/pretty @*steps-left))))))
+
+
+          (if (> WORKING-MAX (:working freqs))
+            (let [[k v] (process-step! this step)]
+              (vswap! *new-steps assoc k v))
+            ;; send process on first backpressure
+            (when-not (> 10 (- @i @backpressure-update))
+              ;(println "backpressure!")
+              (put! process-channel [:back-pressure freqs]) ;; FIXME: does this really help
+              (vreset! backpressure-update @i))))
+
+        (vswap! i inc))
+
+
+      (let [new-steps @*new-steps
+            results @*results
+
+            steps-added? (not (= @*prev-added-steps new-steps))
+            results-changed? (not (= @*prev-results results))]
+
+
+        (when (or steps-added?
+                  results-changed? )
+
+
+          ; #?(:cljs (.warn js/console (d/pretty["STEPS:" "added?" steps-added? "results-changed?" results-changed?])))
+
+
+          ;; if only added
+          (when steps-added? ;(and steps-added? (not results-changed?))
+            (vreset! *prev-added-steps new-steps)
+            (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
+
+          (when results-changed?
+            (vreset! *prev-results results)
+            (put!? process-channel [:steps [:update new-steps]] PUT_RETRY_T))
+          )
+
+        )
+
+      )
+    )
+  )
+
+
+(defn make-processor [R commit! get!]
+  ; *prev-results
+  ; commit!
+  (->WFStepProcessor
+    R commit! get!
+    (volatile! (array-map))
+    (volatile! @(get-results R))
+    )
+  )
+
 (defn async-exec
   "workflow running algorithm"
   ([executor R ready-channel process-channel]
@@ -378,96 +506,9 @@
          *steps-left (get-steps-left R)
          *results (get-results R)
 
-         get-freqs (fn [] (freq-map (vals @*steps-left)))
-
          commit! (partial handle-commit! executor (partial commit! R) (partial expand! R))
-         process-step! (partial do-process-step! (partial get! R) commit!)
 
-
-         *prev-added-steps (volatile! (array-map))
-
-
-         *prev-results (volatile! @*results)
-
-         process-steps! (fn [steps]
-                          ;; <?> detect if steps are looped?
-                          ;; #?(:cljs (.warn js/console "processing steps"))
-
-                          (if-let [cycles (g/has-cycles steps)]
-                            (u/throw! (str "cycle detected " (d/pretty cycles))))
-
-                          ;; TODO: should this be a stateful transducer
-                          (let [*new-steps (volatile! (array-map))
-                                i (volatile! 0)
-                                backpressure-update (volatile! 0)
-                                start-freqs (get-freqs)
-                                prev-freqs (volatile! start-freqs) ;; TODO: this should be part of backpressure logic
-                                ]
-
-                            ;; iterate through each
-                            ;; TODO: randomize steps?
-                            (doseq [step steps]
-
-                              (let [freqs (get-freqs)] ;; TODO: do we need to change freqs on each step?
-                                (vreset! prev-freqs freqs)
-
-                                #_(if (= @prev-freqs freqs) ;; debug output if wf is stuck
-                                    (let [pending-steps (keys (into {} (filter #(-> % val u/channel?)) @*results))]
-                                      (println  "waiting for "
-                                                  (if (< 5 (count pending-steps))
-                                                    (count pending-steps)
-                                                    (str (d/pretty @*results)
-                                                         "\n" (d/pretty @*steps-left))
-                                                    ))))
-
-                                ;; TODO: extract back pressure logic
-                                (if (> WORKING-MAX (:working freqs))
-                                  (let [[k v] (process-step! step)]
-                                      (vswap! *new-steps assoc k v))
-                                    ;; send process on first backpressure
-                                    (when-not (> 10 (- @i @backpressure-update))
-                                      ;(println "backpressure!")
-                                      (put! process-channel [:back-pressure freqs]) ;; FIXME: does this really help
-                                      (vreset! backpressure-update @i)
-                                      )))
-
-                              (vswap! i inc))
-
-
-                            #_(when (= start-freqs (get-freqs))
-                              ; (println "----------------")
-                              #_(println  "waiting for "
-                                          (keys (into {} (filter #(-> % val u/channel?)) @*results)))
-
-                              )
-
-                            (let [new-steps @*new-steps
-                                  results @*results
-
-                                  steps-added? (not (= @*prev-added-steps new-steps))
-                                  results-changed? (not (= @*prev-results results))]
-
-
-                              (when (or steps-added?
-                                         results-changed? )
-
-
-; #?(:cljs (.warn js/console (d/pretty["STEPS:" "added?" steps-added? "results-changed?" results-changed?])))
-
-
-                                ;; if only added
-                                (when steps-added? ;(and steps-added? (not results-changed?))
-                                   (vreset! *prev-added-steps new-steps)
-                                   (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
-
-                                (when results-changed?
-                                  (vreset! *prev-results results)
-                                  (put!? process-channel [:steps [:update new-steps]] PUT_RETRY_T))
-                                )
-
-                            )))]
-
-
+         processor (make-processor R commit! (partial get! R))]
 
 
     ;;
@@ -512,6 +553,7 @@
                        (update-steps! R v)
 
                        ;; if update is received - force loop one more time
+                       ;; todo: move it to process-steps in some
                        (if (= :update steps-op)
                          (vreset! force-update true))
 
@@ -562,7 +604,7 @@
                     (debug! *producer-debugger* {:producer {:steps @*steps}}) ;; pause the producer if needed
 
                     (try                             ;; handle next loop iteration
-                      (process-steps! @*steps)
+                      (process-steps! processor process-channel @*steps)
                       (catch
                         #?(:cljs js/Error) #?(:clj  Exception) e
                         (async/>! ready-channel [:error e])))
@@ -589,7 +631,7 @@
       ;; <?> send action that wf had started ?
 
       (try
-        (process-steps! steps)
+        (process-steps! processor process-channel steps)
         (catch
           #?(:cljs js/Error) #?(:clj  Exception) e
           (async/>! ready-channel [:error e])))
