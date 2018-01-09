@@ -20,8 +20,17 @@
                  [viz-cljc "0.1.3"]
 
                  ;; [com.clojure-goes-fast/clj-async-profiler "0.1.0"]
+
+                 [http-kit "2.2.0"]
+                 [compojure                  "1.4.0" :exclusions [commos-codec]]
+                 [com.cognitect/transit-clj  "0.8.300"]
+                 [com.cognitect/transit-cljs "0.8.239"]
+
+
                  ]
 
+
+  :aot          [ woof.server ]
 
 
   :plugins [[lein-figwheel "0.5.14"]
@@ -41,7 +50,7 @@
                            ;; in the default browser once Figwheel has
                            ;; started and compiled your application.
                            ;; Comment this out once it no longer serves you.
-                           :open-urls ["http://localhost:3449/index.html"]}
+                           :open-urls ["http://localhost:8080/index.html"]}
 
                 :compiler {:main woof.app
                            :asset-path "js/compiled/out"
@@ -61,11 +70,17 @@
                            :optimizations :advanced
                            :pretty-print false}}]}
 
-  :figwheel {;; :http-server-root "public" ;; default and assumes "resources"
+  :figwheel {
+              :http-server-root "public" ;; default and assumes "resources"
              ;; :server-port 3449 ;; default
-             ;; :server-ip "127.0.0.1"
+
+             :ring-handler  woof.server/app
+             :server-port   8080
+             :server-ip "127.0.0.1"
 
              :css-dirs ["resources/public/css"]} ;; watch and update CSS
+
+             ; :repl          false
 
              ;; Start an nREPL server into the running figwheel process
              ;; :nrepl-port 7888
