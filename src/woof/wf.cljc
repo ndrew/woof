@@ -73,17 +73,20 @@
 
 (defn wf-do-save!
   [*results *steps-left id result]
+
   (swap! *results assoc id result)
 ;; todo: dissoc only if not infinite mode
   (swap! *steps-left dissoc id)
   )
 
 (defn wf-do-expand! [*results *steps-left *steps2add id actions]
-  ;(println "DO EXPAND: " id actions)
+
   (swap! *steps2add into actions)
   (swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
+
   (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
-  (swap! *steps-left dissoc id))
+  (swap! *steps-left dissoc id)
+)
 
 
 
@@ -133,21 +136,32 @@
 
   (update-steps! [this [op nu-steps]]
 
-                (cond
-                  (= op :add)
-                   (let [new-steps @*steps2add]
-                   ; (println "new steps" (d/pretty added-steps) "\nvs\n" (d/pretty new-steps))
-                   (when-not (empty? new-steps)
-                     (swap! *steps merge new-steps)
-                     (reset! *steps2add (array-map))))
+                 (cond
+                   (= op :add)
+                   (do
+                     (let [new-steps @*steps2add]
+                           ; (println "new steps" (d/pretty added-steps) "\nvs\n" (d/pretty new-steps))
+                           (when-not (empty? new-steps)
+                             (swap! *steps merge new-steps)
 
-                  (= op :update)
-                  (do
-                    ;; <?> should we do ?
-                    ;; (swap! *steps merge new-steps)
+                             #_(println "PROCESS ADDED STEPS:\n"
+                                      "new-steps —" (d/pretty new-steps)
+                                      "steps2add —" (d/pretty @*steps2add)
+                                      )
+                             (reset! *steps2add (array-map))
 
-                    ;; #?(:cljs (.error js/console (pr-str [op nu-steps "local " (empty? @*steps2add)])))
-                    )))
+                             ))
+
+
+                     )
+
+                   (= op :update)
+                   (do
+                     ;; <?> should we do ?
+                     ;; (swap! *steps merge new-steps)
+
+                     ;; #?(:cljs (.error js/console (pr-str [op nu-steps "local " (empty? @*steps2add)])))
+                     )))
 
 
 
@@ -205,13 +219,11 @@
                  ))
              (do
                (do-expand! this id actions)
-                 (go
-                   (put!? (:process-channel cfg) [:expand [id step-id params actions]] 1000))
                )))
 
   (ready? [this]
           (and
-            (empty? (get @*state :infinite {}))
+            (empty? (get @*state :infinite {})) ;; todo: use separate state var
             (every? #(= % :ok) (vals @*steps-left))))
 
   (get! [this id]  ; get!
@@ -381,10 +393,11 @@
 
   (process-step!
     [this [id [step-id params]]]
-    (let [existing-result (get! id)]
-      ;;(println "PROCESSING " [id [step-id params]] existing-result )
 
-      ;;#?(:cljs (.warn js/console "PROCESSING: " (pr-str [id params "---" (get! params)]) ) )
+
+    (let [existing-result (get! id)]
+      ;; (println "PROCESSING " [id [step-id params]] existing-result )
+      ;; #?(:cljs (.warn js/console "PROCESSING: " (pr-str [id params "---" (get! params)]) ) )
 
       (cond
         (nil? existing-result) ;; no result -> run step
@@ -404,16 +417,21 @@
         [id [step-id params]]))
     )
 
+
   (process-steps!
     [this process-channel steps]
 
     (if-let [cycles (g/has-cycles steps)]
       (u/throw! (str "cycle detected " (d/pretty cycles))))
 
+    ; (println "PRODUCING:")
+
     (let [ PUT_RETRY_T 1000
          *steps (get-steps R)
          *steps-left (get-steps-left R)
          *results (get-results R)
+
+          prev-steps @*prev-added-steps
 
           get-freqs (fn [] (freq-map (vals @*steps-left)))
 
@@ -456,25 +474,32 @@
       (let [new-steps @*new-steps
             results @*results
 
-            steps-added? (not (= @*prev-added-steps new-steps))
-            results-changed? (not (= @*prev-results results))]
+            steps-added? (not (= prev-steps new-steps))
+            results-changed? (not (= @*prev-results results))
+            ]
 
 
         (when (or steps-added?
                   results-changed? )
 
 
+
           ; #?(:cljs (.warn js/console (d/pretty["STEPS:" "added?" steps-added? "results-changed?" results-changed?])))
 
 
+          (when results-changed?
+;            (println "PRODUCING CONTUNUES: results changed")
+
+            (vreset! *prev-results results)
+            (put!? process-channel [:steps [:update new-steps]] PUT_RETRY_T))
+
           ;; if only added
           (when steps-added? ;(and steps-added? (not results-changed?))
+;            (println "PRODUCING CONTUNUES: steps added")
+
             (vreset! *prev-added-steps new-steps)
             (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
 
-          (when results-changed?
-            (vreset! *prev-results results)
-            (put!? process-channel [:steps [:update new-steps]] PUT_RETRY_T))
           )
 
         )
@@ -555,22 +580,28 @@
                        ;; if update is received - force loop one more time
                        ;; todo: move it to process-steps in some
                        (if (= :update steps-op)
-                         (vreset! force-update true))
+                         (vreset! force-update true)
+                         ;(async/>! ready-channel [:expand [id result]])
+                         )
 
-                       (async/>! ready-channel [:wf-update @*results]))
+                       (async/>! ready-channel [:wf-update [@*steps @*results]]))
 
 
               :expand (let [[id step-id params result] v]
-                        ;; got steps after sequential processing
+                        (println "GOT EXPAND: " (d/pretty v))
                         (do-expand! R id result)
+
                         ;; send result
-                        (async/>! ready-channel [:expand [id result]])
+                        ;(async/>! ready-channel [:expand [id result]])
                         )
 
               :back-pressure (do
                                (when-not @first-update ;; TODO: is this actually needed?
                                  (vreset! first-update true)
-                                 (async/>! ready-channel [:wf-update @*results])))
+                                 ;(async/>! ready-channel [:wf-update @*results])
+                                 )
+
+                               )
               :stop (do
                       ;; todo: close the channels in :infinite
 
@@ -593,11 +624,22 @@
 ;                                      "steps left after" @*steps-left
 ;                                      ])))
 
-              (when (or (not same-results?) @force-update)
+
+              (when (or (not same-results?)
+                        @force-update
+                        (not (empty? @*steps-left)) ;; - <?> will this cause different results
+                        )
+                #_(println "CONSUMING:\n\n"
+                         (d/pretty new-results)
+                         "steps left: " (d/pretty @*steps-left)
+                         )
+
+
                 (debug! *consumer-debugger* {:process-loop-end {:i i :new-results new-results :steps processed-steps :steps-left @*steps-left}})
 
                 (if-not same-results?                               ;; send the processed results
-                  (async/>! ready-channel [:process new-results]))
+                  (async/>! ready-channel [:process new-results])
+                  )
 
                 (when (not-empty @*steps-left) ;; restart produce
                   (go

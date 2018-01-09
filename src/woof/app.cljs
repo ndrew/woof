@@ -92,8 +92,7 @@
                                      (async/>! chan (str i ": " (int (rand 100))))
 
                                     (if (< i max-num)
-                                     (recur (inc i)))
-                                     )
+                                     (recur (inc i))))
 
                                    chan))
                            :infinite true
@@ -114,13 +113,13 @@
                                ::woof [:identity "test wf!"]
                                )
                       }
-          }))
+}))
+
 
 
 
 
 (defn run-wf!
-
   ([executor exec-chan save-op-fn]
    (go-loop []
             (let [r (async/<! exec-chan)
@@ -368,7 +367,10 @@
                                                              (:steps @*workflow)))
 
                      (let [exec-chan-0 (wf/execute! @(::executor local))
-                           exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf UI-UPDATE-RATE)))]
+                           exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf UI-UPDATE-RATE)))
+
+                            ;exec-chan (wf/execute! @(::executor local))
+                           ]
                        (reset! (::exec-chan local) exec-chan)
 
                        (swap! (::result local) merge
@@ -406,7 +408,8 @@
                                       (swap! (::result local) assoc-in [::result] data))
 
                                     (when (= :wf-update status)
-                                      (swap! (::result local) assoc-in [::result] data)
+                                      (swap! (::result local) assoc-in [::steps] (first data))
+                                      (swap! (::result local) assoc-in [::result] (second data))
                                       )
 
                                     (when done?
@@ -446,7 +449,7 @@
 
 
         passthought-fn (fn [preview-chan s] ;; todo: maybe there is pipe fn for channel?
-
+                          ;; TODO:
                           (let [c (async/chan)]
                             (go-loop []
                                      (let [v (async/<! preview-chan)] ; read from preview chan
@@ -481,14 +484,33 @@
                                                                                              [:h a]])
                                                                                    vs)))
                                                           :expands? true}
+
+                                                 :exp1 {:fn (fn [actions]
+                                                            (if (u/action-id-list? actions)
+                                                                (into (array-map)
+                                                                      (map-indexed (fn[i a] [(test-data/gen-ns-id (str "exp1-" i))
+                                                                                             [:h a]])
+                                                                                   actions))
+                                                                actions ;; todo?
+                                                                )
+                                                              )
+                                                            :expands? true
+                                                        }
                                                  })
 
           (swap! *workflow update-in [:steps]
                             merge {
-                                    ::xpdand [:exp "hello"]
-                                    ::t [:identity ::hello-2]
+                                    ::x [:exp [1 5 100]]
+                                    ::z [:exp1 ::x]
 
 
+                                    ;; ::8 [:8 10]
+                                    ;:xpand-1 [:exp1 (list (test-data/gen-ns-id "woof"))]
+
+                                    ;;:u [:exp "Hello!"]
+
+
+                                    ;;::h [:h "============="]
                                     ;;::z [:hello-wait "1234"]
                                     })
 
@@ -528,9 +550,34 @@
                                           ::e-result-1  [:identity-async ::editor]
 
 
+                                          ::tick   [:8 100]
+                                          })))
+        infinity-test-fn (fn []
+
+                           (swap! *context merge
+                                  {:xpand-8
+                                   {:fn (fn [s]
+                                          (let [c (async/chan)]
+                                            (go []
+                                                (let [v (async/<! (u/timeout 1500))]
+
+                                                  (async/put! c
+                                                              {::x1 [:8 20]
+                                                               ::x2 [:hello ::x1]
+                                                                })))
+                                            c)
+                                          )
+                                    :expands? true}
+                                   })
+
+                           (swap! *workflow update-in [:steps]
+                                  merge {
+                                          ::xpnd [:xpand-8 {}]
+                                          ::8 [:8 10]
+                                          ::i [:identity ::8]
+                                          ::h [:hello ::i]
                                           })
                            )
-                         )
 
         ]
 
@@ -558,6 +605,8 @@
                              ["preview test" preview-test-fn]
                              []
                              ["expand test" expand-test-fn]
+                             []
+                             ["infinity " infinity-test-fn]
                             ])
         [:div.tip "Here workflow will be ui for defining and manipulating workflow."]
         [:div.hbox
