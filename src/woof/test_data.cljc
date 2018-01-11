@@ -5,7 +5,7 @@
     [woof.graph :as g]
     [woof.utils :as u]
 
-    #?(:clj [clojure.core.async :as async :refer [go]])
+    #?(:clj [clojure.core.async :as async :refer [go go-loop]])
     #?(:cljs [clojure.core.async :as async]))
 
   #?(:cljs (:require-macros [cljs.core.async.macros :refer [go go-loop]])))
@@ -153,4 +153,78 @@
       (recur N)
       d)))
 
+
+;;
+;; step handlers for tests
+
+
+
+
+(defn gen-expand-wf [xpand-values]
+  (let [*nested-i (volatile! 1)]
+     {:context
+   {
+     :x-str {:fn (fn [s] (str s))}
+
+     :x-expand-sync {:fn (fn [vs]
+                           (into (array-map)
+                                 (map-indexed (fn[i a] [(gen-ns-id (str "x-sync-xpand-" i))
+                                                        [:x-str a]])
+                                              vs)))
+                     :expands? true}
+
+     :x-expand-async {:fn (fn [vs]
+
+                            (let [c (async/chan)]
+                              (go-loop []
+                                       (let [v (async/<! (u/timeout 1000))]
+
+                                         (async/put! c (into (array-map)
+                                                             (map-indexed (fn[i a] [(gen-ns-id (str "x-async-xpand-" i))
+                                                                                    [:x-str a]])
+                                                                          vs)))
+                                         (recur)))
+                              c))
+                      :expands? true}
+
+
+     :x-nested-expand-sync {:fn (fn [actions]
+                                  (let [start-i @*nested-i]
+
+                                    (vswap! *nested-i + (count actions))
+
+
+                                    (if (u/action-id-list? actions)
+                                      (into (array-map)
+                                            (map-indexed (fn[i a] [(gen-ns-id (str (name a) "-nested-"
+                                                                                   (+ start-i i)))
+                                                                   [:x-str a]])
+                                                         actions))
+                                      actions)
+                                    )
+                                  )
+            :expands? true
+    }
+   }
+   :steps (assoc (array-map)
+            ::sync-xpand  [:x-expand-sync xpand-values]
+            ::sync-nested-xpand [:x-nested-expand-sync ::sync-xpand]
+
+
+            ::async-xpand [:x-expand-async xpand-values]
+            ::async-nested-xpand [:x-nested-expand-sync ::async-xpand]
+
+                                    ;; ::8 [:8 10]
+                                    ;:xpand-1 [:exp1 (list (test-data/gen-ns-id "woof"))]
+
+                                    ;;:u [:exp "Hello!"]
+
+
+                                    ;;::h [:h "============="]
+                                    ;;::z [:hello-wait "1234"]
+
+            )}
+    )
+
+  )
 

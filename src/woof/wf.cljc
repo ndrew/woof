@@ -588,7 +588,7 @@
 
 
               :expand (let [[id step-id params result] v]
-                        (println "GOT EXPAND: " (d/pretty v))
+                        ; (println "GOT EXPAND: " (d/pretty v))
                         (do-expand! R id result)
 
                         ;; send result

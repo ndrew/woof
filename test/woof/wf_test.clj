@@ -100,12 +100,44 @@
               data (wf/extract-results v [tk1 tk2])]
 
           data
-
            ;(is (= data {tk1 "Hello world!" tk2 "Hello universe!"}))
            ;(= (::0 v) '(tk1 tk2))
-          ))))
+          )))))
 
-  )
+
+
+(deftest expand-wf-test
+  (let [{context :context
+         steps   :steps} (test-data/gen-expand-wf [:a :b :c])
+        executor (wf/executor (atom context) steps)
+        ]
+    (let [exec-chann (wf/execute! executor)]
+      (let [v (async/<!! (handle-result (async/chan) exec-chann))]
+        ;(println (d/pretty v))
+
+        (let [async-xpanded (get v :woof.test-data/async-xpand)
+              sync-xpanded (get v :woof.test-data/sync-xpand)
+
+              nested-sync (get v :woof.test-data/sync-nested-xpand)
+              nested-async (get v :woof.test-data/async-nested-xpand)
+              ]
+          ; test if expand worked
+          (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v sync-xpanded)))))
+          (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v async-xpanded)))))
+
+          ; test if sync nesting works
+          (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v nested-sync)))))
+          (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v nested-async)))))
+
+          ; TODO: test async nesting
+
+          )
+
+
+        ))
+
+    )
+)
 
 
 
