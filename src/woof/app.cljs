@@ -27,97 +27,72 @@
 (defonce TEST-WF-STEP-COUNT 25)
 
 
+(defn default-context []
+  {
+    :identity {:fn (fn [a] a)}
+
+    :identity-async {:fn (fn [a]
+                           (let [c (async/chan)]
+                             (go
+                               (async/put! c a))
+                             c))}
+    :hello {:fn (fn [a]
+                  (let [c (async/chan)]
+                    (go
+                      (async/put! c (str "Hello! " (pr-str a))))
+                    c))}
+
+    :hello-wait {:fn (fn [a]
+                       (let [c (async/chan)]
+                         (go
+                           (async/<! (u/timeout 5000))
+
+                           (async/put! c (str "Hello! " (pr-str a))))
+                         c))}
+
+    :8 {:fn (fn [max-num]
+              (.warn js/console "max-num" max-num)
+
+              ; (str "Hello " s "!")
+              (let [chan (async/chan)
+                    t (volatile! (u/now))]
+
+                (go-loop [i 0]
+                         (async/<! (u/timeout 500))
+                         (.warn js/console "i" i (< i max-num) (- (u/now) @t) )
+                         (vreset! t (u/now))
+
+                         (async/>! chan (str i ": " (int (rand 100))))
+
+                         (if (< i max-num)
+                           (recur (inc i))))
+
+                chan))
+        :infinite true
+        }
+    }
+  )
+
+
+
 (defonce *APP-STATE
-  (atom {
-          :hello :woof
-          :context {
-                     :identity {:fn (fn [a] a)}
+  (atom
+    {
+      ;; workflow context
+      :context (default-context)
 
-                     :identity-async {:fn (fn [a]
-                                            (let [c (async/chan)]
-                                              (go
-                                                (async/put! c a))
-                                              c))}
+      ;; workflow definition
+      :workflow {
+                  :name "TEST WORKFLOW"
+                  :steps (assoc (array-map) ::woof [:identity "test wf!"])
+                  }
 
-                     :hello {:fn (fn [a]
-                                   (println ":hello" (pr-str a))
-                                   ;"Hello!"
 
-                                   (let [c (async/chan)]
+      ;; step handler to editor mapping
+      :editors {:pre   {}
+                :post {}}
 
-                                     (go
-                                       (async/put! c (str "Hello! " (pr-str a)))
-                                       )
-
-                                     c
-                                     )
-                                   )}
-                     :hello-wait {:fn (fn [a]
-                                   ;(println ":hello" (pr-str a))
-                                   ;"Hello!"
-
-                                   (let [c (async/chan)]
-                                      (go
-                                        (async/<! (u/timeout 5000))
-
-                                       (async/put! c (str "Hello! " (pr-str a)))
-                                       )
-
-                                     c
-                                     )
-                                   )}
-                     :async-expand {:fn (fn [a]
-                                          (let [c (async/chan)]
-                                            (go
-                                              (async/put! c
-                                                          {::xpanded [:hello (str "xpand--" a)]}))
-                                            c
-                                            ))
-                                    :expands? true}
-                     :xpand {:fn (fn [a]
-                                   {::xxx [:hello "YYY"]}
-                                   )
-                             :expands? true
-                             }
-
-                     :8 {:fn (fn [max-num]
-                                 (.warn js/console "max-num" max-num)
-
-                                 ; (str "Hello " s "!")
-                                 (let [chan (async/chan)
-                                       t (volatile! (u/now))]
-
-                                   (go-loop [i 0]
-                                     (async/<! (u/timeout 500))
-                                     (.warn js/console "i" i (< i max-num) (- (u/now) @t) )
-                                     (vreset! t (u/now))
-
-                                     (async/>! chan (str i ": " (int (rand 100))))
-
-                                    (if (< i max-num)
-                                     (recur (inc i))))
-
-                                   chan))
-                           :infinite true
-                           }
-
-                     }
-          :workflow {
-                      :name "TEST WORKFLOW"
-                      :steps (assoc (array-map)
-                               ;;::0 [:hello-wait "123"]
-                               ;;::0_1 [:hello ::0]
-
-                               ;;::1 [:async-expand "yo!"]
-                               ;;::2 [:xpand {}]
-
-                               ;; ::8 [:8 20]
-                               ;;::9 [:hello ::8]
-                               ::woof [:identity "test wf!"]
-                               )
-                      }
-}))
-
+      }))
 
 
 
@@ -258,25 +233,21 @@
 
 (rum/defc <wf-step-ui> < rum/reactive {:key-fn (fn [k _ _ _] k)}
 
-  [k v result editor-chan preview-fn]
+  [k v result editor-fn preview-fn]
 
   (let [[action params] v]
   [:.step-ui {:class (str
-                       (if editor-chan "edit" "")
+                       (if editor-fn "edit" "")
                        (if preview-fn "prev" ""))}
 
-   (when (and editor-chan
-              (if (u/action-id? params) (not (u/channel? (get result params))) true))
-     (if (u/action-id? params)
-       (if-let [nu-params (get result params)]
-         (<wf-step-editor> (str (name k) action ": ") nu-params editor-chan))
-       (<wf-step-editor> (str (name k) action ": ") params editor-chan)))
+   (if editor-fn
+     (editor-fn))
 
    (if preview-fn
      (preview-fn))
 
-   (<step-status> k v (u/nil-get result k))
-]))
+   (<step-status> k v (u/nil-get result k))]
+  ))
 
 
 
@@ -295,9 +266,24 @@
     ;; todo: store changed params
     (into [:div.steps]
           (map (fn [[k v]]
-                 (let [editor-chan (get param-editors k)
+                 (let [[action params] v
+
+                       editor-chan (get param-editors k)
+
+                       show-param-editor? (and editor-chan
+                                              (if (u/action-id? params) (not (u/channel? (get result params))) true))
+
+                       editor-fn (if show-param-editor?
+                                   (fn []
+                                     (if (u/action-id? params)
+                                       (if-let [nu-params (get result params)]
+                                         (<wf-step-editor> (str (name k) action ": ") nu-params editor-chan))
+                                       (<wf-step-editor> (str (name k) action ": ") params editor-chan))
+                                     )
+                                   nil)
 
                        preview-chan (get previews k)
+
                        preview-fn (if preview-chan
                          (fn []
                            [:.preview
@@ -313,7 +299,7 @@
 
                        ]
 
-                   (<wf-step-ui> k v result editor-chan preview-fn)
+                   (<wf-step-ui> k v result editor-fn preview-fn)
                    )))
           actual-steps)))
 
@@ -354,13 +340,30 @@
 
 
 
-  (defn- passthought-fn [preview-chan s] ;; todo: maybe there is pipe fn for channel?
-    (let [c (async/chan)]
-      (go-loop []
-               (let [v (async/<! preview-chan)] ; read from preview chan
-                 (async/put! c s)
-                 (recur)))
-      c))
+(defn- passthought-fn [preview-chan s] ;; todo: maybe there is pipe fn for channel?
+  (let [c (async/chan)]
+    (go-loop []
+             (let [v (async/<! preview-chan)] ; read from preview chan
+               (async/put! c s)
+               (recur)))
+    c))
+
+
+
+(defn- pipe-fn [editor-chan s]
+  (let [c (async/chan)]
+    (go-loop []
+             (let [v (async/<! editor-chan)] ; read from preview chan
+               (async/put! c v)
+               (recur)))
+    c))
+
+
+(defn execute-for-ui [executor]
+  (let [exec-chan-0 (wf/execute! executor)
+        exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf UI-UPDATE-RATE)))]
+
+    exec-chan))
 
 
 (rum/defcs <wf-ui>   <   rum/reactive
@@ -382,7 +385,7 @@
                                       ::start      0
                                       } ::result)
 
-  [local *context *workflow]
+  [local *context *workflow *editors]
 
 
   (let [status    @(::status local)
@@ -394,34 +397,24 @@
          } @*workflow
 
         execute-wf (fn []
-                     ;; todo: choose executor
+                     (reset! (::executor local) (wf/executor *context (:steps @*workflow))) ;; todo: choose executor
 
-                     (reset! (::executor local) (wf/executor *context
-                                                             (:steps @*workflow)))
-
-                     (let [exec-chan-0 (wf/execute! @(::executor local))
-                           exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf UI-UPDATE-RATE)))
-
-                            ;exec-chan (wf/execute! @(::executor local))
-                           ]
+                     (let [exec-chan (execute-for-ui @(::executor local))]
                        (reset! (::exec-chan local) exec-chan)
-
-                       (swap! (::result local) merge
-                              {
-                                ::header header
-                                ::wf-status ::running
-                                ::steps steps
-                                ::start (u/now)
-                                })
-
+                       (swap! (::result local) merge {
+                                                       ::header header
+                                                       ::wf-status ::running
+                                                       ::steps steps
+                                                       ::start (u/now)
+                                                       })
                        (reset! (::status local) ::results-ui)
-
-                       (run-wf! executor exec-chan
-                                (partial workflow-handler (::result local)))))
+                       (run-wf! executor exec-chan (partial workflow-handler (::result local)))))
 
         steps-ready-fn (fn []
-                         ;; uncomment these
+                         ;;
+                         ;; uncomment this for intermediary screen
                          ;; (reset! (::status local) ::workflow-ui)
+
                          (execute-wf))
 
         generate-wf-fn (fn []
@@ -436,9 +429,10 @@
                          (reset! (::status local) ::steps-ui)
                          ((gen-new-wf-f! TEST-WF-STEP-COUNT)))
         stop-fn (fn []
-                  (wf/end! @(::executor local)) ;; todo:
-                  ;; use different key, as stop is not immidiate
-                  ;;(swap! (::result local) assoc-in [::wf-status] ::stopped)
+                  (wf/end! @(::executor local))
+
+                  ;; use different state, as stop is not immidiate
+                  ;; (swap! (::result local) assoc-in [::wf-status] ::stopped)
                   )
 
         preview-test-fn (fn []
@@ -453,37 +447,23 @@
                                   merge {
                                           ::test-preview  [:8 10]
                                           ::preview [:preview ::test-preview]
-                                          })
-
-            ))
+                                          })))
 
         expand-test-fn (fn []
                          (let [{xpand-context :context
                                 xpand-steps   :steps} (test-data/gen-expand-wf [:a :b :c])]
 
                            (swap! *context merge xpand-context)
-                           (swap! *workflow update-in [:steps] merge xpand-steps)
-
-                           ))
+                           (swap! *workflow update-in [:steps] merge xpand-steps)))
 
         editor-test-fn (fn []
                          (let [editor-chan (async/chan)]
 
-                           (swap! (::editors local) update-in [:pre] assoc ::editor editor-chan)
+                           (swap! *editors update-in [:pre] assoc ::editor editor-chan)
 
                            (swap! *context merge
                                   {:edit-params
-                                   {:fn (fn [s]
-                                          (let [c (async/chan)]
-                                            (go-loop []
-                                                     (let [v (async/<! editor-chan)] ; read from preview chan
-
-                                                       ;;(.warn js/console (pr-str v))
-
-                                                       (async/put! c v)
-                                                       (recur)))
-                                            c)
-                                          )
+                                   {:fn (partial pipe-fn editor-chan)
                                     :infinite true}
                                    })
 
@@ -499,9 +479,9 @@
                                           ::editor [:edit-params "Hello!"]
                                           ::e-result-1  [:identity-async ::editor]
 
-
                                           ::tick   [:8 100]
                                           })))
+
         infinity-test-fn (fn []
 
                            (swap! *context merge
@@ -532,19 +512,6 @@
         ]
 
 
-    ;; short-hand version
-    #_(do
-        (when (nil? executor)
-          (reset! (::executor local) (wf/executor *context steps))
-
-          (let [exec-chan (wf/execute! @(::executor local))]
-            (reset! (::exec-chan local) exec-chan)
-            (run-wf! executor exec-chan (fn [r]
-                                          (swap! (::result local) conj r)
-                                          true
-                                          ))))
-        [:pre (d/pretty @(::result local))])
-
     [:div
      (when (#{::steps-ui} status)
        [:div
@@ -558,6 +525,7 @@
                              []
                              ["infinity " infinity-test-fn]
                             ])
+
         [:div.tip "Here workflow will be ui for defining and manipulating workflow."]
         [:div.hbox
          [:div.steps-ui
@@ -582,9 +550,9 @@
                                              gviz
                                              )
                                            ))}}])
+     ]) ;; end STEPS-UI
 
 
-        ])
 
      (when (#{::workflow-ui} status)
        [:div
@@ -594,6 +562,8 @@
                          ["debug" (fn[])]
                          ])
         [:div.tip "Configure workflow execution options."]])
+
+
 
      (when (#{::results-ui} status)
        (let [{status  ::wf-status
@@ -608,25 +578,28 @@
                        [["stop" stop-fn]])
 
              sort-steps (fn [steps]
-                          (into (sorted-map-by <) steps))
-
-             ]
+                          ;(into (sorted-map-by <) steps)
+                          steps
+                          )]
          [:div
           (<wf-status-ui> status)
           (<wf-progress-ui> start (done-percentage result actual-steps))
           (ui/menubar header actions)
-
-          (<wf-results-ui> header result (sort-steps actual-steps) (::editors local) )]))
+          (<wf-results-ui> header result (sort-steps actual-steps) *editors )]))
 ]))
 
 
+
+(def cursor (partial rum/cursor-in *APP-STATE))
 
 
 (rum/defcs <app-ui>
   < rum/reactive [local *STATE]
   [:div#app
-    (<wf-ui> (rum/cursor-in *APP-STATE [:context])
-             (rum/cursor-in *APP-STATE [:workflow]))])
+    (<wf-ui>
+      (cursor [:context])
+      (cursor [:workflow])
+      (cursor [::editors]))])
 
 
 
