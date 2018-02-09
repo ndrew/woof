@@ -783,6 +783,33 @@
              keyz)))
 
 
+(defn inline-results
+  "substitues expanded items by it's values and removes them from map"
+  [results]
+
+  (let [new-results (reduce
+                      (fn [a [k v]]
+                        (if (u/action-id-list? v)
+                          (do
+                            (let [nu-vals (reduce (fn [a k]
+                                                    (assoc a k (get results k))
+                                                    ) (::tmp a) v)]
+
+                              (assoc a
+                                k (map (fn[id] (get nu-vals id)) v)
+                                ::tmp nu-vals)
+                              )
+                            )
+                          (assoc a k v))
+                        ) {::tmp {} } results)]
+
+    (let [{tmp ::tmp} new-results]
+      (apply dissoc new-results (conj (keys tmp) ::tmp))
+      )
+    )
+  )
+
+
 #?(:clj
 ;; can this be done as tranducer?
 (defn sync-execute!

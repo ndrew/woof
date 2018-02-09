@@ -24,11 +24,10 @@
 
 (deftest simplest-pipeline
 
-
   ; 1) context - holds step handlers available to a workflow
   (let [context* (atom {
-                  :hello {:fn (fn [a]                  ;; each step handler accepts 1 argument
-                                (str "Hello " a))}})
+                         :hello {:fn (fn [a]                  ;; each step handler accepts 1 argument
+                                       (str "Hello " a))}})
 
         ; workflow is described by a flat map with finite number of steps
         steps (assoc (array-map)
@@ -54,14 +53,13 @@
 
 
 
-
 ;; runs the nested workflow
 
 (deftest nesting-results-pipeline
 
   (let [context* (atom {
-                  :producer {:fn (fn [a] "world!")}
-                  :consumer {:fn (fn [a] (str "Hello " a)) }})
+                         :producer {:fn (fn [a] "world!")}
+                         :consumer {:fn (fn [a] (str "Hello " a)) }})
 
         steps (assoc (array-map)
                 ;; if we specify the action parameter as a step-id the workflow will use result of the step passed as param
@@ -79,62 +77,41 @@
   )
 
 
-(deftest error-handling
-
-  ;; in case of something workflow will throw an exception
-
-  (let [context* (atom {
-                  :hello {:fn (fn [a]
-                                (Thread/sleep 200)
-                                (str "Hello " a))}})
-
-        timeout-steps (assoc (array-map)
-                ::0 [:hello "World!"])
-
-        no-such-step (assoc (array-map) ::0 [:no-such-step ""])
-
-
-        executor (partial wf/executor context*)]
-
-    ;; handle timeout
-    (is (thrown? Exception @(wf/sync-execute! (executor timeout-steps) 10)))
-
-    ;; todo: handle no such step
-    ;;(is (thrown? Exception @(wf/sync-execute! (executor no-such-step) 10)))
-
-    )
-
-
-  )
-
+;; runs the expanding workflow
 
 
 (deftest expand-pipeline
-  (let [context { ; context holds info about actions workflow can execute
-                  :hello {:fn (fn [s]
-                                (str "Hello " s "!")
-                                )}
-                  :expand {:fn (fn [vs]
-                                 (into (array-map)
-                                       (map-indexed (fn[i a] [(test-data/gen-ns-id (str "hello-" i))
-                                                              [:hello a]])
-                                                    vs)))
-                           :expands? true}
-                  }
+
+  (let [context* (atom {
+                         :hello {:fn (fn [s]
+                                       (str "Hello " s "!"))}
+
+                         ;; expand actions return new actions that will be added into workflow
+                         :expand {:fn (fn [vs]
+                                        (into (array-map)
+                                              (map-indexed
+                                                (fn[i a]
+                                                  [(test-data/gen-ns-id (str "hello-" i)) [:hello a]])
+                                                vs)))
+                                  :expands? true
+                                  }
+                         })
         ; workflow is described by a finite number of steps, each of calls to an action
         steps (assoc (array-map)
                 ::0 [:expand ["world" "universe"]])
-        executor (wf/executor (atom context) steps)]
 
-    (let [v @(wf/sync-execute! executor 2000)]
-      (let [tk1 (test-data/gen-ns-id "hello-0")
-            tk2 (test-data/gen-ns-id "hello-1")
-            data (wf/extract-results v [tk1 tk2])]
+        executor (wf/executor context* steps)]
 
-        data
-        ;(is (= data {tk1 "Hello world!" tk2 "Hello universe!"}))
-        ;(= (::0 v) '(tk1 tk2))
-        ))))
+    (let [v @(wf/sync-execute! executor 2000)
+          ;; move added results into resulting map
+          results (wf/inline-results v)
+          ]
+
+      (is (= results {::0 '("Hello world!" "Hello universe!")}))
+
+      ))
+
+  )
 
 
 
@@ -167,6 +144,37 @@
       )
 
     )
+  )
+
+
+
+
+(deftest error-handling
+
+  ;; in case of something workflow will throw an exception
+
+  (let [context* (atom {
+                  :hello {:fn (fn [a]
+                                (Thread/sleep 200)
+                                (str "Hello " a))}})
+
+        timeout-steps (assoc (array-map)
+                ::0 [:hello "World!"])
+
+        no-such-step (assoc (array-map) ::0 [:no-such-step ""])
+
+
+        executor (partial wf/executor context*)]
+
+    ;; handle timeout
+    (is (thrown? Exception @(wf/sync-execute! (executor timeout-steps) 10)))
+
+    ;; todo: handle no such step
+    ;;(is (thrown? Exception @(wf/sync-execute! (executor no-such-step) 10)))
+
+    )
+
+
   )
 
 
