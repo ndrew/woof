@@ -49,14 +49,18 @@
 
 
 
+;; TODO: do we need this?
 (defn make-channel []
   ;; our channel impl
   (async/chan))
 
 
+(defn exception? [e]
+  (instance? Throwable e))
+
 (defn throw! [s]
   (throw
-    (Exception. s)))
+    (if (exception? s) s (Exception. s))))
 
 
 (defn nil-get [rr id]

@@ -89,6 +89,7 @@
 )
 
 
+; move the params to a :keys
 
 (defrecord WFState [*state *context cfg *steps *steps2add *steps-left *results ]
   IState
@@ -705,7 +706,6 @@
             (async-exec this model ready-channel process-channel))
 
   (end! [this]
-        (println "END!!!")
         (go
           (async/>! process-channel [:stop this])))
   )
@@ -781,6 +781,56 @@
         (map (fn[k]
                [k (extract-result result k)])
              keyz)))
+
+
+#?(:clj
+;; can this be done as tranducer?
+(defn sync-execute!
+  ([executor]
+   (sync-execute! executor 5000))
+
+  ([executor t]
+
+   ;; todo: handle no such speps
+
+   (comment
+     (try
+       ;; ...
+     (catch
+        #?(:clj Throwable)
+        #?(:cljs js/Error) e
+        (u/throw! e)
+      )))
+
+   (future
+       (let [wait-chan (async/timeout t)
+             result-chan (execute! executor)]
+         (go-loop []
+                  (let [[status data] (async/<! result-chan)]
+
+                    (condp = status
+                      :error (do
+                               (u/throw! data)
+                               ;(async/>! wait-chan data)
+                               )
+                      :done (async/>! wait-chan data)
+                      (do ; skip :init :process and other steps
+                        (recur)))))
+
+         (let [v (async/<!! wait-chan)]
+           (if (u/exception? v)
+             (u/throw! v)
+             (if (nil? v)
+               (u/throw! "workflow stopped due to timeout!")
+               v)
+             ))
+
+         )
+
+       )))
+)
+
+
 
 ;; TODO: add workflow merging
 

@@ -12,80 +12,113 @@
     [criterium.core :as criterium]
 
 
-))
-
-;; TODO: test async expaning
-
-(defn- handle-result [wait-chan result-chan]
-  "shorthand for processing workflow results from result-chan and pass the final result via wait-chan"
-  (go-loop []
-           (let [r (async/<! result-chan)
-                 [status data] r]
-             (condp = status
-               :error (async/>! wait-chan :error)
-               :done (async/>! wait-chan data)
-               (do ; skip :init :process and other steps
-                 (recur)))))
-
-  ;; todo: add a timeout to close channel
-  wait-chan
-)
+    ))
 
 
+
+
+
+
+
+;; runs the simple workflow
 
 (deftest simplest-pipeline
-  ;; runs the simple workflow
-  (let [context { ; context holds info about actions workflow can execute
-                  :hello {:fn (fn [a]
-                                  "Hello!"
-                                )}}
-        ; workflow is described by a finite number of steps, each of calls to an action
+
+
+  ; 1) context - holds step handlers available to a workflow
+  (let [context* (atom {
+                  :hello {:fn (fn [a]                  ;; each step handler accepts 1 argument
+                                (str "Hello " a))}})
+
+        ; workflow is described by a flat map with finite number of steps
         steps (assoc (array-map)
-                ::0 [:hello {}])
-        executor (wf/executor (atom context) steps)]
-
-    (let [exec-chann (wf/execute! executor)]
-      (let [v (async/<!! (handle-result (async/chan) exec-chann))]
-        (is (= {::0 "Hello!"}))
-        ;; we can use exec/extract-results to get only step result we need
-        (is (= (wf/extract-results v [::0]) {::0 "Hello!"}))))))
+                ;; each step has it's unique id and step definition
+                ;; step definition is hiccup style vector where first el is step-id and second is step parameters
+                ::0 [:hello "World!"]
+                ::1 [:hello "Woof!"])
 
 
+        ; from context (mutable!) and steps - we can create executor
+        executor (wf/executor context* steps)]
+
+    ;; execute workflow synchronously (clojure only)
+    (let [v @(wf/sync-execute! executor)]
+      (is (not (nil? v)))
+
+      ;; we can use exec/extract-results to get only step results we need
+      (is (= (wf/extract-results v [::0]) {::0 "Hello World!"}))
+      (is (= (wf/extract-results v [::1]) {::1 "Hello Woof!"}))
+      ))
+
+  )
+
+
+
+
+;; runs the nested workflow
 
 (deftest nesting-results-pipeline
-  ;; test nesting steps
-  (let [context { :hello {:fn (fn [a]
-                                  (if (nil? a)
-                                    "Hello!"
-                                    a)
-                                )}}
+
+  (let [context* (atom {
+                  :producer {:fn (fn [a] "world!")}
+                  :consumer {:fn (fn [a] (str "Hello " a)) }})
 
         steps (assoc (array-map)
                 ;; if we specify the action parameter as a step-id the workflow will use result of the step passed as param
-                ::0 [:hello ::1]
-                ::1 [:hello nil]
-                )
-        executor (wf/executor (atom context) steps)]
+                ::0 [:consumer ::1]
+                ::1 [:producer nil])
 
-    (let [exec-chann (wf/execute! executor)]
-      (let [v (async/<!! (handle-result (async/chan) exec-chann))]
-        (is (= {::1 "Hello!"}))
-        ;; we can use exec/extract-results to get only step result we need
-        (is (= (wf/extract-results v [::0]) {::0 "Hello!"}))))
-    ))
+        ;; note that order of steps is unimportant
+
+        executor (wf/executor context* steps)]
+
+    (let [v @(wf/sync-execute! executor)]
+      (is (= (wf/extract-results v [::0]) {::0 "Hello world!"})))
+    )
+
+  )
+
+
+(deftest error-handling
+
+  ;; in case of something workflow will throw an exception
+
+  (let [context* (atom {
+                  :hello {:fn (fn [a]
+                                (Thread/sleep 200)
+                                (str "Hello " a))}})
+
+        timeout-steps (assoc (array-map)
+                ::0 [:hello "World!"])
+
+        no-such-step (assoc (array-map) ::0 [:no-such-step ""])
+
+
+        executor (partial wf/executor context*)]
+
+    ;; handle timeout
+    (is (thrown? Exception @(wf/sync-execute! (executor timeout-steps) 10)))
+
+    ;; todo: handle no such step
+    ;;(is (thrown? Exception @(wf/sync-execute! (executor no-such-step) 10)))
+
+    )
+
+
+  )
 
 
 
 (deftest expand-pipeline
   (let [context { ; context holds info about actions workflow can execute
                   :hello {:fn (fn [s]
-                                  (str "Hello " s "!")
+                                (str "Hello " s "!")
                                 )}
                   :expand {:fn (fn [vs]
                                  (into (array-map)
-                                    (map-indexed (fn[i a] [(test-data/gen-ns-id (str "hello-" i))
-                                                           [:hello a]])
-                                         vs)))
+                                       (map-indexed (fn[i a] [(test-data/gen-ns-id (str "hello-" i))
+                                                              [:hello a]])
+                                                    vs)))
                            :expands? true}
                   }
         ; workflow is described by a finite number of steps, each of calls to an action
@@ -93,16 +126,15 @@
                 ::0 [:expand ["world" "universe"]])
         executor (wf/executor (atom context) steps)]
 
-    (let [exec-chann (wf/execute! executor)]
-      (let [v (async/<!! (handle-result (async/chan) exec-chann))]
-        (let [tk1 (test-data/gen-ns-id "hello-0")
-              tk2 (test-data/gen-ns-id "hello-1")
-              data (wf/extract-results v [tk1 tk2])]
+    (let [v @(wf/sync-execute! executor 2000)]
+      (let [tk1 (test-data/gen-ns-id "hello-0")
+            tk2 (test-data/gen-ns-id "hello-1")
+            data (wf/extract-results v [tk1 tk2])]
 
-          data
-           ;(is (= data {tk1 "Hello world!" tk2 "Hello universe!"}))
-           ;(= (::0 v) '(tk1 tk2))
-          )))))
+        data
+        ;(is (= data {tk1 "Hello world!" tk2 "Hello universe!"}))
+        ;(= (::0 v) '(tk1 tk2))
+        ))))
 
 
 
@@ -111,40 +143,36 @@
          steps   :steps} (test-data/gen-expand-wf [:a :b :c])
         executor (wf/executor (atom context) steps)
         ]
-    (let [exec-chann (wf/execute! executor)]
-      (let [v (async/<!! (handle-result (async/chan) exec-chann))]
-        ;(println (d/pretty v))
+    (let [v @(wf/sync-execute! executor 2000)]
+      ;(println (d/pretty v))
 
-        (let [async-xpanded (get v :woof.test-data/async-xpand)
-              sync-xpanded (get v :woof.test-data/sync-xpand)
+      (let [async-xpanded (get v :woof.test-data/async-xpand)
+            sync-xpanded (get v :woof.test-data/sync-xpand)
 
-              nested-sync (get v :woof.test-data/sync-nested-xpand)
-              nested-async (get v :woof.test-data/async-nested-xpand)
-              ]
-          ; test if expand worked
-          (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v sync-xpanded)))))
-          (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v async-xpanded)))))
+            nested-sync (get v :woof.test-data/sync-nested-xpand)
+            nested-async (get v :woof.test-data/async-nested-xpand)
+            ]
+        ; test if expand worked
+        (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v sync-xpanded)))))
+        (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v async-xpanded)))))
 
-          ; test if sync nesting works
-          (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v nested-sync)))))
-          (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v nested-async)))))
+        ; test if sync nesting works
+        (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v nested-sync)))))
+        (is (= #{":a" ":b" ":c"} (into #{} (vals (select-keys v nested-async)))))
 
-          ; TODO: test async nesting
+        ; TODO: test async nesting
 
-          )
+        )
 
-
-        ))
+      )
 
     )
-)
+  )
 
 
 
 
 (defn- async-wf [test-context test-steps]
-  (println "async-wf!")
-
   (let [c (async/chan)
         ;executor (wf/cached-executor (atom test-context) test-steps)
         executor (wf/executor (atom test-context) test-steps)
@@ -161,24 +189,24 @@
 
           ]
 
-       (go
-         (async/<! (u/timeout 3500))
-         ;;(println "timeout" (d/pretty @*result))
-         (if-not (nil? @*done)
-           (async/put! exec-chann [:error :timeout])))
+      (go
+        (async/<! (u/timeout 3500))
+        ;;(println "timeout" (d/pretty @*result))
+        (if-not (nil? @*done)
+          (async/put! exec-chann [:error :timeout])))
 
-       (go
+      (go
         (loop [] ; can handle state via loop bindings
           (let [r (async/<! exec-chann)
                 [status data] r]
 
-          ;; todo: can these be done via transducer?
+            ;; todo: can these be done via transducer?
             (condp = status
               :init (recur)
               :error (do
-                        (println "ERROR" r)
-                        (async/close! exec-chann)
-                        (async/>! c :timeout)
+                       (println "ERROR" r)
+                       (async/close! exec-chann)
+                       (async/>! c :timeout)
                        )
               :process (do
                          ;(println "PROCESS:")
@@ -195,12 +223,14 @@
 
       (let [v (async/<!! c)
             results (into (sorted-set)
-                       (filter number? (vals @*result)))]
+                          (filter number? (vals @*result)))]
+
+
 
         ;; TODO: add assertion here
         (println "TEST RESULT\n" results)
         (println "\n\n\n *** total steps " (count @*result) (d/pretty (keys @*result)) "***\n\n\n")
-          )
+        )
       )
     )
   )
@@ -212,40 +242,40 @@
 
   ;; TODO: play with backpressure
   (let [test-context {
-                  :hello {:fn (fn [s]
-                                  (str "Hello " s "!")
-                                )}
-                  :expand {:fn (fn [vs]
-                                 (into (array-map)
-                                    (map-indexed (fn[i a] [(test-data/gen-ns-id (str "hello-" i))
-                                                           [:hello a]])
-                                         vs)))
-                           :expands? true}
+                       :hello {:fn (fn [s]
+                                     (str "Hello " s "!")
+                                     )}
+                       :expand {:fn (fn [vs]
+                                      (into (array-map)
+                                            (map-indexed (fn[i a] [(test-data/gen-ns-id (str "hello-" i))
+                                                                   [:hello a]])
+                                                         vs)))
+                                :expands? true}
 
-                  :wait {:fn (fn [s]
-                             (println "wait" s )
-                             (let [c (async/chan)
-                                       t (int (rand 1500))]
-                                   (go
-                                     (async/<! (u/timeout t))
-                                     (println s "DONE!")
-                                     (async/put! c s))
-                                   c)
-                               )}
-                  }
+                       :wait {:fn (fn [s]
+                                    ; (println "wait" s )
+                                    (let [c (async/chan)
+                                          t (int (rand 1500))]
+                                      (go
+                                        (async/<! (u/timeout t))
+                                        ; (println s "DONE!")
+                                        (async/put! c s))
+                                      c)
+                                    )}
+                       }
         ; workflow is described by a finite number of steps, each of calls to an action
         test-steps (assoc (array-map)
-                    ::0 [:expand ["world" "universe"]]
-                    ::1 [:wait "1"]
-                    ::2 [:wait "2"]
-                    ::3 [:wait ::2]
+                     ::0 [:expand ["world" "universe"]]
+                     ::1 [:wait "1"]
+                     ::2 [:wait "2"]
+                     ::3 [:wait ::2]
 
                      )
         ]
     (async-wf test-context test-steps)
     )
 
-)
+  )
 
 
 
@@ -253,8 +283,8 @@
   (let [N 20;;120 - fails
         {
           test-context :context
-           test-steps :steps
-        } (test-data/get-test-steps-and-context N)]
+          test-steps :steps
+          } (test-data/get-test-steps-and-context N)]
 
     (async-wf test-context test-steps)))
 
@@ -328,12 +358,12 @@
                                    (go
                                      (async/<! (u/timeout 1000))
                                      (async/>! chan "1")
-                                     (println "1")
+                                     ;(println "1")
 
                                      (async/<! (u/timeout 3000))
                                      (async/>! chan "2")
 
-                                     (println "2")
+                                     ;(println "2")
                                      )
 
                                    chan))
@@ -416,13 +446,13 @@
                            }
 
 
-                         :f1 {:fn (fn [s]
-                                 (println "Hello " s "!")
+                       :f1 {:fn (fn [s]
+                                  ; (println "Hello " s "!")
 
-                                    s
-                                    )
-                           :infinite true
-                           }
+                                  s
+                                  )
+                            :infinite true
+                            }
 
                        })
         steps (assoc (array-map)
@@ -480,7 +510,7 @@
         (is (= :done status))
 
         )))
-)
+  )
 
 
 

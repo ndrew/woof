@@ -39,9 +39,12 @@
   (async/chan))
 
 
+(defn exception? [e]
+  (instance? js/Error e))
+
 (defn throw! [s]
   (throw
-    (js/Error. s)))
+    (if (exception? s) s (js/Error. s))))
 
 
 (defn nil-get [rr id]
