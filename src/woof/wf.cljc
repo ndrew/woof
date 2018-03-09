@@ -33,6 +33,7 @@
   "TODO: write introduction to workflows")
 
 
+;;
 ;; context is an interface for map type thingy that holds step functions
 (defprotocol IContext
   ;; gets step function by step-id
@@ -40,19 +41,58 @@
   )
 
 
+
+(defn- get-step-impl [*context]
+
+  (fn [step-id]
+    (let [step-cfg (get @*context step-id)]
+        (if-let [f (:fn step-cfg)]
+          f
+          (fn [v]
+            (throw
+              #?(:clj (Exception. (str "No step handler " step-id " in context" )))
+              #?(:cljs (js/Error. (str "No step handler " step-id " in context" )))
+            )
+          ))))
+
+)
+
+
+(defn- get-step-cached-impl [*context cache]
+  ;; cache is ICache
+
+  (fn [step-id]
+    (let [step-cfg (get @*context step-id)]
+      (if (:expands? step-cfg) ;; todo: add cache flag?
+        (:fn step-cfg)
+        (cache/memoize! cache (:fn step-cfg) step-id)))
+    )
+
+  )
+
+
+
+
 ;;
 ;; top-level protocol for wf executor + context
-(defprotocol IExecutor
+(defprotocol IExecutor ; - producer
   "protocol for running workflows"
-  ;; the steps are passed via constructor
 
-  ;; starts execution of the workflow
-  (execute! [this])
-
+  ;; starts the workflow, return a channel
+  (execute! [this]) ;; TODO: do we need here this
 
   ;; stops workflow
   (end! [this]))
 
+
+
+;;
+;; protocol for processing workflow results
+(defprotocol IProcessor
+
+  (process! [this])
+
+  )
 
 
 
@@ -674,17 +714,7 @@
   IContext
 
   (get-step-fn [this step-id]
-    (let [step-cfg (get @*context step-id)]
-        (if-let [f (:fn step-cfg)]
-          f
-          (fn [v]
-            (throw
-              #?(:clj (Exception. (str "No step handler " step-id " in context" )))
-              #?(:cljs (js/Error. (str "No step handler " step-id " in context" )))
-            )
-          )
-      )))
-
+    ((get-step-impl *context) step-id))
 
   )
 
@@ -702,14 +732,15 @@
   IContext
 
   (get-step-fn [this step-id]
-    (let [step-cfg (get @*context step-id)]
-      (if (:expands? step-cfg) ;; todo: add cache flag?
-        (:fn step-cfg)
-        (cache/memoize! cache (:fn step-cfg) step-id))))
+    ((get-step-cached-impl *context cache) step-id))
 
 
   )
 
+
+
+
+;; API
 
 
 (defn executor
@@ -722,10 +753,30 @@
                     process-chan)))
 
   ([*context model ready-channel process-channel]
-    (->AsyncExecutor *context
+
+   (let [xctor (->AsyncExecutor *context
                      model
                      ready-channel
-                     process-channel)))
+                     process-channel)]
+
+     ;; spliting current wf implementation into smaller 'mixin' style protocols
+     (reify
+        IExecutor
+
+        (execute! [this]
+                  (execute! xctor))
+
+        (end! [this]
+              (end! xctor))
+
+        IContext
+
+        (get-step-fn [this step-id]
+          ((get-step-impl *context) step-id)) ;; todo: get from context impl
+
+        ))
+
+   ))
 
 
 (defn cached-executor
@@ -804,6 +855,58 @@
 ;; ========================================================
 
 
+(defrecord FutureWF [executor options]
+  IProcessor
+
+  (process! [this]
+            ;; todo: throw exception for cljs
+
+            #?(:clj
+
+                (let [t (get this ::timeout 5000)
+                      {err-handler :error ;; todo: use this approach
+
+                       :or {
+                             err-handler (fn [data]
+                                           (u/throw! data))
+                             }
+                       } options
+
+                      ;; todo: write these as macros
+                      ]
+
+                  (future
+                    (let [wait-chan (async/timeout t)
+                          result-chan (execute! executor)]
+
+                      (go-loop []
+                               (let [[status data] (async/<! result-chan)]
+
+                                 (condp = status
+                                   :error (do
+                                            (err-handler data)
+                                            ;(async/>! wait-chan data)
+                                            )
+                                   :done (async/>! wait-chan data)
+                                   (do ; skip :init :process and other steps
+                                     (recur)))))
+
+                      (let [v (async/<!! wait-chan)]
+                        (if (u/exception? v)
+                          (u/throw! v)
+                          (if (nil? v)
+                            (u/throw! "workflow stopped due to timeout!")
+                            v)
+                          ))
+
+                      )
+
+                    )
+
+                  ))
+
+            )
+  )
 
 
 #?(:clj
@@ -811,48 +914,21 @@
   ;; can this be done as tranducer?
   (defn sync-execute!
     ([executor]
-     (sync-execute! executor 5000))
+     (process! (->FutureWF executor {}))
 
+     )
     ([executor t]
 
-     ;; todo: handle no such speps
+      (process!
+        (assoc (->FutureWF executor {})
+                  ::timeout t ; pass the optional params
+                                  ))
+     ))
 
-     (comment
-       (try
-         ;; ...
-       (catch
-          #?(:clj Throwable)
-          #?(:cljs js/Error) e
-          (u/throw! e)
-        )))
-
-     (future
-         (let [wait-chan (async/timeout t)
-               result-chan (execute! executor)]
-           (go-loop []
-                    (let [[status data] (async/<! result-chan)]
-
-                      (condp = status
-                        :error (do
-                                 (u/throw! data)
-                                 ;(async/>! wait-chan data)
-                                 )
-                        :done (async/>! wait-chan data)
-                        (do ; skip :init :process and other steps
-                          (recur)))))
-
-           (let [v (async/<!! wait-chan)]
-             (if (u/exception? v)
-               (u/throw! v)
-               (if (nil? v)
-                 (u/throw! "workflow stopped due to timeout!")
-                 v)
-               ))
-
-           )
-
-         )))
 )
+
+
+
 
 
 
