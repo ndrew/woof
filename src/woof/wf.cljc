@@ -33,18 +33,34 @@
   "TODO: write introduction to workflows")
 
 
-
-(defprotocol IExecutor
-  "protocol for running workflows"
-  ;; the steps are passed via constructor
-  (execute! [this])
+;; context is an interface for map type thingy that holds step functions
+(defprotocol IContext
+  ;; gets step function by step-id
   (get-step-fn [this step-id])
-
-  (end! [this])
   )
 
 
+;;
+;; top-level protocol for wf executor + context
+(defprotocol IExecutor
+  "protocol for running workflows"
+  ;; the steps are passed via constructor
 
+  ;; starts execution of the workflow
+  (execute! [this])
+
+
+  ;; stops workflow
+  (end! [this]))
+
+
+
+
+;;
+;; WIP: IState
+
+
+;;
 ;; todo: refactor IState into model and behaviour
 (defprotocol IState
   (get-initial-steps [this])
@@ -71,6 +87,8 @@
   )
 
 
+
+
 (defn wf-do-save!
   [*results *steps-left id result]
 
@@ -78,6 +96,8 @@
 ;; todo: dissoc only if not infinite mode
   (swap! *steps-left dissoc id)
   )
+
+
 
 (defn wf-do-expand! [*results *steps-left *steps2add id actions]
 
@@ -239,6 +259,8 @@
    :process-channel process-channel}
   )
 
+
+
 (defn make-state! [*context state-config]
   (let [*state (atom {:infinite {}})
         steps (:steps state-config)
@@ -254,7 +276,9 @@
 
 
 
-;; kinda debugger
+
+
+;; kinda debugger - TODO: maybe a context step of more generic way?
 (def ^:dynamic *consumer-debugger* nil)
 (def ^:dynamic *producer-debugger* nil)
 
@@ -262,56 +286,6 @@
 (def WORKING-MAX 40)
 
 
-
-
-;;
-;; workflow transducers
-
-(defn chunk-update-xf
-  "passes one :process items  "
-  [buf-size]
-  (fn [rf]
-    (let [ctr (volatile! 0)]
-      (fn
-        ([] (rf)) ; init (arity 0) - should call the init arity on the nested transform xf, which will eventually call out to the transducing process
-        ([result] ; completion (arity 1)
-         ; why this is never called?
-         ; (println "COMPLETE" result)
-         (rf result))
-        ; Step (arity 2) - this is a standard reduction function but it is expected to call the xf step arity 0 or more times as appropriate in the transducer.
-        ; For example, filter will choose (based on the predicate) whether to call xf or not. map will always call it exactly once. cat may call it many times depending on the inputs.
-        ([result v]                         ; we ignore the input as
-         (let [[status data] v]
-           ;;(println "~~~" @ctr "~" status "~~~")
-           (if-not (= :process status)
-             (rf result v)
-             (do
-               (vswap! ctr inc)
-               (when (= buf-size @ctr)
-                 (vreset! ctr 0)
-                 (rf result v)
-               ))
-             )
-           ))))))
-
-
-
-(defn time-update-xf [interval]
-  (fn [rf]
-    (let [ctr (volatile! 0)]
-      (fn
-        ([] (rf))              ; init (arity 0)
-        ([result] (rf result)) ; completion (arity 1)
-        ; Step (arity 2) - this is a standard reduction function but it is expected to call the xf step arity 0 or more times as appropriate in the transducer.
-        ; For example, filter will choose (based on the predicate) whether to call xf or not. map will always call it exactly once. cat may call it many times depending on the inputs.
-        ([result v]                         ; we ignore the input as
-         (let [[status data] v]
-           ;;(println "~~~" @ctr "~" status "~~~")
-           (if-not (= :process status)
-             (rf result v)
-             (when (-> (u/now) (- @ctr) (> interval))
-               (vreset! ctr (u/now))
-               (rf result v)))))))))
 
 
 
@@ -690,6 +664,15 @@
 (defrecord AsyncExecutor [*context model ready-channel process-channel]
   IExecutor
 
+  (execute! [this]
+            (async-exec this model ready-channel process-channel))
+
+  (end! [this]
+        (go
+          (async/>! process-channel [:stop this])))
+
+  IContext
+
   (get-step-fn [this step-id]
     (let [step-cfg (get @*context step-id)]
         (if-let [f (:fn step-cfg)]
@@ -702,17 +685,21 @@
           )
       )))
 
+
+  )
+
+
+(defrecord CachedAsyncExecutor [cache *context model ready-channel process-channel]
+  IExecutor
+
   (execute! [this]
             (async-exec this model ready-channel process-channel))
 
   (end! [this]
         (go
           (async/>! process-channel [:stop this])))
-  )
 
-
-(defrecord CachedAsyncExecutor [cache *context model ready-channel process-channel]
-  IExecutor
+  IContext
 
   (get-step-fn [this step-id]
     (let [step-cfg (get @*context step-id)]
@@ -720,12 +707,6 @@
         (:fn step-cfg)
         (cache/memoize! cache (:fn step-cfg) step-id))))
 
-  (execute! [this]
-            (async-exec this model ready-channel process-channel))
-
-  (end! [this]
-        (go
-          (async/>! process-channel [:stop this])))
 
   )
 
@@ -763,52 +744,114 @@
 
 
 
+;; how the executor should be instantiated?
+
+
+
+;; transducers
+;;
+
+(defn chunk-update-xf
+  "passes one :process items  "
+  [buf-size]
+  (fn [rf]
+    (let [ctr (volatile! 0)]
+      (fn
+        ([] (rf)) ; init (arity 0) - should call the init arity on the nested transform xf, which will eventually call out to the transducing process
+        ([result] ; completion (arity 1)
+         ; why this is never called?
+         ; (println "COMPLETE" result)
+         (rf result))
+        ; Step (arity 2) - this is a standard reduction function but it is expected to call the xf step arity 0 or more times as appropriate in the transducer.
+        ; For example, filter will choose (based on the predicate) whether to call xf or not. map will always call it exactly once. cat may call it many times depending on the inputs.
+        ([result v]                         ; we ignore the input as
+         (let [[status data] v]
+           ;;(println "~~~" @ctr "~" status "~~~")
+           (if-not (= :process status)
+             (rf result v)
+             (do
+               (vswap! ctr inc)
+               (when (= buf-size @ctr)
+                 (vreset! ctr 0)
+                 (rf result v)
+               ))
+             )
+           ))))))
+
+
+
+(defn time-update-xf [interval]
+  (fn [rf]
+    (let [ctr (volatile! 0)]
+      (fn
+        ([] (rf))              ; init (arity 0)
+        ([result] (rf result)) ; completion (arity 1)
+        ; Step (arity 2) - this is a standard reduction function but it is expected to call the xf step arity 0 or more times as appropriate in the transducer.
+        ; For example, filter will choose (based on the predicate) whether to call xf or not. map will always call it exactly once. cat may call it many times depending on the inputs.
+        ([result v]                         ; we ignore the input as
+         (let [[status data] v]
+           ;;(println "~~~" @ctr "~" status "~~~")
+           (if-not (= :process status)
+             (rf result v)
+             (when (-> (u/now) (- @ctr) (> interval))
+               (vreset! ctr (u/now))
+               (rf result v)))))))))
+
+
+
+
+;; convenience functions
+;; ========================================================
+
+
+
 
 #?(:clj
-;; can this be done as tranducer?
-(defn sync-execute!
-  ([executor]
-   (sync-execute! executor 5000))
 
-  ([executor t]
+  ;; can this be done as tranducer?
+  (defn sync-execute!
+    ([executor]
+     (sync-execute! executor 5000))
 
-   ;; todo: handle no such speps
+    ([executor t]
 
-   (comment
-     (try
-       ;; ...
-     (catch
-        #?(:clj Throwable)
-        #?(:cljs js/Error) e
-        (u/throw! e)
-      )))
+     ;; todo: handle no such speps
 
-   (future
-       (let [wait-chan (async/timeout t)
-             result-chan (execute! executor)]
-         (go-loop []
-                  (let [[status data] (async/<! result-chan)]
+     (comment
+       (try
+         ;; ...
+       (catch
+          #?(:clj Throwable)
+          #?(:cljs js/Error) e
+          (u/throw! e)
+        )))
 
-                    (condp = status
-                      :error (do
-                               (u/throw! data)
-                               ;(async/>! wait-chan data)
-                               )
-                      :done (async/>! wait-chan data)
-                      (do ; skip :init :process and other steps
-                        (recur)))))
+     (future
+         (let [wait-chan (async/timeout t)
+               result-chan (execute! executor)]
+           (go-loop []
+                    (let [[status data] (async/<! result-chan)]
 
-         (let [v (async/<!! wait-chan)]
-           (if (u/exception? v)
-             (u/throw! v)
-             (if (nil? v)
-               (u/throw! "workflow stopped due to timeout!")
-               v)
-             ))
+                      (condp = status
+                        :error (do
+                                 (u/throw! data)
+                                 ;(async/>! wait-chan data)
+                                 )
+                        :done (async/>! wait-chan data)
+                        (do ; skip :init :process and other steps
+                          (recur)))))
 
-         )
+           (let [v (async/<!! wait-chan)]
+             (if (u/exception? v)
+               (u/throw! v)
+               (if (nil? v)
+                 (u/throw! "workflow stopped due to timeout!")
+                 v)
+               ))
 
-       )))
+           )
+
+         )))
 )
 
 
