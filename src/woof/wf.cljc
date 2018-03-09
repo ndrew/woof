@@ -764,52 +764,6 @@
 
 
 
-
-(defn- extract-result [result k]
-  (let [r (get result k)]
-      (if (u/action-id-list? r)
-        (mapcat (fn [a]
-                 (let [u (extract-result result a)]
-                   (if (seq? u) u [u]))) r)
-        r)))
-
-
-(defn extract-results
-  "get workflow results, but for certain keys"
-  [result keyz]
-  (into (array-map)
-        (map (fn[k]
-               [k (extract-result result k)])
-             keyz)))
-
-
-(defn inline-results
-  "substitues expanded items by it's values and removes them from map"
-  [results]
-
-  (let [new-results (reduce
-                      (fn [a [k v]]
-                        (if (u/action-id-list? v)
-                          (do
-                            (let [nu-vals (reduce (fn [a k]
-                                                    (assoc a k (get results k))
-                                                    ) (::tmp a) v)]
-
-                              (assoc a
-                                k (map (fn[id] (get nu-vals id)) v)
-                                ::tmp nu-vals)
-                              )
-                            )
-                          (assoc a k v))
-                        ) {::tmp {} } results)]
-
-    (let [{tmp ::tmp} new-results]
-      (apply dissoc new-results (conj (keys tmp) ::tmp))
-      )
-    )
-  )
-
-
 #?(:clj
 ;; can this be done as tranducer?
 (defn sync-execute!
