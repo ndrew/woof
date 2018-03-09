@@ -6,8 +6,10 @@
 
   :min-lein-version "2.7.1"
 
+  ;; :jvm-opts ["-agentpath:/Users/ndrw/m/async-profiler/build/libasyncProfiler.so=start,event=cpu,file=lein-child.txt,collapsed"]
+
   :dependencies [[org.clojure/clojure "1.9.0"]
-                 [org.clojure/clojurescript "1.9.946"]
+                 [org.clojure/clojurescript "1.10.126"]
                  [org.clojure/core.async  "0.3.443"
                   :exclusions [org.clojure/tools.reader]]
                  [rum "0.10.8"]
@@ -33,7 +35,7 @@
   :aot          [ woof.server ]
 
 
-  :plugins [[lein-figwheel "0.5.14"]
+  :plugins [[lein-figwheel "0.5.15"]
             [lein-cljsbuild "1.1.7" :exclusions [[org.clojure/clojure]]]]
 
   :source-paths ["src"]
@@ -120,7 +122,7 @@
   ;; Please see:
   ;; https://github.com/bhauman/lein-figwheel/wiki/Using-the-Figwheel-REPL-within-NRepl
   :profiles {:dev {:dependencies [[binaryage/devtools "0.9.4"]
-                                  [figwheel-sidecar "0.5.12"]
+                                  [figwheel-sidecar "0.5.15"]
                                   [com.cemerick/piggieback "0.2.2"]]
                    ;; need to add dev source path here to get user.clj loaded
                    :source-paths ["src" "dev"]
