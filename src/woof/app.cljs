@@ -8,12 +8,15 @@
 
     [rum.core :as rum]
 
+    [woof.app-data :as app-model]
+
     [woof.data :as d]
     [woof.graph :as g]
     [woof.wf :as wf]
     [woof.ws :as ws]
 
     [woof.ui :as ui]
+    [woof.wf-ui :as wf-ui]
     [woof.utils :as u]
     [woof.test-data :as test-data])
   (:require-macros
@@ -26,57 +29,10 @@
 
 
 
-(defonce UI-UPDATE-RATE 50) ; ms
-
 (defonce TEST-WF-STEP-COUNT 25)
 
 
 
-(defn default-context []
-  {
-    :identity {:fn (fn [a] a)}
-
-    :identity-async {:fn (fn [a]
-                           (let [c (async/chan)]
-                             (go
-                               (async/put! c a))
-                             c))}
-    :hello {:fn (fn [a]
-                  (let [c (async/chan)]
-                    (go
-                      (async/put! c (str "Hello! " (pr-str a))))
-                    c))}
-
-    :hello-wait {:fn (fn [a]
-                       (let [c (async/chan)]
-                         (go
-                           (async/<! (u/timeout 5000))
-
-                           (async/put! c (str "Hello! " (pr-str a))))
-                         c))}
-
-    :8 {:fn (fn [max-num]
-              (.warn js/console "max-num" max-num)
-
-              ; (str "Hello " s "!")
-              (let [chan (async/chan)
-                    t (volatile! (u/now))]
-
-                (go-loop [i 0]
-                         (async/<! (u/timeout 500))
-                         (.warn js/console "i" i (< i max-num) (- (u/now) @t) )
-                         (vreset! t (u/now))
-
-                         (async/>! chan (str i ": " (int (rand 100))))
-
-                         (if (< i max-num)
-                           (recur (inc i))))
-
-                chan))
-        :infinite true
-        }
-    }
-  )
 
 
 
@@ -84,7 +40,7 @@
   (atom
     {
       ;; workflow context
-      :context (default-context)
+      :context (app-model/default-context)
 
       ;; workflow definition
       :workflow {
@@ -344,12 +300,6 @@
     c))
 
 
-(defn execute-for-ui [executor]
-  (let [exec-chan-0 (wf/execute! executor)
-        exec-chan (async/pipe exec-chan-0 (async/chan 1 (wf/time-update-xf UI-UPDATE-RATE)))]
-
-    exec-chan))
-
 
 (rum/defcs <wf-ui>   <   rum/reactive
                           {:key-fn (fn [_ *workflow] (get @*workflow :name))}
@@ -384,8 +334,12 @@
         execute-wf (fn []
                      (reset! (::executor local) (wf/executor *context (:steps @*workflow))) ;; todo: choose executor
 
-                     (let [exec-chan (execute-for-ui @(::executor local))]
+                     (let [exec-chan (wf/time-updated-chan
+                                        (wf/execute! @(::executor local))
+                                        wf-ui/UI-UPDATE-RATE)]
+
                        (reset! (::exec-chan local) exec-chan)
+
                        (swap! (::result local) merge {
                                                        ::header header
                                                        ::wf-status ::running
@@ -394,7 +348,14 @@
                                                        })
                        (reset! (::status local) ::results-ui)
 
-                       (wf/async-execute! executor exec-chan (partial workflow-handler (::result local)))
+                       (let [opts {
+                                    :channel exec-chan
+                                    :op-handler (partial workflow-handler (::result local))
+                                    }
+                             worker (wf/->AsyncWFProcessor executor opts)]
+
+                         (wf/process! worker)
+                         )
 
                        ))
 

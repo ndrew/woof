@@ -848,13 +848,20 @@
 
 
 
+(defn time-updated-chan [exec-chan-0 tick-interval]
+  (let [exec-chan (async/pipe exec-chan-0
+                              (async/chan 1 (time-update-xf tick-interval)))]
+
+    exec-chan))
+
+
 
 ;; convenience functions
 ;; ========================================================
 
 (defn- process-wf-result [v]
 
-  (println "process-wf-result" (d/pretty v))
+  ;;(println "process-wf-result" (d/pretty v))
 
   (if (u/exception? v)
     (u/throw! v)
@@ -899,6 +906,9 @@
 
   (process! [this]
     (let [exec-chan (get options :channel (u/make-channel))
+
+          ;; todo: pass here the tick interval or other channel piping options
+
           t (get this ::timeout)
           op-handler (get options :op-handler
                           (fn [[status data]]
@@ -910,7 +920,7 @@
                               )
                             ))]
       (if t
-        (process-wf-loop exec-chan t (partial end! executor))
+        (process-wf-loop exec-chan op-handler t (partial end! executor))
         (process-wf-loop exec-chan op-handler))
 
       exec-chan
