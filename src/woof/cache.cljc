@@ -20,8 +20,6 @@
 
 
 (defn- run-and-memoize [this k f params]
-  ;#?(:cljs (println "run-and-memoize" k params))
-
   (let [res (f params)] ;; TODO: rethrow exception here
     (if-not (u/channel? res)
       (do
@@ -38,7 +36,6 @@
 
         (go
           (let [async-result (async/<! res)]
-            ;; (println "GOT RESULT: " async-result)
             (async/put! cached-chan async-result)))
         cached-chan))))
 
@@ -64,7 +61,6 @@
 
 
 ;; TODO: move this to test
-
 
 #_(let [*cache (atom {})
         cache (->Cache *cache)

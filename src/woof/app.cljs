@@ -11,6 +11,8 @@
     [woof.data :as d]
     [woof.graph :as g]
     [woof.wf :as wf]
+    [woof.ws :as ws]
+
     [woof.ui :as ui]
     [woof.utils :as u]
     [woof.test-data :as test-data])
@@ -20,11 +22,14 @@
 
 
 
+(enable-console-print!)
 
-;(enable-console-print!)
+
 
 (defonce UI-UPDATE-RATE 50) ; ms
+
 (defonce TEST-WF-STEP-COUNT 25)
+
 
 
 (defn default-context []
@@ -93,26 +98,6 @@
                 :post {}}
 
       }))
-
-
-
-
-(defn run-wf!
-  ([executor exec-chan save-op-fn]
-   (go-loop []
-            (let [r (async/<! exec-chan)
-                  [status data] r]
-              (if (save-op-fn r)
-                (recur)))))
-
-  ([executor exec-chan save-op-fn t]
-    (run-wf! executor exec-chan save-op-fn)
-    (go
-       (async/<! (u/timeout t))
-      ;; todo: check if wf had ended
-       (wf/end! executor)
-    ))
-)
 
 
 
@@ -408,7 +393,10 @@
                                                        ::start (u/now)
                                                        })
                        (reset! (::status local) ::results-ui)
-                       (run-wf! executor exec-chan (partial workflow-handler (::result local)))))
+
+                       (wf/async-execute! executor exec-chan (partial workflow-handler (::result local)))
+
+                       ))
 
         steps-ready-fn (fn []
                          ;;
@@ -605,6 +593,64 @@
 
 (rum/mount (<app-ui> *APP-STATE)
            (. js/document (getElementById "app")))
+
+
+; todo:
+
+#_(let [socket (ws/connect "/api/websocket"
+                 :on-open    (fn []
+                               (println "ws open")
+
+                               (.log js/console socket)
+
+                               )
+                 :on-close   (fn [] (println "ws close"))
+                 :on-message (fn [msg] (println "got " msg)))]
+
+
+
+
+  )
+
+
+#_(defn- listen-loop []
+  (let [socket-ch (async/chan 1)
+        data-ch   (async/chan 10)
+        ajax-ch   (async/chan 1)
+        socket (ws/connect "/api/websocket"
+                 :on-open    #(async/put! socket-ch :open)
+                 :on-close   #(doseq [ch [socket-ch ajax-ch data-ch]]
+                                (async/close! ch))
+                 :on-message #(async/put! data-ch %))]
+    (go
+      (when (async/<! socket-ch) ;; open socket
+        (swap! app-state assoc :progress 0.3)
+        (u/ajax "/api/db/" (fn [datoms] (async/put! ajax-ch datoms) (swap! app-state assoc :progress 0.6)))
+        (let [[dump _] (async/alts! [ajax-ch (async/timeout 30000)])]
+          (when dump  ;; wait ajax
+            (profile "DB initialization"
+              (reset! conn (d/init-db dump schema))
+              (let [num-users (count (d/datoms @conn :aevt :user/name))
+                    num-datoms (count (:eavt @conn))
+                    num-achs (count (d/datoms @conn :aevt :ach/sha1))]
+                (println "Pushed [datoms:" num-datoms "] [users:" num-users "] [achievements:" num-achs "]")
+                (swap! app-state assoc
+                  :users {:total num-users :visible (min 30 num-users)}
+                  :first-load? false
+                  :progress 1)))
+            (loop []
+              (when-let [tx-data (async/<! data-ch)]  ;; listen for socket
+                (try
+                  (d/transact! conn tx-data)
+                  (let [num-users (count (d/datoms @conn :aevt :user/name))]
+                    (swap! app-state assoc-in [:users :total] num-users))
+                  (catch js/Error e
+                    (.error js/console e)))
+                (recur))))
+          (.close socket)))
+     (swap! app-state assoc :progress -1)
+     (js/setTimeout listen-loop 1000))))
+
 
 
 (add-watch *APP-STATE :watcher

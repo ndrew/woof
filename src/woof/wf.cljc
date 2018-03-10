@@ -864,6 +864,25 @@
 
 
 
+;; go loop for processing messages from exec-chan by
+(defn process-wf-loop
+  ([exec-chan op-handler]
+   (go-loop []
+            (let [r (async/<! exec-chan)] ;; [status data] r
+              (if (op-handler r)
+                (recur)))))
+
+  ([exec-chan op-handler t end-fn]
+    (process-wf-loop exec-chan op-handler)
+    (go
+       (async/<! (u/timeout t))
+      ;; todo: check if wf had ended
+       (end-fn)
+    ))
+)
+
+
+
 (comment
             ;; use destructuring like these
                { init-handler :init
@@ -872,6 +891,46 @@
                ; :or { process-handler (fn [data] (println (d/pretty data))) }
                } options
           )
+
+
+
+(defrecord AsyncWFProcessor [executor options]
+  IProcessor
+
+  (process! [this]
+    (let [exec-chan (get options :channel (u/make-channel))
+          t (get this ::timeout)
+          op-handler (get options :op-handler
+                          (fn [[status data]]
+                            (condp = status
+                               :error (u/throw! data) ;; re-throw it, so wf will stop
+                               :done true
+
+                                false
+                              )
+                            ))]
+      (if t
+        (process-wf-loop exec-chan t (partial end! executor))
+        (process-wf-loop exec-chan op-handler))
+
+      exec-chan
+    )
+  )
+)
+
+
+(defn async-execute!
+  ([xctor]
+    (process! (->AsyncWFProcessor xctor {})))
+
+  ([xctor channel handler]
+   (process! (->AsyncWFProcessor xctor {
+                                         :channel channel
+                                         :op-handler handler
+                                         })))
+  )
+
+
 
 
 (defrecord FutureWF [executor options]
