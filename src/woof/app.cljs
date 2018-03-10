@@ -317,6 +317,9 @@
   (merge-result [this data])
   (get-result* [this])
 
+  (add-post-editor [this k v])
+
+  (add-pre-editor [this k v])
   )
 
 (defn make-ui-state [local]
@@ -330,6 +333,12 @@
                   (swap! (::result local) merge data))
 
     (get-result* [this] (::result local))
+
+    (add-post-editor [this k v]
+      (swap! (::editors local) update-in [:post] assoc k v))
+
+    (add-pre-editor [this k v]
+      (swap! (::editors local) update-in [:pre] assoc k v))
     )
   )
 
@@ -337,7 +346,10 @@
 
 
 
+;; menu items
 
+
+;; generate test workflow
 
 (defn generate-wf-fn [UI-STATE]
   (fn []
@@ -354,11 +366,11 @@
     ((gen-new-wf-f! TEST-WF-STEP-COUNT))))
 
 
-;; menu items
-
 (defn- generate-wf-mi [UI-STATE]
   [ "generate new" (generate-wf-fn UI-STATE)])
 
+
+;; stop workflow
 
 (defn- stop-wf-mi [xctor]
   ["stop"
@@ -369,6 +381,8 @@
      )]
   )
 
+
+;; expand test
 
 (defn- expand-test-mi [model]
   ["expand test"
@@ -384,30 +398,110 @@
    ]
   )
 
-
-(defn- re-run-mi [ui-model]
-  ["re-run" (fn []
-              (set-status ui-model ::steps-ui))])
-
-
+;; run workflow
 
 (defn- run-wf [model callback]
   (app-model/start! model callback))
 
 (defn- run-wf-mi [model callback]
-  ["steps ready!"
+  ["run 🏃"
    (fn []
      (run-wf model callback))])
 
+(defn- re-run-mi [ui-model]
+  ["re-run" (fn []
+              (set-status ui-model ::steps-ui))])
+
+;; preview test
+
+(defn- preview-mi [model UI-STATE]
+  ["preview test"
+   (fn []
+     (let [preview-chan (async/chan)] ;; todo: use different channel for ui
+
+       (add-post-editor UI-STATE ::preview preview-chan)
+       (app-model/merge-context model {:preview {:fn (partial passthought-fn preview-chan) :infinite true}})
+
+       ;; todo: pass rum component into preview fn
+       (app-model/merge-steps model {
+                                      ::test-preview  [:8 10]
+                                      ::preview [:preview ::test-preview]
+                                      })))
+   ]
+  )
+
+;; editor test
+
+(defn- editor-mi [model UI-STATE]
+  ["editor test"
+   (fn []
+     (let [editor-chan (async/chan)]
+
+       (add-pre-editor UI-STATE ::editor editor-chan)
+
+       (app-model/merge-context model
+                                {
+                                  :edit-params
+                                  {:fn (partial pipe-fn editor-chan)
+                                   :infinite true}
+                                  })
+
+       (app-model/merge-steps model
+                              {
+                                ;::editor-source-1  [:8 3]
+                                ;::editor-source  [:8 ::editor-source-1]
+
+                                ::nested-1  [:identity-async ::nested-e]
+                                ::nested-e [:hello ::e-result-1]
+
+                                ::e-result  [:identity ::editor]
+                                ::editor [:edit-params "Hello!"]
+                                ::e-result-1  [:identity-async ::editor]
+
+                                ::tick   [:8 100]
+                                })
+
+       ))
+   ]
+  )
+
+;; infinity test
+
+(defn- infinity-mi [model]
+  ["infinity test"
+   (fn []
+
+     (app-model/merge-context model
+                              {:xpand-8
+                               {:fn (fn [s]
+                                      (let [c (async/chan)]
+                                        (go []
+                                            (let [v (async/<! (u/timeout 1500))]
+
+                                              (async/put! c
+                                                          {::x1 [:8 20]
+                                                           ::x2 [:hello ::x1]
+                                                           })))
+                                        c)
+                                      )
+                                :expands? true}
+                               })
+
+     (app-model/merge-steps model
+                            {
+                              ::xpnd [:xpand-8 {}]
+                              ::8 [:8 10]
+                              ::i [:identity ::8]
+                              ::h [:hello ::i]
+                              })
+     )]
+  )
 
 
 (rum/defcs <wf-ui>   <   rum/reactive
                           {:key-fn (fn [_ *workflow] (get @*workflow :name))}
 
                           (rum/local ::steps-ui  ::status)
-
-                          ;(rum/local nil         ::executor)
-                          ;(rum/local nil         ::exec-chan)
 
                           (rum/local {:pre   {}
                                       :post {}} ::editors)
@@ -438,6 +532,7 @@
          } @*workflow
 
 
+        ;; processing handler : todo: extract from rum component
         process-wf! (fn [model]
 
                      (merge-result UI-STATE {
@@ -458,103 +553,35 @@
 
                        (wf/process! worker)
                        )
-
-
                      )
-
-        steps-ready-fn (fn []
-                         ;;
-                         ;; uncomment this for intermediary screen
-                         ;; (set-status UI-STATE ::workflow-ui)
-
-                         (run-wf model process-wf!)
-                         )
-
-        preview-test-fn (fn []
-          (let [preview-chan (async/chan)] ;; todo: use different channel for ui
-            (swap! *editors update-in [:post] assoc ::preview preview-chan)
-
-            (swap! *context merge
-                   {:preview {:fn (partial passthought-fn preview-chan) :infinite true}})
-
-            ;; todo: pass rum component into preview fn
-            (swap! *workflow update-in [:steps]
-                                  merge {
-                                          ::test-preview  [:8 10]
-                                          ::preview [:preview ::test-preview]
-                                          })))
-
-        editor-test-fn (fn []
-                         (let [editor-chan (async/chan)]
-
-                           (swap! *editors update-in [:pre] assoc ::editor editor-chan)
-
-                           (swap! *context merge
-                                  {:edit-params
-                                   {:fn (partial pipe-fn editor-chan)
-                                    :infinite true}
-                                   })
-
-                           (swap! *workflow update-in [:steps]
-                                  merge {
-                                          ;::editor-source-1  [:8 3]
-                                          ;::editor-source  [:8 ::editor-source-1]
-
-                                          ::nested-1  [:identity-async ::nested-e]
-                                          ::nested-e [:hello ::e-result-1]
-
-                                          ::e-result  [:identity ::editor]
-                                          ::editor [:edit-params "Hello!"]
-                                          ::e-result-1  [:identity-async ::editor]
-
-                                          ::tick   [:8 100]
-                                          })))
-
-        infinity-test-fn (fn []
-
-                           (swap! *context merge
-                                  {:xpand-8
-                                   {:fn (fn [s]
-                                          (let [c (async/chan)]
-                                            (go []
-                                                (let [v (async/<! (u/timeout 1500))]
-
-                                                  (async/put! c
-                                                              {::x1 [:8 20]
-                                                               ::x2 [:hello ::x1]
-                                                                })))
-                                            c)
-                                          )
-                                    :expands? true}
-                                   })
-
-                           (swap! *workflow update-in [:steps]
-                                  merge {
-                                          ::xpnd [:xpand-8 {}]
-                                          ::8 [:8 10]
-                                          ::i [:identity ::8]
-                                          ::h [:hello ::i]
-                                          })
-                           )
 
         ]
 
 
     [:div
+     [:header header]
      (when (#{::steps-ui} status)
        [:div
-        (ui/menubar header [(run-wf-mi model process-wf!)
-                             (generate-wf-mi UI-STATE)
-                             []
-                             ["editor test" editor-test-fn]
-                             ["preview test" preview-test-fn]
-                             []
-                             (expand-test-mi model)
-                             []
-                             ["infinity " infinity-test-fn]
-                            ])
+        [:div.tip "Choose your workflow:"]
 
-        [:div.tip "Here workflow will be ui for defining and manipulating workflow."]
+        (ui/menubar "" [["reset" (fn []
+                                   ;; todo:
+                                   )]
+                         []
+                         (generate-wf-mi UI-STATE)
+                         (expand-test-mi model)
+                         (editor-mi model UI-STATE)
+                         (preview-mi model UI-STATE)
+                         (infinity-mi model)
+
+                         ])
+
+        [:div.tip "—"]
+
+        (ui/menubar "" [(run-wf-mi model process-wf!)])
+
+        [:div.tip ""] ;; fixme:
+
         [:div.hbox
          [:div.steps-ui
           (ui/menubar "steps" [])
@@ -584,6 +611,7 @@
 
      (when (#{::workflow-ui} status)
        [:div
+        ;; todo:
         (ui/menubar header [["run (normal)" (fn[] (run-wf model process-wf!))]
                          ["run (timeout)" (fn[])]
                          ["run (with cache)" (fn[])]
@@ -642,6 +670,8 @@
 
 (rum/defcs <app-ui>
   < rum/reactive [local *STATE]
+
+  ;; todo: put model in state, so it can be reset
   (let [model (app-model/wf-state
                  (cursor [:context])
                  (cursor [:workflow])
@@ -649,7 +679,7 @@
                  (cursor [:xctor-chan])
                  )]
   [:div#app
-   (<state-ui> model)
+   ;(<state-ui> model)
    (<wf-ui>
         (cursor [:context])
         (cursor [:workflow])
