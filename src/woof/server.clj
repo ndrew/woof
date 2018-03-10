@@ -33,9 +33,11 @@
 
       (httpkit/on-receive chan
         (fn [payload]
-          (let [message (read-transit-str payload)]
+          (let [[ping message] (read-transit-str payload)]
             (println "Recieved:" message)
-            (httpkit/send! chan (write-transit-str ["pong" message])))))))
+            (httpkit/send! chan (write-transit-str [:pong message])))))
+      ))
+
   (compojure/GET "/" [] (response/resource-response "public/index.html"))
   (route/resources "/" {:root "public"}))
 
