@@ -1,8 +1,11 @@
 (ns woof.data-test
   (:require
     [clojure.test :refer :all]
+    [woof.core :as core]
     [woof.data :as d]
     [clojure.java.io :as io]))
+
+
 
 
 (deftest selector-test
@@ -13,6 +16,8 @@
       (is (d/selector? (read-string serialized-selector))))
   )
 )
+
+
 
 (deftest substitution-test
   (let [data {
@@ -55,6 +60,8 @@
   )
 
 
+
+
 (deftest update-data-test
   (is (= #{"bar"} (d/update-value (atom #{"foo"}) (d/selector ["foo"]) "bar")))
 
@@ -67,5 +74,37 @@
   )
 
 
-; (run-tests)
+;  woof.core test
+
+;; DATA tests
+(deftest core-data
+  (let [test-collection #^{::type :specific-edn} [1]]
+
+  (is (= :edn (core/get-type nil)))
+  (is (= :edn (core/get-type :azaza)))
+  (is (= :edn (core/get-type "")))
+  (is (= :edn (core/get-type 1)))
+  (is (= :edn (core/get-type 1.0)))
+  (is (= :edn (core/get-type []))) ;; collections could have
+
+  (is (= :edn (core/get-type test-collection)))
+  (is (= :edn (core/get-type {})))
+  (is (= :object (core/get-type (new java.util.Date))))
+
+  ;;  (core/get-type (js/Date.))
+
+  ;; v should return identity for primitive types
+  (is (= [] (core/v [])))
+  (is (= nil (core/v nil)))
+  (is (= 1 (core/v 1)))
+  (is (= 1.0 (core/v 1.0)))
+  (is (= :foo (core/v :foo)))
+  (is (= "" (core/v "")))
+
+; todo: does placeholder is needed anymore?
+;  (core/v {:foo :bar
+;           :p (d/placeholder [:foo])})
+  )
+
+)
 

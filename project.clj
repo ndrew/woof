@@ -13,7 +13,7 @@
                  [org.clojure/core.async  "0.3.443"
                   :exclusions [org.clojure/tools.reader]]
                  [rum "0.10.8"]
-                 [fipp "0.6.9"]
+                 [fipp "0.6.12"]
                  [clj-async-test "0.0.5"]
 
                  ;; benchmarking stuff
