@@ -18,7 +18,12 @@
     [woof.ui :as ui]
     [woof.wf-ui :as wf-ui]
     [woof.utils :as u]
-    [woof.test-data :as test-data])
+
+    [woof.test-data :as test-data]
+    ; [woof.wf-tester-ui :as tester-ui]
+    )
+
+
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]
     [woof.utils-macros :refer [put!?]]))
@@ -30,9 +35,6 @@
 
 
 (defonce TEST-WF-STEP-COUNT 25)
-
-
-
 
 
 
@@ -50,8 +52,11 @@
 
 
       ;; step handler to editor mapping
-      :editors {:pre   {}
-                :post {}}
+      ;:editors {:pre   {}
+      ;          :post {}}
+
+      :xctor nil
+      :xctor-chan nil
 
       }))
 
@@ -301,16 +306,111 @@
 
 
 
+
+;; state changing fns
+
+(defprotocol IWFUi
+  (get-status [this])
+  (set-status [this status])
+
+
+  (merge-result [this data])
+  (get-result* [this])
+
+  )
+
+(defn make-ui-state [local]
+  ; (::result local)
+
+  (reify IWFUi
+    (get-status [this] @(::status local))
+    (set-status [this status] (reset! (::status local) status))
+
+    (merge-result [this data]
+                  (swap! (::result local) merge data))
+
+    (get-result* [this] (::result local))
+    )
+  )
+
+
+
+
+
+
+
+(defn generate-wf-fn [UI-STATE]
+  (fn []
+
+    (merge-result UI-STATE {
+                   ::wf-status ::not-started
+                   ::history []
+                   ::steps   []
+                   ::result  {}
+                   ::header  (str "test wf (" TEST-WF-STEP-COUNT ")")
+                   ::start (u/now)})
+
+    (set-status UI-STATE ::steps-ui)
+    ((gen-new-wf-f! TEST-WF-STEP-COUNT))))
+
+
+;; menu items
+
+(defn- generate-wf-mi [UI-STATE]
+  [ "generate new" (generate-wf-fn UI-STATE)])
+
+
+(defn- stop-wf-mi [xctor]
+  ["stop"
+   (fn []
+     (wf/end! xctor)
+     ;; use different state, as stop is not immidiate
+     ;; (swap! (::result local) assoc-in [::wf-status] ::stopped)
+     )]
+  )
+
+
+(defn- expand-test-mi [model]
+  ["expand test"
+   (fn []
+     (let [{xpand-context :context
+            xpand-steps   :steps} (test-data/gen-expand-wf [:a :b :c])]
+
+       (app-model/merge-context model xpand-context)
+       (app-model/merge-steps   model xpand-steps)
+       )
+
+     )
+   ]
+  )
+
+
+(defn- re-run-mi [ui-model]
+  ["re-run" (fn []
+              (set-status ui-model ::steps-ui))])
+
+
+
+(defn- run-wf [model callback]
+  (app-model/start! model callback))
+
+(defn- run-wf-mi [model callback]
+  ["steps ready!"
+   (fn []
+     (run-wf model callback))])
+
+
+
 (rum/defcs <wf-ui>   <   rum/reactive
                           {:key-fn (fn [_ *workflow] (get @*workflow :name))}
 
                           (rum/local ::steps-ui  ::status)
 
-                          (rum/local nil         ::executor)
-                          (rum/local nil         ::exec-chan)
+                          ;(rum/local nil         ::executor)
+                          ;(rum/local nil         ::exec-chan)
 
                           (rum/local {:pre   {}
-                                       :post {}}  ::editors)
+                                      :post {}} ::editors)
 
                           (rum/local {::wf-status ::not-started
                                       ::steps      {}
@@ -320,73 +420,59 @@
                                       ::start      0
                                       } ::result)
 
-  [local *context *workflow *editors]
+  [local _*context _*workflow model]
 
 
-  (let [status    @(::status local)
-        executor  @(::executor local)
-        exec-chan @(::exec-chan local)
+  (let [UI-STATE (make-ui-state local)
+
+        *context   (app-model/get-context* model)
+        *workflow (app-model/get-workflow-cfg* model)
+        *editors   (::editors local)
+
+        status    (get-status UI-STATE)
+        executor  (app-model/get-xctor model)
+        exec-chan (app-model/get-xctor-chan model)
 
         {steps :steps
          header :name
          } @*workflow
 
-        execute-wf (fn []
-                     (reset! (::executor local) (wf/executor *context (:steps @*workflow))) ;; todo: choose executor
 
-                     (let [exec-chan (wf/time-updated-chan
-                                        (wf/execute! @(::executor local))
-                                        wf-ui/UI-UPDATE-RATE)]
+        process-wf! (fn [model]
 
-                       (reset! (::exec-chan local) exec-chan)
+                     (merge-result UI-STATE {
+                                              ::header header
+                                              ::wf-status ::running
+                                              ::steps steps
+                                              ::start (u/now)
+                                              })
 
-                       (swap! (::result local) merge {
-                                                       ::header header
-                                                       ::wf-status ::running
-                                                       ::steps steps
-                                                       ::start (u/now)
-                                                       })
-                       (reset! (::status local) ::results-ui)
 
-                       (let [opts {
-                                    :channel exec-chan
-                                    :op-handler (partial workflow-handler (::result local))
-                                    }
-                             worker (wf/->AsyncWFProcessor executor opts)]
+                     (set-status UI-STATE ::results-ui)
 
-                         (wf/process! worker)
-                         )
+                     (let [opts {
+                                  :channel (app-model/get-xctor-chan model)
+                                  :op-handler (partial workflow-handler (get-result* UI-STATE))
+                                  }
+                           worker (wf/->AsyncWFProcessor executor opts)]
 
-                       ))
+                       (wf/process! worker)
+                       )
+
+
+                     )
 
         steps-ready-fn (fn []
                          ;;
                          ;; uncomment this for intermediary screen
-                         ;; (reset! (::status local) ::workflow-ui)
+                         ;; (set-status UI-STATE ::workflow-ui)
 
-                         (execute-wf))
-
-        generate-wf-fn (fn []
-                         (swap! (::result local)
-                                merge {
-                                        ::wf-status ::not-started
-                                        ::history []
-                                        ::steps   []
-                                        ::result  {}
-                                        ::header  (str "test wf (" TEST-WF-STEP-COUNT ")")
-                                        ::start (u/now)})
-                         (reset! (::status local) ::steps-ui)
-                         ((gen-new-wf-f! TEST-WF-STEP-COUNT)))
-        stop-fn (fn []
-                  (wf/end! @(::executor local))
-
-                  ;; use different state, as stop is not immidiate
-                  ;; (swap! (::result local) assoc-in [::wf-status] ::stopped)
-                  )
+                         (run-wf model process-wf!)
+                         )
 
         preview-test-fn (fn []
           (let [preview-chan (async/chan)] ;; todo: use different channel for ui
-            (swap! (::editors local) update-in [:post] assoc ::preview preview-chan)
+            (swap! *editors update-in [:post] assoc ::preview preview-chan)
 
             (swap! *context merge
                    {:preview {:fn (partial passthought-fn preview-chan) :infinite true}})
@@ -397,13 +483,6 @@
                                           ::test-preview  [:8 10]
                                           ::preview [:preview ::test-preview]
                                           })))
-
-        expand-test-fn (fn []
-                         (let [{xpand-context :context
-                                xpand-steps   :steps} (test-data/gen-expand-wf [:a :b :c])]
-
-                           (swap! *context merge xpand-context)
-                           (swap! *workflow update-in [:steps] merge xpand-steps)))
 
         editor-test-fn (fn []
                          (let [editor-chan (async/chan)]
@@ -464,13 +543,13 @@
     [:div
      (when (#{::steps-ui} status)
        [:div
-        (ui/menubar header [["steps ready!" steps-ready-fn]
-                             ["generate new" generate-wf-fn]
+        (ui/menubar header [(run-wf-mi model process-wf!)
+                             (generate-wf-mi UI-STATE)
                              []
                              ["editor test" editor-test-fn]
                              ["preview test" preview-test-fn]
                              []
-                             ["expand test" expand-test-fn]
+                             (expand-test-mi model)
                              []
                              ["infinity " infinity-test-fn]
                             ])
@@ -505,7 +584,7 @@
 
      (when (#{::workflow-ui} status)
        [:div
-        (ui/menubar header [["run (normal)" execute-wf]
+        (ui/menubar header [["run (normal)" (fn[] (run-wf model process-wf!))]
                          ["run (timeout)" (fn[])]
                          ["run (with cache)" (fn[])]
                          ["debug" (fn[])]
@@ -523,8 +602,11 @@
               start   ::start
               } @(::result local)
              actions (if (= status ::done)
-                       [["re-run" (fn [] (reset! (::status local) ::steps-ui))] ["generate new" generate-wf-fn]]
-                       [["stop" stop-fn]])
+                       [
+                         (re-run-mi UI-STATE)
+                         (generate-wf-mi UI-STATE)
+                        ]
+                       [(stop-wf-mi (app-model/get-xctor model))])
 
              sort-steps (fn [steps]
                           ;(into (sorted-map-by <) steps)
@@ -542,13 +624,40 @@
 (def cursor (partial rum/cursor-in *APP-STATE))
 
 
+(rum/defcs <state-ui> [local wf-state]
+  (let [*context         (app-model/get-context* wf-state)
+        *workflow-cfg   (app-model/get-workflow-cfg* wf-state)
+         ]
+    [:div
+     [:header "context"]
+     [:pre (d/pretty @*context)]
+
+     [:header "workflow"]
+     [:pre (d/pretty @*workflow-cfg)]
+
+     ]
+  )
+  )
+
+
 (rum/defcs <app-ui>
   < rum/reactive [local *STATE]
+  (let [model (app-model/wf-state
+                 (cursor [:context])
+                 (cursor [:workflow])
+                 (cursor [:xctor])
+                 (cursor [:xctor-chan])
+                 )]
   [:div#app
-    (<wf-ui>
-      (cursor [:context])
-      (cursor [:workflow])
-      (cursor [::editors]))])
+   (<state-ui> model)
+   (<wf-ui>
+        (cursor [:context])
+        (cursor [:workflow])
+        model
+
+      )
+
+   ]))
 
 
 

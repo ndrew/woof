@@ -4,6 +4,9 @@
     [cljs.core.async :as async]
 
     [woof.utils :as u]
+    [woof.wf :as wf]
+
+    [woof.wf-ui :as wf-ui] ;; todo: move to different ns
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]
@@ -58,3 +61,67 @@
         }
     }
   )
+
+
+(defprotocol IWF
+  (get-context [this])
+
+
+  (merge-context [this xpand-context])
+  (merge-steps   [this xpand-steps])
+
+
+  (get-context* [this])
+  (get-workflow-cfg* [this])
+
+  (get-xctor [this])
+  (set-xctor [this xctor])
+
+  (get-xctor-chan [this])
+  (set-xctor-chan [this xctor-chan])
+
+
+  (start! [this callback])
+
+  )
+
+(defn wf-state [*context *workflow-cfg *xctor *xctor-chan]
+
+  (reify IWF
+
+    (get-context [this] @*context)
+
+    (merge-context [this new-context]
+       (swap! *context merge new-context))
+
+    (merge-steps   [this new-steps]
+       (swap! *workflow-cfg update-in [:steps] merge new-steps)
+                   )
+
+
+    (get-context* [this] *context)
+    (get-workflow-cfg* [this] *workflow-cfg)
+
+
+    (get-xctor [this] @*xctor)
+    (set-xctor [this xctor] (reset! *xctor xctor))
+
+    (get-xctor-chan [this] @*xctor-chan)
+    (set-xctor-chan [this xctor-chan] (reset! *xctor-chan xctor-chan))
+
+    (start! [this callback]
+          (set-xctor this (wf/executor *context
+                                       (:steps @*workflow-cfg)))
+
+          (let [exec-chan (wf/time-updated-chan ;; todo: move to protocol
+                            (wf/execute! (get-xctor this))
+                            wf-ui/UI-UPDATE-RATE)]
+
+            (set-xctor-chan this exec-chan)
+
+            (callback this)
+            )
+          )
+    )
+  )
+
