@@ -17,25 +17,32 @@
 
 
 
+; 1) context - holds step handlers available to a workflow
+
+(defonce SAMPLE-CONTEXT
+  {
+    :hello {:fn (fn [a]                  ;; each step handler accepts 1 argument
+                  (str "Hello " a))}
+    :timeout200 {:fn (fn [a]
+                       (Thread/sleep 200)
+                       (str "Hello " a))}
+    })
+
+
+
 ;; runs the simple workflow
 
-;(deftest simplest-pipeline
+(deftest simplest-pipeline
 
-  ; 1) context - holds step handlers available to a workflow
-  (let [context* (atom {
-                         :hello {:fn (fn [a]                  ;; each step handler accepts 1 argument
-                                       (str "Hello " a))}})
-
-        ; workflow is described by a flat map with finite number of steps
+  (let [; workflow is described by a flat map with finite number of steps
         steps (assoc (array-map)
                 ;; each step has it's unique id and step definition
                 ;; step definition is hiccup style vector where first el is step-id and second is step parameters
                 ::0 [:hello "World!"]
                 ::1 [:hello "Woof!"])
 
-
-        ; from context (mutable!) and steps - we can create executor
-        executor (wf/executor context* steps)]
+        ; from context (for now mutable) and steps - we create an executor
+        executor (wf/executor (atom SAMPLE-CONTEXT) steps)]
 
     ;; execute workflow synchronously (clojure only)
     (let [v @(wf/sync-execute! executor)]
@@ -43,10 +50,8 @@
 
       ;; we can use exec/extract-results to get only step results we need
       (is (= (wdata/extract-results v [::0]) {::0 "Hello World!"}))
-      (is (= (wdata/extract-results v [::1]) {::1 "Hello Woof!"}))
-      ))
-
-;)
+      (is (= (wdata/extract-results v [::1]) {::1 "Hello Woof!"}))))
+)
 
 
 
@@ -101,13 +106,11 @@
 
     (let [v @(wf/sync-execute! executor 2000)
           ;; move added results into resulting map
-          results (wdata/inline-results v)
-          ]
+          results (wdata/inline-results v)]
 
       (is (= results {::0 '("Hello world!" "Hello universe!")}))
 
       ))
-
   )
 
 
@@ -148,39 +151,28 @@
 
 
 
-#_(let [context* (atom {
-                  :hello {:fn (fn [a]
-                                (Thread/sleep 200)
-                                (str "Hello " a))}})
-
-        timeout-steps (assoc (array-map)
-                ::0 [:hello "World!"])
-
-        no-such-step (assoc (array-map) ::0 [:no-such-step ""])
-
-
-        executor (partial wf/executor context*)]
-
-    ;; handle timeout
-    ;(is (thrown? Exception @(wf/sync-execute! (executor timeout-steps) 10)))
-
-
-
-    ;; todo: handle no such step
-    ;;(is (thrown? Exception @(wf/sync-execute! (executor no-such-step) 10)))
-
-
-    @(wf/sync-execute! (executor no-such-step) 1000)
-
-    )
-
-
 
 (deftest error-handling
 
   ;; in case of something workflow will throw an exception
+  (let [context* (atom SAMPLE-CONTEXT)
+
+        timeout-steps (assoc (array-map)
+                        ::0 [:timeout200 "World!"])
+
+        no-such-step (assoc (array-map)
+                        ::0 [:no-such-step ""])
 
 
+        xctor (partial wf/executor context*)]
+
+    ;; handle timeout
+    (is (thrown? Exception @(wf/sync-execute! (xctor timeout-steps) 10)))
+
+    ;; todo: handle no such step
+    (is (thrown? Exception @(wf/sync-execute! (xctor no-such-step) 10)))
+
+    )
   )
 
 

@@ -60,14 +60,12 @@
 
 (defn- get-step-cached-impl [*context cache]
   ;; cache is ICache
-
   (fn [step-id]
     (let [step-cfg (get @*context step-id)]
       (if (:expands? step-cfg) ;; todo: add cache flag?
         (:fn step-cfg)
         (cache/memoize! cache (:fn step-cfg) step-id)))
     )
-
   )
 
 
@@ -854,59 +852,61 @@
 ;; convenience functions
 ;; ========================================================
 
+(defn- process-wf-result [v]
+
+  (println "process-wf-result" (d/pretty v))
+
+  (if (u/exception? v)
+    (u/throw! v)
+    (if (nil? v)
+      (u/throw! "workflow stopped due to timeout!")
+      v)))
+
+
+
+(comment
+            ;; use destructuring like these
+               { init-handler :init
+                process-handler :process
+                wf-handler :wf-update
+               ; :or { process-handler (fn [data] (println (d/pretty data))) }
+               } options
+          )
+
 
 (defrecord FutureWF [executor options]
   IProcessor
 
   (process! [this]
-            ;; todo: throw exception for cljs
+    #?(:clj
 
-            #?(:clj
+        (let [t (get this ::timeout 5000)]
+          (future
+            (let [timeout-chan (async/timeout t)
+                  result-chan (execute! executor)]
 
-                (let [t (get this ::timeout 5000)
-                      {err-handler :error ;; todo: use this approach
+              (go-loop []
+                       (let [[status data] (async/<! result-chan)]
 
-                       :or {
-                             err-handler (fn [data]
-                                           (u/throw! data))
-                             }
-                       } options
+                         (condp = status
+                           :error (do
+                                    ;; TODO: error handling strategies8
 
-                      ;; todo: write these as macros
-                      ]
+                                    (async/>! timeout-chan data) ;; send the exception as a result
+                                    (u/throw! data)              ;; re-throw it, so wf will stop
+                                    )
+                           :done (async/>! timeout-chan data)
 
-                  (future
-                    (let [wait-chan (async/timeout t)
-                          result-chan (execute! executor)]
+                           (let [custom-handler (get options status)]
+                             (if custom-handler
+                                (custom-handler data))
+                             (recur))
+                           )))
 
-                      (go-loop []
-                               (let [[status data] (async/<! result-chan)]
-
-                                 (condp = status
-                                   :error (do
-                                            (err-handler data)
-                                            ;(async/>! wait-chan data)
-                                            )
-                                   :done (async/>! wait-chan data)
-                                   (do ; skip :init :process and other steps
-                                     (recur)))))
-
-                      (let [v (async/<!! wait-chan)]
-                        (if (u/exception? v)
-                          (u/throw! v)
-                          (if (nil? v)
-                            (u/throw! "workflow stopped due to timeout!")
-                            v)
-                          ))
-
-                      )
-
-                    )
-
-                  ))
-
-            )
-  )
+              (process-wf-result (async/<!! timeout-chan)) ;; todo: close channel?
+              ))
+          )))
+)
 
 
 #?(:clj
@@ -918,24 +918,19 @@
 
      )
     ([executor t]
-
       (process!
-        (assoc (->FutureWF executor {})
-                  ::timeout t ; pass the optional params
-                                  ))
-     ))
-
+        (assoc (->FutureWF executor {}) ; pass the optional params
+                  ::timeout t))
+     )
+    ([executor t options]
+      (process!
+        (assoc (->FutureWF executor options)
+                  ::timeout t))
+     )
+    )
 )
 
 
 
-
-
-
 ;; TODO: add workflow merging
-
-
-
-
-
 
