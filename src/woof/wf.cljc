@@ -188,7 +188,14 @@
                     )
 
         (add-pending-steps! [this actions]
-                           (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions)))
+
+                            ;; fixme:
+                            (if (satisfies? clojure.core.protocols/IKVReduce actions)
+                              (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
+                              (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions))
+                              )
+
+                            )
 
         (step-ready! [this id]
                      (swap! *steps-left dissoc id))
@@ -358,6 +365,7 @@
                )
              (do-commit! this id result)))
 
+
   (expand! [this id step-id params actions]
            (if (u/channel? actions)
              (let [*steps-left (get-steps-left this)
@@ -388,15 +396,12 @@
 
 
 
+
+
 (defn make-state-cfg [steps process-channel] ; bs
   {:steps steps
    :process-channel process-channel}
   )
-
-
-
-
-
 
 
 
@@ -507,6 +512,7 @@
 
   (process-steps! [this process-channel steps])
 )
+
 
 (defrecord WFStepProcessor [R commit! get! *prev-added-steps *prev-results]
   IStepProcessor
@@ -639,9 +645,14 @@
     )
   )
 
+
+
+
 (defn async-exec
   "workflow running algorithm"
   ([executor R ready-channel process-channel]
+
+
    ;; todo: add notification channel for ui updates
    ;; todo: rename R to something better
   (let [ PUT_RETRY_T 1000
@@ -802,6 +813,8 @@
 
     ; return channel, first there will be list of pending actions, then the completed ones be added, then channel will be close on the last
     ready-channel)))
+
+
 
 
 
