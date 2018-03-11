@@ -120,7 +120,11 @@
 
   (add-steps! [this steps])
   (add-pending-steps! [this steps])
+
   (step-ready! [this id])
+  (step-working! [this id])
+
+  (is-step-working? [this id])
 )
 
 
@@ -188,6 +192,12 @@
 
         (step-ready! [this id]
                      (swap! *steps-left dissoc id))
+
+        (step-working! [this id]
+                      (swap! *steps-left assoc id :working))
+
+        (is-step-working? [this id]
+                         (= :working (get @*steps-left id)))
       )
     )
   )
@@ -248,7 +258,8 @@
 
     #?(:clj  (dosync
                 (swap! *results assoc id result)
-                (step-ready! STEPS id) ;; todo: dissoc only if not infinite mode
+
+                 (step-ready! STEPS id) ;; todo: dissoc only if not infinite mode
                ))
     #?(:cljs (do
                 (swap! *results assoc id result)
@@ -309,15 +320,18 @@
            ;;(println "commit!" id step-id params result)
 
            (if (u/channel? result)
-             (let [*steps-left (get-steps-left this)
-                   status (get @*steps-left id)
+
+             (let [*steps-left (get-steps-left* STEPS)
+
                    *context (get this :CTX)
                    infinite? (:infinite (get @*context step-id))]
 
-               (if-not (= :working status)
+               (if-not (is-step-working? STEPS id)
                  (do
+
                    (swap! (get-results this) assoc id result)
-                   (swap! *steps-left assoc id :working)
+                   (step-working! STEPS id)
+
                    (if infinite?
                      (do
 
