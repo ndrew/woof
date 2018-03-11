@@ -24,8 +24,11 @@
 
 (compojure/defroutes app
   (compojure/GET "/api/websocket" [:as req]
+
+
     (httpkit/with-channel req chan
       (println "Connected")
+
 
       (httpkit/on-close chan
         (fn [status]
@@ -39,6 +42,9 @@
       ))
 
   (compojure/GET "/" [] (response/resource-response "public/index.html"))
+
+  (compojure/GET "/ajax" [] (write-transit-str "Hello from AJAX"))
+
   (route/resources "/" {:root "public"}))
 
 

@@ -17,6 +17,16 @@
 
 (defn default-context []
   {
+
+
+
+    :clojure {:fn (fn [a]
+                    a
+                    )
+              :server? true
+              }
+
+
     :identity {:fn (fn [a] a)}
 
     :identity-async {:fn (fn [a]

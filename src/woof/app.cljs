@@ -34,7 +34,6 @@
 
 
 
-(defonce TEST-WF-STEP-COUNT 25)
 
 
 
@@ -351,6 +350,8 @@
 
 ;; generate test workflow
 
+(defonce TEST-WF-STEP-COUNT 25)
+
 (defn generate-wf-fn [UI-STATE]
   (fn []
 
@@ -367,7 +368,7 @@
 
 
 (defn- generate-wf-mi [UI-STATE]
-  [ "generate new" (generate-wf-fn UI-STATE)])
+  ["generate new" (generate-wf-fn UI-STATE)])
 
 
 ;; stop workflow
@@ -427,6 +428,24 @@
                                       ::test-preview  [:8 10]
                                       ::preview [:preview ::test-preview]
                                       })))
+   ]
+  )
+
+;;
+(defn- ajax-step-mi [model UI-STATE]
+
+  ["ajax wf"
+   (fn[]
+     ;; ws/make-ajax-handler
+
+     (app-model/merge-context model
+                              {:ajax {:fn ws/transit-handler}})
+
+     (app-model/merge-steps model {
+                                      ::test-ajax  [:ajax (ws/resolve-url "/ajax")]
+                                      })
+
+     )
    ]
   )
 
@@ -568,6 +587,8 @@
                                    ;; todo:
                                    )]
                          []
+
+                         (ajax-step-mi model UI-STATE)
                          (generate-wf-mi UI-STATE)
                          (expand-test-mi model)
                          (editor-mi model UI-STATE)
@@ -652,20 +673,48 @@
 (def cursor (partial rum/cursor-in *APP-STATE))
 
 
-(rum/defcs <state-ui> [local wf-state]
-  (let [*context         (app-model/get-context* wf-state)
-        *workflow-cfg   (app-model/get-workflow-cfg* wf-state)
-         ]
+
+
+
+(rum/defcs <server-ui> < rum/reactive
+                         (rum/local nil  ::socket)
+  [local model server]
+  (let [actions [ ["init ws" (fn[]
+                                  (ws/start server)
+                                (reset! (::socket local) (ws/get-socket server)))]
+
+                  ["client-server wf"
+                   (fn[]
+                     (app-model/start! model
+                                       (fn [model]
+                                         (let [opts {
+                                                      :channel (app-model/get-xctor-chan model)
+                                                      :op-handler (partial ws/server-wf-handler model)
+                                                      }
+                                               xctor (app-model/get-xctor model)
+                                               worker (wf/->AsyncWFProcessor xctor opts)]
+
+                                           (wf/process! worker)
+                                           )
+                                         ))
+
+
+                     )
+                   ]
+                  ]
+        socket @(::socket local)
+        ]
     [:div
-     [:header "context"]
-     [:pre (d/pretty @*context)]
+       (ui/menubar "Server:"
+                   (if socket
+                     (into actions [["client ping"
+                                     (fn[]
+                                       (.send socket (ws/write-transit [:client-ping "Hello"]))
 
-     [:header "workflow"]
-     [:pre (d/pretty @*workflow-cfg)]
-
-     ]
-  )
-  )
+                                       )]])
+                     actions
+                     )
+                   )]))
 
 
 (rum/defcs <app-ui>
@@ -673,21 +722,25 @@
 
   ;; todo: put model in state, so it can be reset
   (let [model (app-model/wf-state
-                 (cursor [:context])
-                 (cursor [:workflow])
-                 (cursor [:xctor])
-                 (cursor [:xctor-chan])
-                 )]
-  [:div#app
-   ;(<state-ui> model)
-   (<wf-ui>
-        (cursor [:context])
-        (cursor [:workflow])
-        model
+                (cursor [:context])
+                (cursor [:workflow])
+                (cursor [:xctor])
+                (cursor [:xctor-chan])
+                )
 
-      )
+        server (ws/ws-server "/api/websocket" model)
 
-   ]))
+        ]
+    [:div#app
+     (<server-ui> model server)
+     (<wf-ui>
+       (cursor [:context])
+       (cursor [:workflow])
+       model
+
+       )
+
+     ]))
 
 
 
@@ -696,62 +749,6 @@
 
 
 ; todo:
-
-#_(let [socket (ws/connect "/api/websocket"
-                 :on-open    (fn []
-                               (println "ws open")
-
-                               (.log js/console socket)
-
-                               )
-                 :on-close   (fn [] (println "ws close"))
-                 :on-message (fn [msg] (println "got " msg)))]
-
-
-
-
-  )
-
-
-#_(defn- listen-loop []
-  (let [socket-ch (async/chan 1)
-        data-ch   (async/chan 10)
-        ajax-ch   (async/chan 1)
-        socket (ws/connect "/api/websocket"
-                 :on-open    #(async/put! socket-ch :open)
-                 :on-close   #(doseq [ch [socket-ch ajax-ch data-ch]]
-                                (async/close! ch))
-                 :on-message #(async/put! data-ch %))]
-    (go
-      (when (async/<! socket-ch) ;; open socket
-        (swap! app-state assoc :progress 0.3)
-        (u/ajax "/api/db/" (fn [datoms] (async/put! ajax-ch datoms) (swap! app-state assoc :progress 0.6)))
-        (let [[dump _] (async/alts! [ajax-ch (async/timeout 30000)])]
-          (when dump  ;; wait ajax
-            (profile "DB initialization"
-              (reset! conn (d/init-db dump schema))
-              (let [num-users (count (d/datoms @conn :aevt :user/name))
-                    num-datoms (count (:eavt @conn))
-                    num-achs (count (d/datoms @conn :aevt :ach/sha1))]
-                (println "Pushed [datoms:" num-datoms "] [users:" num-users "] [achievements:" num-achs "]")
-                (swap! app-state assoc
-                  :users {:total num-users :visible (min 30 num-users)}
-                  :first-load? false
-                  :progress 1)))
-            (loop []
-              (when-let [tx-data (async/<! data-ch)]  ;; listen for socket
-                (try
-                  (d/transact! conn tx-data)
-                  (let [num-users (count (d/datoms @conn :aevt :user/name))]
-                    (swap! app-state assoc-in [:users :total] num-users))
-                  (catch js/Error e
-                    (.error js/console e)))
-                (recur))))
-          (.close socket)))
-     (swap! app-state assoc :progress -1)
-     (js/setTimeout listen-loop 1000))))
-
-
 
 (add-watch *APP-STATE :watcher
   (fn [key atom old-state new-state]
