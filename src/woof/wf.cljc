@@ -42,8 +42,9 @@
 
 
 
-(defn- get-step-impl [*context]
 
+;; context as map in atom
+(defn- get-step-impl [*context]
   (fn [step-id]
     (let [step-cfg (get @*context step-id)]
         (if-let [f (:fn step-cfg)]
@@ -52,10 +53,8 @@
             (throw
               #?(:clj (Exception. (str "No step handler " step-id " in context" )))
               #?(:cljs (js/Error. (str "No step handler " step-id " in context" )))
-            )
-          ))))
+            ))))))
 
-)
 
 
 (defn- get-step-cached-impl [*context cache]
@@ -87,9 +86,7 @@
 ;;
 ;; protocol for processing workflow results
 (defprotocol IProcessor
-
   (process! [this])
-
   )
 
 
@@ -98,9 +95,12 @@
 ;; WIP: IState
 
 
+
+
 ;;
 ;; todo: refactor IState into model and behaviour
 (defprotocol IState
+
   (get-initial-steps [this])
   (get-steps [this])
   (get-steps2add [this])
@@ -147,35 +147,34 @@
 )
 
 
-; move the params to a :keys
 
-(defrecord WFState [*state *context cfg *steps *steps2add *steps-left *results ]
+; move the params to a :keys
+(defrecord WFState [*state cfg ]
   IState
   ;;
   (get-initial-steps [this] (:steps cfg))
-  (get-context* [this] *context)
 
-  (get-steps [this] *steps)
-  (get-steps2add [this] *steps2add)
-  (get-steps-left [this] *steps-left)
-  (get-results [this] *results)
+  (get-context* [this] (get this :CTX))
+  (get-steps [this] (get this :STEPS))
+  (get-steps2add [this] (get this :STEPS2ADD))
+  (get-steps-left [this] (get this :STEPSLEFT))
+
+  (get-results [this] (get this :RESULTS))
 
   (do-commit! [this id result]
-    #?(:clj  (dosync (wf-do-save! *results *steps-left id result)))
-    #?(:cljs (wf-do-save! *results *steps-left  id result)))
+    #?(:clj  (dosync (wf-do-save! (get-results this) (get-steps-left this) id result)))
+    #?(:cljs (wf-do-save! (get-results this) (get-steps-left this) id result)))
 
 
   (do-update! [this msg]
               (let [[id step-id params result] msg]
                 ;(println "UPDATE: " (d/pretty msg))
 
-
-
-                (let [d-steps (rest (g/get-dependant-steps @*steps id))]
+                (let [d-steps (rest (g/get-dependant-steps @(get-steps this) id))]
                   ;;
 
-                  (swap! *results (partial apply dissoc) d-steps)
-                  (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} d-steps))
+                  (swap! (get-results this) (partial apply dissoc) d-steps)
+                  (swap! (get-steps-left this) merge (reduce #(assoc %1 %2 :pending) {} d-steps))
 
                   (do-commit! this id result)
 
@@ -189,19 +188,21 @@
 
 
   (do-expand! [this id actions]
-              #?(:clj (dosync (wf-do-expand! *results *steps-left *steps2add id actions)))
-              #?(:cljs (wf-do-expand! *results *steps-left *steps2add id actions))
+              (let [*steps2add (get-steps2add this)]
+                #?(:clj (dosync (wf-do-expand! (get-results this) (get-steps-left this) *steps2add id actions)))
+                #?(:cljs (wf-do-expand! (get-results this) (get-steps-left this) *steps2add id actions))
+                )
               )
 
   (update-steps! [this [op nu-steps]]
-
+                 (let [*steps2add (get-steps2add this)]
                  (cond
                    (= op :add)
                    (do
                      (let [new-steps @*steps2add]
                            ; (println "new steps" (d/pretty added-steps) "\nvs\n" (d/pretty new-steps))
                            (when-not (empty? new-steps)
-                             (swap! *steps merge new-steps)
+                             (swap! (get-steps this) merge new-steps)
 
                              #_(println "PROCESS ADDED STEPS:\n"
                                       "new-steps —" (d/pretty new-steps)
@@ -210,8 +211,6 @@
                              (reset! *steps2add (array-map))
 
                              ))
-
-
                      )
 
                    (= op :update)
@@ -220,7 +219,9 @@
                      ;; (swap! *steps merge new-steps)
 
                      ;; #?(:cljs (.error js/console (pr-str [op nu-steps "local " (empty? @*steps2add)])))
-                     )))
+                     ))
+                 )
+                 )
 
 
 
@@ -228,12 +229,14 @@
            ;;(println "commit!" id step-id params result)
 
            (if (u/channel? result)
-             (let [status (get @*steps-left id)
+             (let [*steps-left (get-steps-left this)
+                   status (get @*steps-left id)
+                   *context (get this :CTX)
                    infinite? (:infinite (get @*context step-id))]
 
                (if-not (= :working status)
                  (do
-                   (swap! *results assoc id result)
+                   (swap! (get-results this) assoc id result)
                    (swap! *steps-left assoc id :working)
                    (if infinite?
                      (do
@@ -263,9 +266,10 @@
 
   (expand! [this id step-id params actions]
            (if (u/channel? actions)
-             (let [status (get @*steps-left id)]
+             (let [*steps-left (get-steps-left this)
+                    status (get @*steps-left id)]
                (when-not (= :working status)
-                 (swap! *results assoc id actions) ;; store channel
+                 (swap! (get-results this) assoc id actions) ;; store channel
                  (swap! *steps-left assoc id :working)
                  (go
                    (let [v (async/<! actions)]
@@ -283,12 +287,12 @@
   (ready? [this]
           (and
             (empty? (get @*state :infinite {})) ;; todo: use separate state var
-            (every? #(= % :ok) (vals @*steps-left))))
+            (every? #(= % :ok) (vals @(get-steps-left this)))))
+
 
   (get! [this id]  ; get!
-        (u/nil-get @*results id))
+        (u/nil-get @(get-results this) id))
 )
-
 
 
 
@@ -299,6 +303,11 @@
 
 
 
+
+
+
+
+
 (defn make-state! [*context state-config]
   (let [*state (atom {:infinite {}})
         steps (:steps state-config)
@@ -306,8 +315,20 @@
         *steps2add (atom (array-map))
         *steps-left (atom (reduce-kv (fn [a k v] (assoc a k :pending)) {} steps))
         *results (atom (array-map))]
-    (->WFState *state *context state-config
-               *steps *steps2add *steps-left *results )))
+
+    (assoc
+      (->WFState *state state-config)
+
+      ; pass the optional params
+        :STATE *state
+        :CTX *context
+        :STEPS *steps
+        :STEPS2ADD *steps2add
+        :STEPSLEFT *steps-left
+        :RESULTS *results
+      )
+    )
+)
 
 
 
