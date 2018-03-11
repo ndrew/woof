@@ -70,6 +70,8 @@
 
 
 
+
+
 ;;
 ;; top-level protocol for wf executor + context
 (defprotocol IExecutor ; - producer
@@ -83,6 +85,7 @@
 
 
 
+
 ;;
 ;; protocol for processing workflow results
 (defprotocol IProcessor
@@ -93,6 +96,101 @@
 
 ;;
 ;; WIP: IState
+
+
+
+(defprotocol WoofSteps
+
+  (initial-steps [this])
+
+  (steps [this])
+
+  (get-steps* [this])
+  (get-steps2add* [this])
+  (get-steps-left* [this])
+
+
+  (do-update-steps! [this added-steps])
+
+  (get-infinite-step [this id])
+
+  (set-infinite-step [this id result])
+
+  (steps-ready? [this])
+
+  (add-steps! [this steps])
+  (add-pending-steps! [this steps])
+  (step-ready! [this id])
+)
+
+
+
+(defn make-steps-model! [steps]
+  (let [*state (atom {:infinite {}})
+        *results (atom (array-map))
+
+        *steps (atom steps)
+        *steps2add (atom (array-map))
+        *steps-left (atom (reduce-kv (fn [a k v] (assoc a k :pending)) {} steps))]
+
+    (reify WoofSteps
+      (initial-steps [this] steps)
+
+      (steps [this] @*steps)
+      (get-steps* [this] *steps)
+      (get-steps2add* [this] *steps2add)
+      (get-steps-left* [this] *steps-left)
+
+
+      (do-update-steps! [this [op nu-steps]]
+                 (cond
+                   (= op :add)
+                   (do
+                     (let [new-steps @*steps2add]
+                           ; (println "new steps" (d/pretty added-steps) "\nvs\n" (d/pretty new-steps))
+                           (when-not (empty? new-steps)
+                             (swap! *steps merge new-steps)
+
+                             #_(println "PROCESS ADDED STEPS:\n"
+                                      "new-steps —" (d/pretty new-steps)
+                                      "steps2add —" (d/pretty @*steps2add)
+                                      )
+                             (reset! *steps2add (array-map)))))
+
+                   (= op :update)
+                   (do
+                     ;; <?> should we do ?
+                     ;; (swap! *steps merge new-steps)
+
+                     ;; #?(:cljs (.error js/console (pr-str [op nu-steps "local " (empty? @*steps2add)])))
+                     ))
+                 )
+
+        (get-infinite-step [this id]
+            (get-in @*state [:infinite id]))
+
+        (set-infinite-step [this id result]
+            (swap! *state update-in [:infinite] assoc id result))
+
+
+        (steps-ready? [this]
+                      (and
+                        (empty? (get @*state :infinite {}))
+                        (every? #(= % :ok) (vals @*steps-left)))
+                      )
+
+        (add-steps! [this actions]
+                    (swap! *steps2add into actions)
+                    )
+
+        (add-pending-steps! [this actions]
+                           (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions)))
+
+        (step-ready! [this id]
+                     (swap! *steps-left dissoc id))
+      )
+    )
+  )
 
 
 
@@ -127,59 +225,50 @@
 
 
 
-(defn wf-do-save!
-  [*results *steps-left id result]
-
-  (swap! *results assoc id result)
-;; todo: dissoc only if not infinite mode
-  (swap! *steps-left dissoc id)
-  )
-
-
-
-(defn wf-do-expand! [*results *steps-left *steps2add id actions]
-
-  (swap! *steps2add into actions)
-  (swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
-
-  (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
-  (swap! *steps-left dissoc id)
-)
 
 
 
 ; move the params to a :keys
-(defrecord WFState [*state cfg ]
+(defrecord WFState [cfg STEPS]
   IState
   ;;
-  (get-initial-steps [this] (:steps cfg))
+  (get-initial-steps [this] (initial-steps STEPS))
+
+  (get-steps [this] (get-steps* STEPS))
+  (get-steps2add [this] (get-steps2add* STEPS))
+  (get-steps-left [this] (get-steps-left* STEPS))
+
 
   (get-context* [this] (get this :CTX))
-  (get-steps [this] (get this :STEPS))
-  (get-steps2add [this] (get this :STEPS2ADD))
-  (get-steps-left [this] (get this :STEPSLEFT))
-
   (get-results [this] (get this :RESULTS))
 
+
   (do-commit! [this id result]
-    #?(:clj  (dosync (wf-do-save! (get-results this) (get-steps-left this) id result)))
-    #?(:cljs (wf-do-save! (get-results this) (get-steps-left this) id result)))
+      (let [*results (get-results this)]
+
+    #?(:clj  (dosync
+                (swap! *results assoc id result)
+                (step-ready! STEPS id) ;; todo: dissoc only if not infinite mode
+               ))
+    #?(:cljs (do
+                (swap! *results assoc id result)
+                (step-ready! STEPS id) ;; todo: dissoc only if not infinite mode
+             ))
+    ))
 
 
   (do-update! [this msg]
               (let [[id step-id params result] msg]
                 ;(println "UPDATE: " (d/pretty msg))
 
-                (let [d-steps (rest (g/get-dependant-steps @(get-steps this) id))]
+                (let [d-steps (rest (g/get-dependant-steps (steps STEPS) id))]
                   ;;
 
                   (swap! (get-results this) (partial apply dissoc) d-steps)
-                  (swap! (get-steps-left this) merge (reduce #(assoc %1 %2 :pending) {} d-steps))
+
+                  (add-pending-steps! STEPS d-steps)
 
                   (do-commit! this id result)
-
-;; #?(:cljs (.error js/console (d/pretty ["send :steps" id d-steps])))
-
                   ;; put update only if things had changed
                   (go
                     (put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
@@ -188,40 +277,31 @@
 
 
   (do-expand! [this id actions]
-              (let [*steps2add (get-steps2add this)]
-                #?(:clj (dosync (wf-do-expand! (get-results this) (get-steps-left this) *steps2add id actions)))
-                #?(:cljs (wf-do-expand! (get-results this) (get-steps-left this) *steps2add id actions))
+              (let [*results (get-results this)]
+
+                #?(:clj (dosync
+                    ;; does order here matters?
+                    (swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
+
+                    (add-steps! STEPS actions)
+                    (add-pending-steps! STEPS actions)
+                    (step-ready! STEPS id)
+                          ))
+                #?(:cljs (do
+                    ;; does order here matters?
+                    (swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
+
+                    (add-steps! STEPS actions)
+                    (add-pending-steps! STEPS actions)
+                    (step-ready! STEPS id)
+                           ))
+
                 )
               )
 
-  (update-steps! [this [op nu-steps]]
-                 (let [*steps2add (get-steps2add this)]
-                 (cond
-                   (= op :add)
-                   (do
-                     (let [new-steps @*steps2add]
-                           ; (println "new steps" (d/pretty added-steps) "\nvs\n" (d/pretty new-steps))
-                           (when-not (empty? new-steps)
-                             (swap! (get-steps this) merge new-steps)
 
-                             #_(println "PROCESS ADDED STEPS:\n"
-                                      "new-steps —" (d/pretty new-steps)
-                                      "steps2add —" (d/pretty @*steps2add)
-                                      )
-                             (reset! *steps2add (array-map))
-
-                             ))
-                     )
-
-                   (= op :update)
-                   (do
-                     ;; <?> should we do ?
-                     ;; (swap! *steps merge new-steps)
-
-                     ;; #?(:cljs (.error js/console (pr-str [op nu-steps "local " (empty? @*steps2add)])))
-                     ))
-                 )
-                 )
+  (update-steps! [this params]
+                 (do-update-steps! STEPS params))
 
 
 
@@ -241,8 +321,8 @@
                    (if infinite?
                      (do
 
-                       (when-not (get-in @*state [:infinite id])
-                         (swap! *state update-in [:infinite] assoc id result) ;; ;; store channel
+                       (when-not (get-infinite-step STEPS id)
+                         (set-infinite-step STEPS id result) ;; store channel
                          (go-loop []
                            (let [v (async/<! result)] ;; u/<?
                              ;; TODO: do we need to close the channel
@@ -285,9 +365,7 @@
                )))
 
   (ready? [this]
-          (and
-            (empty? (get @*state :infinite {})) ;; todo: use separate state var
-            (every? #(= % :ok) (vals @(get-steps-left this)))))
+          (steps-ready? STEPS))
 
 
   (get! [this id]  ; get!
@@ -296,7 +374,7 @@
 
 
 
-(defn make-state-cfg [steps process-channel]
+(defn make-state-cfg [steps process-channel] ; bs
   {:steps steps
    :process-channel process-channel}
   )
@@ -309,22 +387,16 @@
 
 
 (defn make-state! [*context state-config]
-  (let [*state (atom {:infinite {}})
-        steps (:steps state-config)
-        *steps (atom steps)
-        *steps2add (atom (array-map))
-        *steps-left (atom (reduce-kv (fn [a k v] (assoc a k :pending)) {} steps))
-        *results (atom (array-map))]
+  (let [*results (atom (array-map))
+
+        steps-model (make-steps-model! (:steps state-config))
+        ]
 
     (assoc
-      (->WFState *state state-config)
+      (->WFState state-config steps-model)
 
       ; pass the optional params
-        :STATE *state
         :CTX *context
-        :STEPS *steps
-        :STEPS2ADD *steps2add
-        :STEPSLEFT *steps-left
         :RESULTS *results
       )
     )
