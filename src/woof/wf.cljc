@@ -35,9 +35,12 @@
 
 ;;
 ;; context is an interface for map type thingy that holds step functions
-(defprotocol IContext
+(defprotocol WoofContext
   ;; gets step function by step-id
   (get-step-fn [this step-id])
+
+  ;;
+  (build-executor [this steps])
   )
 
 
@@ -506,7 +509,7 @@
 
 
 
-(defprotocol IStepProcessor
+(defprotocol WoofStepProcessor ;; "produces" messages while processing wf
 
   (process-step! [this step])
 
@@ -514,8 +517,9 @@
 )
 
 
+
 (defrecord WFStepProcessor [R commit! get! *prev-added-steps *prev-results]
-  IStepProcessor
+  WoofStepProcessor
 
   (process-step!
     [this [id [step-id params]]]
@@ -829,10 +833,14 @@
         (go
           (async/>! process-channel [:stop this])))
 
-  IContext
+  WoofContext
 
   (get-step-fn [this step-id]
     ((get-step-impl *context) step-id))
+
+  (build-executor [this steps]
+                 ;; TODO:
+                 )
 
   )
 
@@ -847,12 +855,14 @@
         (go
           (async/>! process-channel [:stop this])))
 
-  IContext
+  WoofContext
 
   (get-step-fn [this step-id]
     ((get-step-cached-impl *context cache) step-id))
 
-
+  (build-executor [this steps]
+                 ;; TODO:
+                 )
   )
 
 
@@ -887,10 +897,14 @@
         (end! [this]
               (end! xctor))
 
-        IContext
+        WoofContext
 
         (get-step-fn [this step-id]
           ((get-step-impl *context) step-id)) ;; todo: get from context impl
+
+        (build-executor [this steps]
+                 ;; TODO:
+                 )
 
         ))
 
@@ -1122,4 +1136,32 @@
 
 
 ;; TODO: add workflow merging
+
+
+
+(defn make-context
+  "workflow constuctor"
+  ([*context]
+   (make-context *context {}))
+
+  ([*context options]
+
+   (let [{} options]
+     ;; todo: add cached executor
+     (reify
+          WoofContext
+
+          (get-step-fn [this step-id]
+            ((get-step-impl *context) step-id)) ;; todo: get from context impl
+
+          (build-executor [this steps]
+              (executor *context steps))
+
+          ))
+   )
+
+
+   )
+
+
 

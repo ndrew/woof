@@ -41,8 +41,10 @@
                 ::0 [:hello "World!"]
                 ::1 [:hello "Woof!"])
 
-        ; from context (for now mutable) and steps - we create an executor
-        executor (wf/executor (atom SAMPLE-CONTEXT) steps)]
+         context (wf/make-context (atom SAMPLE-CONTEXT))
+
+         ; from context (for now mutable) and steps - we create an executor
+         executor (wf/build-executor context steps)]
 
     ;; execute workflow synchronously (clojure only)
     (let [v @(wf/sync-execute! executor)]
@@ -70,7 +72,10 @@
 
         ;; note that order of steps is unimportant
 
-        executor (wf/executor context* steps)]
+        context (wf/make-context context*)
+
+        ; from context (for now mutable) and steps - we create an executor
+        executor (wf/build-executor context steps)]
 
     (let [v @(wf/sync-execute! executor)]
       (is (= (wdata/extract-results v [::0]) {::0 "Hello world!"})))
@@ -102,7 +107,10 @@
         steps (assoc (array-map)
                 ::0 [:expand ["world" "universe"]])
 
-        executor (wf/executor context* steps)]
+        context (wf/make-context context*)
+
+        ; from context (for now mutable) and steps - we create an executor
+        executor (wf/build-executor context steps)]
 
     (let [v @(wf/sync-execute! executor 2000)
           ;; move added results into resulting map
@@ -117,9 +125,11 @@
 
 (deftest expand-wf-test
   (let [{
-          context :context
-            steps :steps } (test-data/gen-expand-wf [:a :b :c])
-        executor (wf/executor (atom context) steps)]
+          context-map :context
+                 steps :steps } (test-data/gen-expand-wf [:a :b :c])
+
+        context (wf/make-context (atom context-map))
+        executor (wf/build-executor context steps)]
 
     (let [v @(wf/sync-execute! executor 2000)]
       ;(println (d/pretty v))
@@ -164,13 +174,16 @@
                         ::0 [:no-such-step ""])
 
 
-        xctor (partial wf/executor context*)]
+        context (wf/make-context context*)
+        xctor (partial wf/build-executor context)]
 
-    ;; handle timeout
-    (is (thrown? Exception @(wf/sync-execute! (xctor timeout-steps) 10)))
+    (with-out-str
+      ;; handle timeout
+      (is (thrown? Exception @(wf/sync-execute! (xctor timeout-steps) 10)))
 
-    ;; todo: handle no such step
-    (is (thrown? Exception @(wf/sync-execute! (xctor no-such-step) 10)))
+      ;; todo: handle no such step
+      (is (thrown? Exception @(wf/sync-execute! (xctor no-such-step) 10)))
+      )
 
     )
   )
