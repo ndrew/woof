@@ -177,25 +177,26 @@
         context (wf/make-context context*)
         xctor (partial wf/build-executor context)]
 
+
     (with-out-str
-      ;; handle timeout
-      (is (thrown? Exception @(wf/sync-execute! (xctor timeout-steps) 10)))
+      (with-open [out-writer (clojure.java.io/writer System/err)]
+        ;; handle timeout
+        (is (thrown? Exception @(wf/sync-execute! (xctor timeout-steps) 10)))
 
-      ;; todo: handle no such step
-      (is (thrown? Exception @(wf/sync-execute! (xctor no-such-step) 10)))
-      )
-
+        ;; todo: handle no such step
+        (is (thrown? Exception @(wf/sync-execute! (xctor no-such-step) 10)))
+        )))
     )
-  )
 
 
 
 
-(defn- async-wf [test-context test-steps]
+(defn- async-wf [test-context test-steps result-fn]
   (let [c (async/chan)
         ;executor (wf/cached-executor (atom test-context) test-steps)
-        executor (wf/executor (atom test-context) test-steps)
-        ]
+
+        context (wf/make-context (atom test-context))
+        executor (wf/build-executor context test-steps)]
 
     (let [*result (atom nil)
           *done (atom nil)
@@ -208,11 +209,15 @@
 
           ]
 
+      ;; todo: add processor here
+
       (go
         (async/<! (u/timeout 3500))
         ;;(println "timeout" (d/pretty @*result))
         (if-not (nil? @*done)
           (async/put! exec-chann [:error :timeout])))
+
+
 
       (go
         (loop [] ; can handle state via loop bindings
@@ -240,15 +245,12 @@
 
                 (recur))))))
 
-      (let [v (async/<!! c)
-            results (into (sorted-set)
-                          (filter number? (vals @*result)))]
+      (let [v (async/<!! c)]
+
+        (result-fn v @*result)
 
 
 
-        ;; TODO: add assertion here
-        (println "TEST RESULT\n" results)
-        (println "\n\n\n *** total steps " (count @*result) (d/pretty (keys @*result)) "***\n\n\n")
         )
       )
     )
@@ -256,8 +258,7 @@
 
 
 
-(defn executor-test []
-
+(deftest executor-test
   ;; hand written
 
   ;; TODO: play with backpressure
@@ -292,34 +293,53 @@
 
                      )
         ]
-    (async-wf test-context test-steps)
+    (async-wf test-context test-steps
+              (fn [v result]
+                ;(println v)
+                (is (= :ok v))
+                ;; todo: add assertion
+                ;; (println result)
+                ))
     )
 
   )
 
 
 
-(defn wf-test-data []
-  (let [N 20;;120 - fails
+(defn wf-test-data [N]
+  (let [N 20 ;; 120 - fails
         {
           test-context :context
           test-steps :steps
           } (test-data/get-test-steps-and-context N)]
 
-    (async-wf test-context test-steps)))
+    (async-wf test-context test-steps
+              (fn [v]
+                #_(let [results (into (sorted-set)
+                                    (filter number? (vals @*result)))]
+
+                  ;; TODO: add assertion here
+                  (println "TEST RESULT\n" results)
+                  (println "\n\n\n *** total steps " (count @*result) (d/pretty (keys @*result)) "***\n\n\n")
+
+                  )
+
+                )
+              )))
 
 
 
-(deftest test-data-test
+#_(deftest test-data-test
   ;; TODO: test profiling
   ;(prof/start {})
   (dotimes [i 2]
-    (wf-test-data)
+    (wf-test-data 20)
     ;(println "Yo!")
 
     )
   ;(prof/stop {})
   )
+
 
 
 (deftest cycle-detection-test
@@ -526,7 +546,9 @@
 
 
       (let [[status data] (async/<!! c)]
-        (println [status data])
+        ;; todo: add assertion here
+        ;(println [status data])
+
         (is (= :done status))
 
         )))

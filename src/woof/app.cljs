@@ -37,7 +37,10 @@
 
 
 
+
+
 (defonce *APP-STATE
+
   (atom
     {
       ;; workflow context
@@ -60,6 +63,10 @@
       }))
 
 
+(def cursor (partial rum/cursor-in *APP-STATE))
+
+
+
 
 (defn gen-new-wf-f! [N]
   (fn[]
@@ -72,29 +79,7 @@
 
 
 
-(defonce status-classes-map {
-                              ::not-started ""
-                              ::done        "done"
-                              ::running     "pending"
-                              ::stopped     "error"
-                              ::error       "error"
-                              })
 
-(defonce status-caption-map {
-                              ::not-started "…"
-                              ::done        "done!"
-                              ::running     "running"
-                              ::stopped     "stopped!"
-                              ::error       "error!"
-                              })
-
-
-(rum/defc <wf-status-ui>  < rum/static
-  [status]
-
-  [:span.tag
-   {:class (get status-classes-map status "")}
-   (get status-caption-map status "")])
 
 
 
@@ -113,13 +98,16 @@
       [:span.k (pr-str k)]
       [:span.action (d/pretty step)]
 
-     (<wf-status-ui> status)]]))
+     (wf-ui/<wf-status-ui> status)]]))
 
 
 ;; todo: add css animation on value update
 
 
 (defn done-percentage [result actual-steps]
+
+  ;; todo
+
   (if (map? result)
     (* 100 (/ (reduce (fn [acc [k v]]
                                    (+ acc
@@ -132,10 +120,10 @@
                               )
                       (count actual-steps)))
     (do
-      (.warn js/console (d/pretty
-                          [actual-steps result]
-                          ))
+      #_(.warn js/console (d/pretty
+                          [actual-steps result]))
       0))
+
 )
 
 
@@ -256,6 +244,7 @@
         done? (= :done status)]
 
     (when (= :error status)
+
       (swap! *result assoc-in [::wf-status] ::error)
       (swap! *result assoc-in [::result] data))
 
@@ -307,19 +296,22 @@
 
 
 ;; state changing fns
-
+;; fixme:
 (defprotocol IWFUi
   (get-status [this])
+
   (set-status [this status])
 
 
   (merge-result [this data])
+
   (get-result* [this])
 
   (add-post-editor [this k v])
 
   (add-pre-editor [this k v])
   )
+
 
 (defn make-ui-state [local]
   ; (::result local)
@@ -402,7 +394,8 @@
 ;; run workflow
 
 (defn- run-wf [model callback]
-  (app-model/start! model callback))
+  (app-model/start! model callback)
+  )
 
 (defn- run-wf-mi [model callback]
   ["run 🏃"
@@ -643,6 +636,8 @@
 
 
      (when (#{::results-ui} status)
+
+
        (let [{status  ::wf-status
               history ::history
               header  ::header
@@ -650,6 +645,8 @@
               actual-steps ::steps
               start   ::start
               } @(::result local)
+
+
              actions (if (= status ::done)
                        [
                          (re-run-mi UI-STATE)
@@ -658,19 +655,23 @@
                        [(stop-wf-mi (app-model/get-xctor model))])
 
              sort-steps (fn [steps]
+                          ;; todo:
                           ;(into (sorted-map-by <) steps)
                           steps
                           )]
          [:div
-          (<wf-status-ui> status)
+          (wf-ui/<wf-status-ui> status)
+
           (<wf-progress-ui> start (done-percentage result actual-steps))
           (ui/menubar header actions)
-          (<wf-results-ui> header result (sort-steps actual-steps) *editors )]))
+
+          (<wf-results-ui> header result (sort-steps actual-steps) *editors )
+
+          ]
+
+         ))
 ]))
 
-
-
-(def cursor (partial rum/cursor-in *APP-STATE))
 
 
 
@@ -721,17 +722,11 @@
   < rum/reactive [local *STATE]
 
   ;; todo: put model in state, so it can be reset
-  (let [model (app-model/wf-state
-                (cursor [:context])
-                (cursor [:workflow])
-                (cursor [:xctor])
-                (cursor [:xctor-chan])
-                )
+  (let [model (:ui-model @*STATE)
+        server (:server @*STATE)]
 
-        server (ws/ws-server "/api/websocket" model)
-
-        ]
     [:div#app
+
      (<server-ui> model server)
      (<wf-ui>
        (cursor [:context])
@@ -741,6 +736,30 @@
        )
 
      ]))
+
+
+;; init
+
+(when-not (::initialized @*APP-STATE)
+
+  ;; (println "init!")
+
+
+  (let [model (app-model/wf-state
+                (cursor [:context])
+                (cursor [:workflow])
+                (cursor [:xctor])
+                (cursor [:xctor-chan])
+                )]
+
+    (swap! *APP-STATE merge
+           {:ui-model model
+            :server (ws/ws-server "/api/websocket" model)
+            ::initialized true})
+    )
+
+  )
+
 
 
 

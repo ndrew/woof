@@ -193,10 +193,17 @@
         (add-pending-steps! [this actions]
 
                             ;; fixme:
+                            #?(:clj
                             (if (satisfies? clojure.core.protocols/IKVReduce actions)
                               (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
                               (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions))
-                              )
+                              ))
+
+                            #?(:cljs
+                              (if (satisfies? cljs.core/IKVReduce actions)
+                                (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
+                                (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions))
+                              ))
 
                             )
 
