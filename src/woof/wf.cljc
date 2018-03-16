@@ -21,69 +21,34 @@
 
 
 
-;; TODO: handle stuck workflows after certain timeout
-;; TODO: parametrize backpressure handling
-;;          Assert failed: No more than 1024 pending puts are allowed on a single channel. Consider using a windowed buffer.
-
-;; TODO: collect expanded steps results
-
-;; TODO: counting puts
-
 (comment
   "TODO: write introduction to workflows")
 
 
 ;;
 ;; context is an interface for map type thingy that holds step functions
+;;
+;; also context is a starting point for workflow - the impl knows how to create an executor
 (defprotocol WoofContext
   ;; gets step function by step-id
   (get-step-fn [this step-id])
 
-  ;;
-  (build-executor [this steps])
-  )
-
-
-
-
-;; context as map in atom
-(defn- get-step-impl [*context]
-  (fn [step-id]
-    (let [step-cfg (get @*context step-id)]
-        (if-let [f (:fn step-cfg)]
-          f
-          (fn [v]
-            (throw
-              #?(:clj (Exception. (str "No step handler " step-id " in context" )))
-              #?(:cljs (js/Error. (str "No step handler " step-id " in context" )))
-            ))))))
-
-
-
-(defn- get-step-cached-impl [*context cache]
-  ;; cache is ICache
-  (fn [step-id]
-    (let [step-cfg (get @*context step-id)]
-      (if (:expands? step-cfg) ;; todo: add cache flag?
-        (:fn step-cfg)
-        (cache/memoize! cache (:fn step-cfg) step-id)))
-    )
-  )
-
-
+  ;; factory method for creating executor
+  (build-executor [this steps]))
 
 
 
 
 ;;
-;; top-level protocol for wf executor + context
-(defprotocol IExecutor ; - producer
+;; executor runs specific workflow
+;;
+(defprotocol WoofExecutor ; - producer
   "protocol for running workflows"
 
   ;; starts the workflow, return a channel
-  (execute! [this]) ;; TODO: do we need here this
+  (execute! [this]) ;; TODO: do we need to pass the steps here or in executor constructor?
 
-  ;; stops workflow
+  ;; halts workflow
   (end! [this]))
 
 
@@ -91,8 +56,8 @@
 
 ;;
 ;; protocol for processing workflow results
-(defprotocol IProcessor
-  (process! [this])
+(defprotocol WoofResultProcessor
+  (process-results! [this])
   )
 
 
@@ -829,9 +794,43 @@
 
 
 
+;; WoofContext impl
+
+
+(defn- get-step-impl [*context] ;; context as map in atom
+  (fn [step-id]
+    (let [step-cfg (get @*context step-id)]
+        (if-let [f (:fn step-cfg)]
+          f
+          (fn [v]
+            (throw
+              #?(:clj (Exception. (str "No step handler " step-id " in context" )))
+              #?(:cljs (js/Error. (str "No step handler " step-id " in context" )))
+            ))))))
+
+
+
+(defn- get-step-cached-impl [*context cache]
+  ;; cache is ICache
+  (fn [step-id]
+    (let [step-cfg (get @*context step-id)]
+      (if (:expands? step-cfg) ;; todo: add cache flag?
+        (:fn step-cfg)
+        (cache/memoize! cache (:fn step-cfg) step-id)))
+    )
+  )
+
+
+
+
+
+
+;;
+;;
+
 
 (defrecord AsyncExecutor [*context model ready-channel process-channel]
-  IExecutor
+  WoofExecutor
 
   (execute! [this]
             (async-exec this model ready-channel process-channel))
@@ -853,7 +852,7 @@
 
 
 (defrecord CachedAsyncExecutor [cache *context model ready-channel process-channel]
-  IExecutor
+  WoofExecutor
 
   (execute! [this]
             (async-exec this model ready-channel process-channel))
@@ -896,7 +895,7 @@
 
      ;; spliting current wf implementation into smaller 'mixin' style protocols
      (reify
-        IExecutor
+        WoofExecutor
 
         (execute! [this]
                   (execute! xctor))
@@ -1043,9 +1042,9 @@
 
 
 (defrecord AsyncWFProcessor [executor options]
-  IProcessor
+  WoofResultProcessor
 
-  (process! [this]
+  (process-results! [this]
     (let [exec-chan (get options :channel (u/make-channel))
 
           ;; todo: pass here the tick interval or other channel piping options
@@ -1070,12 +1069,14 @@
 )
 
 
+
+
 (defn async-execute!
   ([xctor]
-    (process! (->AsyncWFProcessor xctor {})))
+    (process-results! (->AsyncWFProcessor xctor {})))
 
   ([xctor channel handler]
-   (process! (->AsyncWFProcessor xctor {
+   (process-results! (->AsyncWFProcessor xctor {
                                          :channel channel
                                          :op-handler handler
                                          })))
@@ -1084,10 +1085,11 @@
 
 
 
-(defrecord FutureWF [executor options]
-  IProcessor
 
-  (process! [this]
+(defrecord FutureWF [executor options]
+  WoofResultProcessor
+
+  (process-results! [this]
     #?(:clj
 
         (let [t (get this ::timeout 5000)]
@@ -1124,16 +1126,16 @@
   ;; can this be done as tranducer?
   (defn sync-execute!
     ([executor]
-     (process! (->FutureWF executor {}))
+     (process-results! (->FutureWF executor {}))
 
      )
     ([executor t]
-      (process!
+      (process-results!
         (assoc (->FutureWF executor {}) ; pass the optional params
                   ::timeout t))
      )
     ([executor t options]
-      (process!
+      (process-results!
         (assoc (->FutureWF executor options)
                   ::timeout t))
      )
@@ -1154,7 +1156,7 @@
   ([*context options]
 
    (let [{} options]
-     ;; todo: add cached executor
+     ;; todo: add cached executor and other options
      (reify
           WoofContext
 
@@ -1164,11 +1166,15 @@
           (build-executor [this steps]
               (executor *context steps))
 
-          ))
-   )
+          ))))
 
 
-   )
 
+;; TODO: handle stuck workflows after certain timeout
+;; TODO: parametrize backpressure handling
+;;          Assert failed: No more than 1024 pending puts are allowed on a single channel. Consider using a windowed buffer.
 
+;; TODO: collect expanded steps results
+
+;; TODO: counting puts
 

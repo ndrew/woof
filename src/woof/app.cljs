@@ -563,7 +563,7 @@
                                   }
                            worker (wf/->AsyncWFProcessor executor opts)]
 
-                       (wf/process! worker)
+                       (wf/process-results! worker)
                        )
                      )
 
@@ -695,7 +695,7 @@
                                                xctor (app-model/get-xctor model)
                                                worker (wf/->AsyncWFProcessor xctor opts)]
 
-                                           (wf/process! worker)
+                                           (wf/process-results! worker)
                                            )
                                          ))
 
