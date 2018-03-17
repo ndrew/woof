@@ -25,6 +25,12 @@
   "TODO: write introduction to workflows")
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; public protocols
+;;
+
+
 ;;
 ;; context is an interface for map type thingy that holds step functions
 ;;
@@ -32,6 +38,7 @@
 (defprotocol WoofContext
   ;; gets step function by step-id
   (get-step-fn [this step-id])
+  (get-step-config [this step-id])
 
   ;; factory method for creating executor
   (build-executor [this steps]))
@@ -57,15 +64,21 @@
 ;;
 ;; protocol for processing workflow results
 (defprotocol WoofResultProcessor
+
+  ;; processes results received from executor
   (process-results! [this])
   )
 
 
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; internal protocols
+
+
 ;;
 ;; WIP: IState
-
-
 
 (defprotocol WoofSteps
 
@@ -97,96 +110,6 @@
 
 
 
-(defn make-steps-model! [steps]
-  (let [*state (atom {:infinite {}})
-        *results (atom (array-map))
-
-        *steps (atom steps)
-        *steps2add (atom (array-map))
-        *steps-left (atom (reduce-kv (fn [a k v] (assoc a k :pending)) {} steps))]
-
-    (reify WoofSteps
-      (initial-steps [this] steps)
-
-      (steps [this] @*steps)
-      (get-steps* [this] *steps)
-      (get-steps2add* [this] *steps2add)
-      (get-steps-left* [this] *steps-left)
-
-
-      (do-update-steps! [this [op nu-steps]]
-                 (cond
-                   (= op :add)
-                   (do
-                     (let [new-steps @*steps2add]
-                           ; (println "new steps" (d/pretty added-steps) "\nvs\n" (d/pretty new-steps))
-                           (when-not (empty? new-steps)
-                             (swap! *steps merge new-steps)
-
-                             #_(println "PROCESS ADDED STEPS:\n"
-                                      "new-steps —" (d/pretty new-steps)
-                                      "steps2add —" (d/pretty @*steps2add)
-                                      )
-                             (reset! *steps2add (array-map)))))
-
-                   (= op :update)
-                   (do
-                     ;; <?> should we do ?
-                     ;; (swap! *steps merge new-steps)
-
-                     ;; #?(:cljs (.error js/console (pr-str [op nu-steps "local " (empty? @*steps2add)])))
-                     ))
-                 )
-
-        (get-infinite-step [this id]
-            (get-in @*state [:infinite id]))
-
-        (set-infinite-step [this id result]
-            (swap! *state update-in [:infinite] assoc id result))
-
-
-        (steps-ready? [this]
-                      (and
-                        (empty? (get @*state :infinite {}))
-                        (every? #(= % :ok) (vals @*steps-left)))
-                      )
-
-        (add-steps! [this actions]
-                    (swap! *steps2add into actions)
-                    )
-
-        (add-pending-steps! [this actions]
-
-                            ;; fixme:
-                            #?(:clj
-                            (if (satisfies? clojure.core.protocols/IKVReduce actions)
-                              (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
-                              (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions))
-                              ))
-
-                            #?(:cljs
-                              (if (satisfies? cljs.core/IKVReduce actions)
-                                (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
-                                (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions))
-                              ))
-
-                            )
-
-        (step-ready! [this id]
-                     (swap! *steps-left dissoc id))
-
-        (step-working! [this id]
-                      (swap! *steps-left assoc id :working))
-
-        (is-step-working? [this id]
-                         (= :working (get @*steps-left id)))
-      )
-    )
-  )
-
-
-
-
 ;;
 ;; todo: refactor IState into model and behaviour
 (defprotocol IState
@@ -210,12 +133,13 @@
   (ready? [this])
 
   (get! [this id])
-
-  (get-context* [this])
   )
 
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; internal impl
 
 
 
@@ -231,7 +155,6 @@
   (get-steps-left [this] (get-steps-left* STEPS))
 
 
-  (get-context* [this] (get this :CTX))
   (get-results [this] (get this :RESULTS))
 
 
@@ -373,12 +296,107 @@
 
 
 
+
 (defn make-state-cfg [steps process-channel] ; bs
   {:steps steps
    :process-channel process-channel}
   )
 
 
+
+
+
+(defn- make-steps-model! [steps]
+  (let [*state (atom {:infinite {}})
+        *results (atom (array-map))
+
+        *steps (atom steps)
+        *steps2add (atom (array-map))
+        *steps-left (atom (reduce-kv (fn [a k v] (assoc a k :pending)) {} steps))]
+
+    (reify WoofSteps
+      (initial-steps [this] steps)
+
+      (steps [this] @*steps)
+      (get-steps* [this] *steps)
+      (get-steps2add* [this] *steps2add)
+      (get-steps-left* [this] *steps-left)
+
+
+      (do-update-steps! [this [op nu-steps]]
+                 (cond
+                   (= op :add)
+                   (do
+                     (let [new-steps @*steps2add]
+                           ; (println "new steps" (d/pretty added-steps) "\nvs\n" (d/pretty new-steps))
+                           (when-not (empty? new-steps)
+                             (swap! *steps merge new-steps)
+
+                             #_(println "PROCESS ADDED STEPS:\n"
+                                      "new-steps —" (d/pretty new-steps)
+                                      "steps2add —" (d/pretty @*steps2add)
+                                      )
+                             (reset! *steps2add (array-map)))))
+
+                   (= op :update)
+                   (do
+                     ;; <?> should we do ?
+                     ;; (swap! *steps merge new-steps)
+
+                     ;; #?(:cljs (.error js/console (pr-str [op nu-steps "local " (empty? @*steps2add)])))
+                     ))
+                 )
+
+        (get-infinite-step [this id]
+            (get-in @*state [:infinite id]))
+
+        (set-infinite-step [this id result]
+            (swap! *state update-in [:infinite] assoc id result))
+
+
+        (steps-ready? [this]
+                      (and
+                        (empty? (get @*state :infinite {}))
+                        (every? #(= % :ok) (vals @*steps-left)))
+                      )
+
+        (add-steps! [this actions]
+                    (swap! *steps2add into actions)
+                    )
+
+        (add-pending-steps! [this actions]
+
+                            ;; fixme:
+                            #?(:clj
+                            (if (satisfies? clojure.core.protocols/IKVReduce actions)
+                              (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
+                              (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions))
+                              ))
+
+                            #?(:cljs
+                              (if (satisfies? cljs.core/IKVReduce actions)
+                                (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
+                                (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions))
+                              ))
+
+                            )
+
+        (step-ready! [this id]
+                     (swap! *steps-left dissoc id))
+
+        (step-working! [this id]
+                      (swap! *steps-left assoc id :working))
+
+        (is-step-working? [this id]
+                         (= :working (get @*steps-left id)))
+      )
+    )
+  )
+
+
+
+
+;; FIXME:
 
 (defn make-state! [*context state-config]
   (let [*results (atom (array-map))
@@ -477,6 +495,9 @@
   (merge {:working 0} (frequencies steps-left)))
 
 (def freq-map (memoize freq-map!))
+
+
+
 
 
 
@@ -796,10 +817,13 @@
 
 ;; WoofContext impl
 
+(defn- get-step-config-impl [*context step-id]
+  (get @*context step-id))
+
 
 (defn- get-step-impl [*context] ;; context as map in atom
   (fn [step-id]
-    (let [step-cfg (get @*context step-id)]
+    (let [step-cfg (get-step-config-impl *context step-id)]
         (if-let [f (:fn step-cfg)]
           f
           (fn [v]
@@ -813,7 +837,7 @@
 (defn- get-step-cached-impl [*context cache]
   ;; cache is ICache
   (fn [step-id]
-    (let [step-cfg (get @*context step-id)]
+    (let [step-cfg (get-step-config-impl *context step-id)]
       (if (:expands? step-cfg) ;; todo: add cache flag?
         (:fn step-cfg)
         (cache/memoize! cache (:fn step-cfg) step-id)))
@@ -844,6 +868,9 @@
   (get-step-fn [this step-id]
     ((get-step-impl *context) step-id))
 
+  (get-step-config [this step-id]
+    (get-step-config-impl *context step-id))
+
   (build-executor [this steps]
                  ;; TODO:
                  )
@@ -865,6 +892,9 @@
 
   (get-step-fn [this step-id]
     ((get-step-cached-impl *context cache) step-id))
+
+  (get-step-config [this step-id]
+    (get-step-config-impl *context step-id))
 
   (build-executor [this steps]
                  ;; TODO:
@@ -907,6 +937,9 @@
 
         (get-step-fn [this step-id]
           ((get-step-impl *context) step-id)) ;; todo: get from context impl
+
+        (get-step-config [this step-id]
+          (get-step-config-impl *context step-id))
 
         (build-executor [this steps]
                  ;; TODO:
@@ -1086,6 +1119,73 @@
 
 
 
+
+
+;; TODO: add workflow merging
+
+
+;; TODO: handle stuck workflows after certain timeout
+;; TODO: parametrize backpressure handling
+;;          Assert failed: No more than 1024 pending puts are allowed on a single channel. Consider using a windowed buffer.
+
+;; TODO: collect expanded steps results
+
+;; TODO: counting puts
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; public interface
+
+
+;;
+;; WoofContext
+
+
+
+;; WoofContext constructor
+(defn make-context
+  "creates context from context map in atom"
+  ([*context]
+   (make-context *context {}))
+
+  ([*context options]
+   (let [{} options]
+     ;; todo: add cached executor and other options
+     (reify
+          WoofContext
+
+          (get-step-fn [this step-id]
+            ((get-step-impl *context) step-id)) ;; todo: get from context impl
+
+          (get-step-config [this step-id]
+            (get-step-config-impl *context step-id))
+
+          (build-executor [this steps]
+              (executor *context steps))))))
+
+
+
+;;
+;; WoofResultProcessor
+
+
+
+;;
+;; where options
+;; {
+;;   ::timeout <ms>
+;;
+;;   ; custmer handler for each result message
+;;
+;;   :error
+;;   :done
+;; }
+
+
+
+
 (defrecord FutureWF [executor options]
   WoofResultProcessor
 
@@ -1102,8 +1202,7 @@
 
                          (condp = status
                            :error (do
-                                    ;; TODO: error handling strategies8
-
+                                    ;; TODO: error handling strategies
                                     (async/>! timeout-chan data) ;; send the exception as a result
                                     (u/throw! data)              ;; re-throw it, so wf will stop
                                     )
@@ -1118,13 +1217,18 @@
               (process-wf-result (async/<!! timeout-chan)) ;; todo: close channel?
               ))
           )))
+
+  ;; js promise?
 )
 
 
 #?(:clj
 
+
   ;; can this be done as tranducer?
   (defn sync-execute!
+    "executes workflow and returns result as a future"
+    ;; TODO: process-results-sync!
     ([executor]
      (process-results! (->FutureWF executor {}))
 
@@ -1141,40 +1245,4 @@
      )
     )
 )
-
-
-
-;; TODO: add workflow merging
-
-
-
-(defn make-context
-  "workflow constuctor"
-  ([*context]
-   (make-context *context {}))
-
-  ([*context options]
-
-   (let [{} options]
-     ;; todo: add cached executor and other options
-     (reify
-          WoofContext
-
-          (get-step-fn [this step-id]
-            ((get-step-impl *context) step-id)) ;; todo: get from context impl
-
-          (build-executor [this steps]
-              (executor *context steps))
-
-          ))))
-
-
-
-;; TODO: handle stuck workflows after certain timeout
-;; TODO: parametrize backpressure handling
-;;          Assert failed: No more than 1024 pending puts are allowed on a single channel. Consider using a windowed buffer.
-
-;; TODO: collect expanded steps results
-
-;; TODO: counting puts
 
