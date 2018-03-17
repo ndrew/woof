@@ -395,7 +395,7 @@
 
 
 
-(defn make-state! [context state-config]
+(defn- make-state! [context state-config]
 
   (let [*results (atom (array-map))
 
@@ -1142,6 +1142,7 @@
 
 
 
+
 ;; WoofContext constructor
 (defn make-context
   "creates context from context map in atom"
@@ -1149,7 +1150,7 @@
    (make-context *context {}))
 
   ([*context options]
-   (let [{} options]
+   (let [{process-channel :process-channel} (merge {:process-channel (u/make-channel)} options)]
      ;; todo: add cached executor and other options
      (reify
           WoofContext
@@ -1161,7 +1162,10 @@
             (get-step-config-impl *context step-id))
 
           (build-executor [this steps]
-              (executor this steps))))))
+              (executor this
+                    (make-state! this (make-state-cfg steps process-channel))
+                    (u/make-channel)
+                    process-channel))))))
 
 
 

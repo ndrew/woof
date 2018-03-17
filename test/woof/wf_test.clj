@@ -423,16 +423,11 @@
         ;; result-chan
         process-chan (async/chan)
 
-        context (wf/make-context (atom context-map))
-        MODEL (wf/make-state! context (wf/make-state-cfg steps process-chan))]
+        context (wf/make-context (atom context-map) {:process-channel process-chan})]
 
 
     (let [c (async/chan)
-          executor
-          (wf/executor context
-                       MODEL
-                       (async/chan)
-                       process-chan)]
+          executor (wf/build-executor context steps)]
 
 
       (let [exec-chann (wf/execute! executor)]
@@ -511,15 +506,10 @@
         ;; result-chan
         process-chan (async/chan)
 
-        context (wf/make-context (atom context-map))
-        MODEL (wf/make-state! context (wf/make-state-cfg steps process-chan))]
+        context (wf/make-context (atom context-map) {:process-channel process-chan})]
 
     (let [c (async/chan)
-          executor
-          (wf/executor context
-                       MODEL
-                       (async/chan)
-                       process-chan)]
+          executor (wf/build-executor context steps)]
 
 
       (let [exec-chann (wf/execute! executor)]
