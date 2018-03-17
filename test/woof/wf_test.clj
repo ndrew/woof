@@ -122,6 +122,8 @@
   )
 
 
+;; todo: multi-expand test, like f(g(z(x)))
+
 
 (deftest expand-wf-test
   (let [{
@@ -191,68 +193,89 @@
 
 
 
-(defn- async-wf [test-context-map test-steps result-fn]
-  (let [c (async/chan)
-        ;executor (wf/cached-executor (atom test-context) test-steps)
 
-        context (wf/make-context (atom test-context-map))
-        executor (wf/build-executor context test-steps)]
+(defrecord CustomResultProcessor [executor result-fn]
+  wf/WoofResultProcessor
 
-    (let [*result (atom nil)
-          *done (atom nil)
-          ;exec-chann (wf/execute! executor)
-          ;; wrap
-          exec-chann-0 (wf/execute! executor)
-          ;z (async/chan 1 (wf/chunk-update-xf 20))
-          z (async/chan 1 (wf/time-update-xf 300))
-          exec-chann (async/pipe exec-chann-0 z)
+  (wf/process-results! [this]
 
-          ]
+    (let [ ;; init results
+           *result (atom nil)
+           *done (atom nil)
 
-      ;; todo: add processor here
 
-      (go
-        (async/<! (u/timeout 3500))
-        ;;(println "timeout" (d/pretty @*result))
-        (if-not (nil? @*done)
-          (async/put! exec-chann [:error :timeout])))
+           ;; start workflow and apply transducers if needed
+
+           exec-chann-0 (wf/execute! executor)
+
+           exec-chann (async/pipe
+                        exec-chann-0
+                        (async/chan 1 (wf/time-update-xf 300))) ;; (async/chan 1 (wf/chunk-update-xf 20))
+
+           ]
 
 
 
-      (go
-        (loop [] ; can handle state via loop bindings
-          (let [r (async/<! exec-chann)
-                [status data] r]
+      ;; before processing started
+      (let [c (async/chan)]
 
-            ;; todo: can these be done via transducer?
-            (condp = status
-              :init (recur)
-              :error (do
-                       (println "ERROR" r)
-                       (async/close! exec-chann)
-                       (async/>! c :timeout)
-                       )
-              :process (do
-                         ;(println "PROCESS:")
-                         ;(println (d/pretty data))
-                         (recur))
-              :done (do
-                      (reset! *result data)
-                      (reset! *done true)
-                      (async/>! c :ok))
-
-              (do ; other events like :wf-update
-
-                (recur))))))
-
-      (let [v (async/<!! c)]
-
-        (result-fn v @*result)
+        (go
+          (async/<! (u/timeout 3500))
+          ;;(println "timeout" (d/pretty @*result))
+          (if-not (nil? @*done)
+            (async/put! exec-chann [:error :timeout])))
 
 
+        ;; processing messages from workflow
 
+        (go-loop [] ; can handle state via loop bindings
+            (let [r (async/<! exec-chann)
+                  [status data] r]
+
+              ;; todo: can these be done via transducer?
+              ;; todo: if this cond block will be replaced by a message-handler function
+              ;;   will the version with nested go blocks work, or dowe need a macro?
+              (condp = status
+                :init (recur)
+                :error (do
+                         (println "ERROR" r)
+                         (async/close! exec-chann)
+                         (async/>! c :timeout)
+                         )
+                :process (do
+                           ;(println "PROCESS:")
+                           ;(println (d/pretty data))
+                           (recur))
+                :done (do
+                        (reset! *result data)
+                        (reset! *done true)
+                        (async/>! c :ok))
+
+                (do ; other events like :wf-update
+
+                  (recur)))))
+
+        ;; after processing started
+
+
+        (let [v (async/<!! c)]
+          (result-fn v @*result))
         )
       )
+    )
+
+
+  )
+
+
+
+(defn- async-wf [test-context-map test-steps result-fn]
+  (let [context (wf/make-context (atom test-context-map))
+        executor (wf/build-executor context test-steps)
+
+        processor (->CustomResultProcessor executor result-fn)]
+
+    (wf/process-results! processor)
     )
   )
 
@@ -355,7 +378,7 @@
         context (wf/make-context (atom context-map))
         ]
     (let [c (async/chan)
-          executor (wf/executor context steps)]
+          executor (wf/build-executor context steps)]
 
       ;; TODO: move to a result processor
 
@@ -513,6 +536,8 @@
 
 
       (let [exec-chann (wf/execute! executor)]
+
+        ;; todo: use result procesor
 
         (go
           (async/<! (u/timeout 7000))

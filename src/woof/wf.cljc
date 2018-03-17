@@ -905,7 +905,7 @@
 ;; API
 
 
-(defn executor
+(defn- executor
   "workflow constuctor"
   ([context steps]
    (let [process-chan (u/make-channel)]
@@ -1201,7 +1201,6 @@
 
               (go-loop []
                        (let [[status data] (async/<! result-chan)]
-
                          (condp = status
                            :error (do
                                     ;; TODO: error handling strategies
