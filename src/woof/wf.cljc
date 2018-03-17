@@ -227,9 +227,7 @@
            (if (u/channel? result)
 
              (let [*steps-left (get-steps-left* STEPS)
-
-                   *context (get this :CTX)
-                   infinite? (:infinite (get @*context step-id))]
+                   infinite? (:infinite (get-step-config (get this :CTX) step-id))]
 
                (if-not (is-step-working? STEPS id)
                  (do
@@ -396,9 +394,9 @@
 
 
 
-;; FIXME:
 
-(defn make-state! [*context state-config]
+(defn make-state! [context state-config]
+
   (let [*results (atom (array-map))
 
         steps-model (make-steps-model! (:steps state-config))
@@ -408,7 +406,7 @@
       (->WFState state-config steps-model)
 
       ; pass the optional params
-        :CTX *context
+        :CTX context ;; FIXME: pass context implicit
         :RESULTS *results
       )
     )
@@ -436,12 +434,12 @@
 
 (defn- handle-commit!
   "saves or expands the step"
-  [executor save-fn! expand-fn! id step-id params]
+  [context executor save-fn! expand-fn! id step-id params]
   ;; TODO: should expand work with different handler or one will do?
   ;; TODO: should the step return some typed responce?
   ;; TODO: what if step handler is not found?
 
-  (let [step-cfg (get @(:*context executor) step-id)
+  (let [step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
         f (get-step-fn executor step-id)
         result (f params)]
     (if (:expands? step-cfg)
@@ -645,9 +643,9 @@
 
 
 
-(defn async-exec
+(defn- async-exec
   "workflow running algorithm"
-  ([executor R ready-channel process-channel]
+  ([context executor R ready-channel process-channel]
 
 
    ;; todo: add notification channel for ui updates
@@ -659,7 +657,7 @@
          *steps-left (get-steps-left R)
          *results (get-results R)
 
-         commit! (partial handle-commit! executor (partial commit! R) (partial expand! R))
+         commit! (partial handle-commit! context executor (partial commit! R) (partial expand! R))
 
          processor (make-processor R commit! (partial get! R))]
 
@@ -853,11 +851,11 @@
 ;;
 
 
-(defrecord AsyncExecutor [*context model ready-channel process-channel]
+(defrecord AsyncExecutor [context model ready-channel process-channel]
   WoofExecutor
 
   (execute! [this]
-            (async-exec this model ready-channel process-channel))
+            (async-exec context this model ready-channel process-channel))
 
   (end! [this]
         (go
@@ -866,10 +864,10 @@
   WoofContext
 
   (get-step-fn [this step-id]
-    ((get-step-impl *context) step-id))
+    (get-step-fn context step-id))
 
   (get-step-config [this step-id]
-    (get-step-config-impl *context step-id))
+    (get-step-config context step-id))
 
   (build-executor [this steps]
                  ;; TODO:
@@ -878,11 +876,11 @@
   )
 
 
-(defrecord CachedAsyncExecutor [cache *context model ready-channel process-channel]
+(defrecord CachedAsyncExecutor [cache context model ready-channel process-channel]
   WoofExecutor
 
   (execute! [this]
-            (async-exec this model ready-channel process-channel))
+            (async-exec context this model ready-channel process-channel))
 
   (end! [this]
         (go
@@ -891,10 +889,10 @@
   WoofContext
 
   (get-step-fn [this step-id]
-    ((get-step-cached-impl *context cache) step-id))
+    (get-step-fn context step-id))
 
   (get-step-config [this step-id]
-    (get-step-config-impl *context step-id))
+    (get-step-config context step-id))
 
   (build-executor [this steps]
                  ;; TODO:
@@ -909,16 +907,16 @@
 
 (defn executor
   "workflow constuctor"
-  ([*context steps]
+  ([context steps]
    (let [process-chan (u/make-channel)]
-    (executor *context
-                    (make-state! *context (make-state-cfg steps process-chan))
+    (executor context
+                    (make-state! context (make-state-cfg steps process-chan))
                     (u/make-channel)
                     process-chan)))
 
-  ([*context model ready-channel process-channel]
+  ([context model ready-channel process-channel]
 
-   (let [xctor (->AsyncExecutor *context
+   (let [xctor (->AsyncExecutor context
                      model
                      ready-channel
                      process-channel)]
@@ -935,11 +933,11 @@
 
         WoofContext
 
-        (get-step-fn [this step-id]
-          ((get-step-impl *context) step-id)) ;; todo: get from context impl
+         (get-step-fn [this step-id]
+          (get-step-fn context step-id))
 
         (get-step-config [this step-id]
-          (get-step-config-impl *context step-id))
+          (get-step-config context step-id))
 
         (build-executor [this steps]
                  ;; TODO:
@@ -952,15 +950,15 @@
 
 (defn cached-executor
   "workflow constuctor, step function results are memoized"
-  ([*context steps]
+  ([context steps]
    (let [process-chan (u/make-channel)]
-    (cached-executor *context
-                    (make-state! *context (make-state-cfg steps process-chan))
+    (cached-executor context
+                    (make-state! context (make-state-cfg steps process-chan))
                     (u/make-channel)
                     process-chan)))
-  ([*context model ready-channel process-channel]
+  ([context model ready-channel process-channel]
     (->CachedAsyncExecutor (cache/->Cache (atom {}))
-                     *context model
+                     context model
                      ready-channel
                      process-channel)))
 
@@ -1163,7 +1161,7 @@
             (get-step-config-impl *context step-id))
 
           (build-executor [this steps]
-              (executor *context steps))))))
+              (executor this steps))))))
 
 
 

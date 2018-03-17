@@ -191,11 +191,11 @@
 
 
 
-(defn- async-wf [test-context test-steps result-fn]
+(defn- async-wf [test-context-map test-steps result-fn]
   (let [c (async/chan)
         ;executor (wf/cached-executor (atom test-context) test-steps)
 
-        context (wf/make-context (atom test-context))
+        context (wf/make-context (atom test-context-map))
         executor (wf/build-executor context test-steps)]
 
     (let [*result (atom nil)
@@ -292,6 +292,8 @@
                      ::3 [:wait ::2]
 
                      )
+
+
         ]
     (async-wf test-context test-steps
               (fn [v result]
@@ -344,15 +346,18 @@
 
 (deftest cycle-detection-test
 
-  (let [context {:f {:fn (fn [s] (str "Hello " s "!")) }}
+  (let [context-map {:f {:fn (fn [s] (str "Hello " s "!")) }}
         steps (assoc (array-map)
                 ::0 [:f ::1]
                 ::1 [:f ::2]
                 ::2 [:wait ::0]
-                )]
+                )
+        context (wf/make-context (atom context-map))
+        ]
     (let [c (async/chan)
-          executor (wf/executor (atom context) steps)]
+          executor (wf/executor context steps)]
 
+      ;; TODO: move to a result processor
 
       (let [exec-chann (wf/execute! executor)]
         (go-loop [] ; can handle state via loop bindings
@@ -391,7 +396,7 @@
 
 (deftest infite-actions-test
 
-  (let [context (atom {:f {:fn (fn [s]
+  (let [context-map {:f {:fn (fn [s]
                                  ; (str "Hello " s "!")
                                  (let [chan (async/chan)]
 
@@ -411,12 +416,14 @@
                            }
 
                        ;;:infinite true
-                       })
+                       }
+
         steps (assoc (array-map) ::0 [:f "hello"])
 
         ;; result-chan
         process-chan (async/chan)
 
+        context (wf/make-context (atom context-map))
         MODEL (wf/make-state! context (wf/make-state-cfg steps process-chan))]
 
 
@@ -466,7 +473,7 @@
 
 (deftest infite-actions-update-test
 
-  (let [context (atom {:f {:fn (fn [s]
+  (let [context-map {:f {:fn (fn [s]
                                  ; (str "Hello " s "!")
                                  (let [chan (async/chan)]
 
@@ -494,7 +501,7 @@
                             :infinite true
                             }
 
-                       })
+                       }
         steps (assoc (array-map)
                 ::0 [:f "_1"]
                 ::1 [:f1 ::0]
@@ -504,6 +511,7 @@
         ;; result-chan
         process-chan (async/chan)
 
+        context (wf/make-context (atom context-map))
         MODEL (wf/make-state! context (wf/make-state-cfg steps process-chan))]
 
     (let [c (async/chan)
