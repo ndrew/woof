@@ -36,9 +36,6 @@
 
 
 
-
-
-
 (defonce *APP-STATE
 
   (atom
@@ -238,6 +235,7 @@
 
 
 
+;; todo: remove this to op-map
 
 (defn workflow-handler [*result r]
   (let [[status data] r
@@ -557,11 +555,14 @@
 
                      (set-status UI-STATE ::results-ui)
 
-                     (let [opts {
-                                  :channel (app-model/get-xctor-chan model)
-                                  :op-handler (partial workflow-handler (get-result* UI-STATE))
+                      ;; TODO: fix names
+                     (let [opts {:execute (fn [executor]
+                                            ;; use save
+                                             (app-model/get-xctor-chan model)
+                                             )
+                                  :process-handler (partial workflow-handler (get-result* UI-STATE))
                                   }
-                           worker (wf/->AsyncWFProcessor executor opts)]
+                           worker (wf/->ResultProcessor executor opts)]
 
                        (wf/process-results! worker)
                        )

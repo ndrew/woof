@@ -1072,6 +1072,10 @@
 
 
 
+
+;; deprecated processor
+
+
 (defrecord AsyncWFProcessor [executor options]
   WoofResultProcessor
 
@@ -1101,6 +1105,62 @@
 
 
 
+;; default impl for a parametrizible result processor via options map
+(defrecord ResultProcessor [executor options]
+  WoofResultProcessor
+
+  (process-results!
+    [this]
+
+    (let [op-handlers-map (get options :op-handlers-map {}) ;; FIXME: add :default handler as in cond
+
+          ;; FIXME: find proper names for these keys
+
+          {execute-fn! :execute
+           before-processing! :before-process
+           after-processing!  :after-process
+           process-loop-handler :process-handler ;; low level, use with caution
+
+           timeout :timeout
+
+           :or
+           {
+             execute-fn! (fn [executor]
+                           (execute! executor))
+
+             before-processing! (fn[exec-chan])
+
+             ;; redefine this with caution
+             process-loop-handler (fn[msg]
+                                    (let [[status data] msg
+                                          continue? (-> status #{:done :error} nil?)]
+
+                                      (if-let [status-handler (get op-handlers-map status)]
+                                        (status-handler data))
+
+                                      continue?))
+
+             after-processing! (fn[exec-chan] exec-chan)
+             }
+
+           } options ]
+
+      (let [exec-chan (execute-fn! executor)]
+        (before-processing! exec-chan)
+
+        (if timeout ;; todo: handle stoping via timeout
+          (process-wf-loop exec-chan process-loop-handler timeout (partial end! executor))
+          (process-wf-loop exec-chan process-loop-handler))
+
+        (after-processing! exec-chan)
+        )
+      )
+    )
+  )
+
+
+
+
 
 (defn async-execute!
   ([xctor]
@@ -1112,6 +1172,8 @@
                                          :op-handler handler
                                          })))
   )
+
+
 
 
 

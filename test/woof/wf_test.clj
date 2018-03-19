@@ -193,87 +193,57 @@
 
 
 
-
-(defrecord CustomResultProcessor [executor result-fn]
-  wf/WoofResultProcessor
-
-  (wf/process-results! [this]
-
-    (let [ ;; init results
-           *result (atom nil)
-           *done (atom nil)
-
-
-           ;; start workflow and apply transducers if needed
-
-           exec-chann-0 (wf/execute! executor)
-
-           exec-chann (async/pipe
-                        exec-chann-0
-                        (async/chan 1 (wf/time-update-xf 300))) ;; (async/chan 1 (wf/chunk-update-xf 20))
-
-           ]
-
-
-
-      ;; before processing started
-      (let [c (async/chan)]
-
-        (go
-          (async/<! (u/timeout 3500))
-          ;;(println "timeout" (d/pretty @*result))
-          (if-not (nil? @*done)
-            (async/put! exec-chann [:error :timeout])))
-
-
-        ;; processing messages from workflow
-
-        (go-loop [] ; can handle state via loop bindings
-            (let [r (async/<! exec-chann)
-                  [status data] r]
-
-              ;; todo: can these be done via transducer?
-              ;; todo: if this cond block will be replaced by a message-handler function
-              ;;   will the version with nested go blocks work, or dowe need a macro?
-              (condp = status
-                :init (recur)
-                :error (do
-                         (println "ERROR" r)
-                         (async/close! exec-chann)
-                         (async/>! c :timeout)
-                         )
-                :process (do
-                           ;(println "PROCESS:")
-                           ;(println (d/pretty data))
-                           (recur))
-                :done (do
-                        (reset! *result data)
-                        (reset! *done true)
-                        (async/>! c :ok))
-
-                (do ; other events like :wf-update
-
-                  (recur)))))
-
-        ;; after processing started
-
-
-        (let [v (async/<!! c)]
-          (result-fn v @*result))
-        )
-      )
-    )
-
-
-  )
-
-
-
 (defn- async-wf [test-context-map test-steps result-fn]
   (let [context (wf/make-context (atom test-context-map))
         executor (wf/build-executor context test-steps)
 
-        processor (->CustomResultProcessor executor result-fn)]
+        *result (atom nil)
+        *done (atom nil)
+
+        c (async/chan)
+
+        start-wf-with-transducers! (fn [executor]
+                                     (let [exec-chann-0 (wf/execute! executor)
+                                           exec-chann (async/pipe
+                                                        exec-chann-0
+                                                        (async/chan 1 (wf/time-update-xf 300)))]
+                                       ;; (async/chan 1 (wf/chunk-update-xf 20))
+                                       exec-chann))
+
+        before-processing! (fn [exec-chann]
+                             (go
+                               (async/<! (u/timeout 3500))
+                               ;;(println "timeout" (d/pretty @*result))
+                               (if-not (nil? @*done)
+                                 (async/put! exec-chann [:error :timeout]))))
+
+        after-processing! (fn [exec-chann]
+                            (let [v (async/<!! c)]
+                              (result-fn v @*result)))
+
+
+        op-handlers-map {
+                          :done (fn [data]
+                                 (reset! *result data)
+                                 (reset! *done true)
+                                 (go
+                                   (async/>! c :ok)))
+                          :error (fn [data]
+                                  (println "ERROR" [:error data])
+                                  ; (async/close! exec-chann)
+                                  (go
+                                    (async/>! c :timeout)))
+                          }
+
+
+        processor (wf/->ResultProcessor executor
+                                     { :execute start-wf-with-transducers!
+                                       :before-process before-processing!
+                                       ;; :process-handler op-handler
+                                       :op-handlers-map op-handlers-map
+                                       :after-process after-processing!
+                                       })
+        ]
 
     (wf/process-results! processor)
     )
@@ -332,33 +302,27 @@
 
 
 (defn wf-test-data [N]
-  (let [N 20 ;; 120 - fails
-        {
+  (let [{
           test-context :context
           test-steps :steps
           } (test-data/get-test-steps-and-context N)]
 
     (async-wf test-context test-steps
-              (fn [v]
-                #_(let [results (into (sorted-set)
-                                    (filter number? (vals @*result)))]
+              (fn [v result]
 
-                  ;; TODO: add assertion here
-                  (println "TEST RESULT\n" results)
-                  (println "\n\n\n *** total steps " (count @*result) (d/pretty (keys @*result)) "***\n\n\n")
-
-                  )
-
+                (is (= (into (sorted-set)
+                                    (filter number? (vals   result)))
+                       (into (sorted-set) (range N))))
                 )
               )))
 
 
 
-#_(deftest test-data-test
+(deftest test-data-test
   ;; TODO: test profiling
   ;(prof/start {})
-  (dotimes [i 2]
-    (wf-test-data 20)
+  (dotimes [i 1]
+    (wf-test-data 40) ;; why more is failing?
     ;(println "Yo!")
 
     )
