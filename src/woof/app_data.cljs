@@ -14,6 +14,7 @@
   )
 
 
+;; todo: maybe use defmethods with metadata for defining step handlers
 
 
 (defn default-context []
@@ -106,7 +107,6 @@
 
 (defn wf-state [*context *workflow-cfg *xctor *xctor-chan]
 
-  (let [CONTEXT (wf/make-context *context)]
     (reify IWF
 
       (merge-context [this new-context]
@@ -130,9 +130,11 @@
 
       (start! [this callback]
 
-              ;(wf/get-)
+            (let [context (wf/make-context @*context)
+                  steps (:steps @*workflow-cfg)]
+              (set-xctor this (wf/build-executor context steps))
 
-              (set-xctor this (wf/build-executor CONTEXT (:steps @*workflow-cfg)))
+              ;; looks like processor
 
               (let [exec-chan (wf/time-updated-chan ;; todo: move to protocol
                                 (wf/execute! (get-xctor this))
@@ -140,10 +142,7 @@
 
                 (set-xctor-chan this exec-chan)
 
-                (callback this)
-                )
-              )
-      )
+                (callback this))))
     )
   )
 

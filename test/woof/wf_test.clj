@@ -41,7 +41,7 @@
                 ::0 [:hello "World!"]
                 ::1 [:hello "Woof!"])
 
-         context (wf/make-context (atom SAMPLE-CONTEXT))
+         context (wf/make-context SAMPLE-CONTEXT)
 
          ; from context (for now mutable) and steps - we create an executor
          executor (wf/build-executor context steps)]
@@ -61,9 +61,9 @@
 
 (deftest nesting-results-pipeline
 
-  (let [context* (atom {
-                         :producer {:fn (fn [a] "world!")}
-                         :consumer {:fn (fn [a] (str "Hello " a)) }})
+  (let [context-map {
+                  :producer {:fn (fn [a] "world!")}
+                  :consumer {:fn (fn [a] (str "Hello " a)) }}
 
         steps (assoc (array-map)
                 ;; if we specify the action parameter as a step-id the workflow will use result of the step passed as param
@@ -72,7 +72,7 @@
 
         ;; note that order of steps is unimportant
 
-        context (wf/make-context context*)
+        context (wf/make-context context-map)
 
         ; from context (for now mutable) and steps - we create an executor
         executor (wf/build-executor context steps)]
@@ -89,25 +89,25 @@
 
 (deftest expand-pipeline
 
-  (let [context* (atom {
-                         :hello {:fn (fn [s]
-                                       (str "Hello " s "!"))}
+  (let [context-map {
+                      :hello {:fn (fn [s]
+                                    (str "Hello " s "!"))}
 
-                         ;; expand actions return new actions that will be added into workflow
-                         :expand {:fn (fn [vs]
-                                        (into (array-map)
-                                              (map-indexed
-                                                (fn[i a]
-                                                  [(test-data/gen-ns-id (str "hello-" i)) [:hello a]])
-                                                vs)))
-                                  :expands? true
-                                  }
-                         })
+                      ;; expand actions return new actions that will be added into workflow
+                      :expand {:fn (fn [vs]
+                                     (into (array-map)
+                                           (map-indexed
+                                             (fn[i a]
+                                               [(test-data/gen-ns-id (str "hello-" i)) [:hello a]])
+                                             vs)))
+                               :expands? true
+                               }
+                      }
         ; workflow is described by a finite number of steps, each of calls to an action
         steps (assoc (array-map)
                 ::0 [:expand ["world" "universe"]])
 
-        context (wf/make-context context*)
+        context (wf/make-context context-map)
 
         ; from context (for now mutable) and steps - we create an executor
         executor (wf/build-executor context steps)]
@@ -130,7 +130,7 @@
           context-map :context
                  steps :steps } (test-data/gen-expand-wf [:a :b :c])
 
-        context (wf/make-context (atom context-map))
+        context (wf/make-context context-map)
         executor (wf/build-executor context steps)]
 
     (let [v @(wf/sync-execute! executor 2000)]
@@ -167,16 +167,14 @@
 (deftest error-handling
 
   ;; in case of something workflow will throw an exception
-  (let [context* (atom SAMPLE-CONTEXT)
-
-        timeout-steps (assoc (array-map)
+  (let [timeout-steps (assoc (array-map)
                         ::0 [:timeout200 "World!"])
 
         no-such-step (assoc (array-map)
                         ::0 [:no-such-step ""])
 
 
-        context (wf/make-context context*)
+        context (wf/make-context SAMPLE-CONTEXT)
         xctor (partial wf/build-executor context)]
 
 
@@ -194,7 +192,7 @@
 
 
 (defn- async-wf [test-context-map test-steps result-fn]
-  (let [context (wf/make-context (atom test-context-map))
+  (let [context (wf/make-context test-context-map)
         executor (wf/build-executor context test-steps)
 
         *result (atom nil)
@@ -339,8 +337,7 @@
                 ::1 [:f ::2]
                 ::2 [:wait ::0]
                 )
-        context (wf/make-context (atom context-map))
-        ]
+        context (wf/make-context context-map)]
     (let [c (async/chan)
           executor (wf/build-executor context steps)]
 
@@ -410,7 +407,7 @@
         ;; result-chan
         process-chan (async/chan)
 
-        context (wf/make-context (atom context-map) {:process-channel process-chan})]
+        context (wf/make-context context-map {:process-channel process-chan})]
 
 
     (let [c (async/chan)
@@ -493,7 +490,7 @@
         ;; result-chan
         process-chan (async/chan)
 
-        context (wf/make-context (atom context-map) {:process-channel process-chan})]
+        context (wf/make-context context-map {:process-channel process-chan})]
 
     (let [c (async/chan)
           executor (wf/build-executor context steps)]

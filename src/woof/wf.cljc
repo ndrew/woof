@@ -815,13 +815,13 @@
 
 ;; WoofContext impl
 
-(defn- get-step-config-impl [*context step-id]
-  (get @*context step-id))
+(defn- get-step-config-impl [context step-id]
+  (get context step-id))
 
 
-(defn- get-step-impl [*context] ;; context as map in atom
+(defn- get-step-impl [context] ;; context as map in atom
   (fn [step-id]
-    (let [step-cfg (get-step-config-impl *context step-id)]
+    (let [step-cfg (get-step-config-impl context step-id)]
         (if-let [f (:fn step-cfg)]
           f
           (fn [v]
@@ -832,10 +832,10 @@
 
 
 
-(defn- get-step-cached-impl [*context cache]
+(defn- get-step-cached-impl [context cache]
   ;; cache is ICache
   (fn [step-id]
-    (let [step-cfg (get-step-config-impl *context step-id)]
+    (let [step-cfg (get-step-config-impl context step-id)]
       (if (:expands? step-cfg) ;; todo: add cache flag?
         (:fn step-cfg)
         (cache/memoize! cache (:fn step-cfg) step-id)))
@@ -1207,21 +1207,21 @@
 
 ;; WoofContext constructor
 (defn make-context
-  "creates context from context map in atom"
-  ([*context]
-   (make-context *context {}))
+  "creates context from context map"
+  ([context]
+   (make-context context {}))
 
-  ([*context options]
+  ([context options]
    (let [{process-channel :process-channel} (merge {:process-channel (u/make-channel)} options)]
      ;; todo: add cached executor and other options
      (reify
           WoofContext
 
           (get-step-fn [this step-id]
-            ((get-step-impl *context) step-id)) ;; todo: get from context impl
+            ((get-step-impl context) step-id)) ;; todo: get from context impl
 
           (get-step-config [this step-id]
-            (get-step-config-impl *context step-id))
+            (get-step-config-impl context step-id))
 
           (build-executor [this steps]
               (executor this
