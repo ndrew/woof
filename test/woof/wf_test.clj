@@ -16,7 +16,6 @@
 ))
 
 
-
 ; 1) context - holds step handlers available to a workflow
 
 (defonce SAMPLE-CONTEXT
@@ -85,6 +84,41 @@
 
 
 ;; runs the expanding workflow
+
+(deftest expand-map-reduce
+
+  (let [context-map {
+                      :reduce {:fn (fn [xs]
+                                     (into (array-map)
+                                           (map-indexed (fn [i x]
+                                                          ;; todo: the way of generating ns ids
+
+                                                          ;; should we pass context here ?
+                                                          [(keyword (str *ns* "/" i)) [:map x]]) xs))
+                                     )
+                               :expands? true}
+
+                      :map {:fn (fn [x]
+                                  x
+                                  )}
+
+                      }
+
+        context (wf/make-context context-map)
+        steps {
+                ::map-reduce [:reduce [1 2 3 4]]
+                }
+        ]
+
+    (let [result @(wf/sync-execute! (wf/build-executor context steps))]
+
+      (is (= (wdata/inline-results result) {::map-reduce '(1 2 3 4)}))
+      )
+    )
+
+
+
+  )
 
 
 (deftest expand-pipeline

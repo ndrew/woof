@@ -11,7 +11,8 @@
   (qualified-keyword? params))
 
 (defn action-id-list? [keyz]
-  (every? action-id? keyz))
+  (and (coll? keyz)
+    (every? action-id? keyz)))
 
 
 (defn timeout

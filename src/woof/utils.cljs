@@ -11,8 +11,10 @@
   ;; FIXME: for now, action-id should be a qualified keyword (so we can distinguish it as parameter)
   (qualified-keyword? params))
 
+
 (defn action-id-list? [keyz]
-  (every? action-id? keyz))
+  (and (coll? keyz)
+    (every? action-id? keyz)))
 
 
 
