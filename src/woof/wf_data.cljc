@@ -21,26 +21,46 @@
 
 
 
-(defn- extract-result [result k]
-  (let [r (get result k)]
-      (if (u/action-id-list? r)
-        (mapcat (fn [a]
-                 (let [u (extract-result result a)]
-                   (if (seq? u) u [u]))) r)
-        r)))
+(defn extract-result
+  "gets the final values from workflow result for specified keyz"
+
+  ([result k]
+   (extract-result (fn [all-keys v] v) result [] k))
+
+  ([f result all-keys k]
+   (let [r (get result k)]
+     (if (u/action-id-list? r)
+       (let [nu-keys (conj all-keys k)]
+         (mapcat (fn [a]
+                 (let [u (extract-result f result nu-keys a)]
+                   (if (seq? u)
+                     u [u]))) r)
+         )
+
+       ;; todo: maybe pass here the parent key also, or smth like [:parent-key :key]
+       (f
+         (conj all-keys k) r)))))
+
+
 
 
 (defn extract-results
   "get workflow results, but for certain keys"
-  [result keyz]
-  (into (array-map)
+  ([result keyz f]
+    (into (array-map)
         (map (fn[k]
-               [k (extract-result result k)])
+               [k (extract-result f result [] k)])
              keyz)))
+
+  ([result keyz]
+    (extract-results result keyz (fn [all-keys v] v))))
+
+
+
 
 
 (defn inline-results
-  "substitues expanded items by it's values and removes them from map"
+  "substitues expanded items and removes intermediary values from the result map"
   [results]
 
   (let [new-results (reduce
@@ -61,7 +81,5 @@
 
     (let [{tmp ::tmp} new-results]
       (apply dissoc new-results (conj (keys tmp) ::tmp))
-      )
-    )
-  )
+      )))
 
