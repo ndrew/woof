@@ -5,6 +5,8 @@
     [clojure.core.async :as async :refer [go go-loop]]))
 
 
+;; FIXME: action-id
+
 ;; predicates that check parameter in workflow is a link to other action
 (defn action-id? [params]
   ;; FIXME: for now, action-id should be a qualified keyword (so we can distinguish it as parameter)

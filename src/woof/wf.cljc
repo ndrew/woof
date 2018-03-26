@@ -31,6 +31,27 @@
 ;;
 
 
+(defn sid
+  "generates step-id"
+  ([prefix id]
+   (sid (str prefix
+             (if (keyword? id) (name id) id))))
+  ([id]
+    (keyword (str *ns*
+                  "/"
+                  (if (keyword? id) (name id) id)))))
+
+
+(defn sbody
+  "generates step body for the step-id and a value x"
+  ([step-id f x]
+     [step-id (f x)]
+   )
+  ([step-id x]
+    (sbody step-id identity x)))
+
+
+
 ;;
 ;; context is an interface for map type thingy that holds step functions
 ;;
