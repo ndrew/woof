@@ -38,7 +38,7 @@
 
 (defn- graph-component! [steps]
   (let [graph (reduce (fn [a [k [op p]]]
-                        (if (u/action-id? p)
+                        (if (u/sid? p)
                           (assoc a k (conj (get a k []) p))
                           a)) {} steps)]
     (tarjan (keys graph) graph)))
@@ -57,7 +57,7 @@
 
 (defn get-dependant-steps [steps initial-step]
   (let [graph (reduce (fn [a [k [op p]]]
-                        (if (u/action-id? p)
+                        (if (u/sid? p)
                           (assoc a p (conj (get a p []) k))
                           a)) {} steps)]
 

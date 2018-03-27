@@ -20,6 +20,8 @@
 
 
 
+;; todo: migrate to wf
+
 
 (defn extract-result
   "gets the final values from workflow result for specified keyz"
@@ -29,7 +31,7 @@
 
   ([f result all-keys k]
    (let [r (get result k)]
-     (if (u/action-id-list? r)
+     (if (u/sid-list? r)
        (let [nu-keys (conj all-keys k)]
          (mapcat (fn [a]
                  (let [u (extract-result f result nu-keys a)]
@@ -65,17 +67,17 @@
 
   (let [new-results (reduce
                       (fn [a [k v]]
-                        (if (u/action-id-list? v)
-                          (do
-                            (let [nu-vals (reduce (fn [a k]
-                                                    (assoc a k (get results k))
-                                                    ) (::tmp a) v)]
+                        (if (u/sid-list? v)
 
-                              (assoc a
-                                k (map (fn[id] (get nu-vals id)) v)
-                                ::tmp nu-vals)
-                              )
+                          (let [nu-vals (reduce (fn [a k]
+                                                  (assoc a k (get results k))
+                                                  ) (::tmp a) v)]
+
+                            (assoc a
+                              k (map (fn[id] (get nu-vals id)) v)
+                              ::tmp nu-vals)
                             )
+
                           (assoc a k v))
                         ) {::tmp {} } results)]
 

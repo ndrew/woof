@@ -194,7 +194,7 @@
                                     (vswap! *nested-i + (count actions))
 
 
-                                    (if (u/action-id-list? actions)
+                                    (if (u/sid-list? actions)
                                       (into (array-map)
                                             (map-indexed (fn[i a] [(gen-ns-id (str (name a) "-nested-"
                                                                                    (+ start-i i)))

@@ -16,6 +16,8 @@
                  [fipp "0.6.12"]
                  [clj-async-test "0.0.5"]
 
+                 [compact-uuids "0.2.0"]
+
                  ;; benchmarking stuff
                  [criterium "0.4.4"]
 
@@ -28,6 +30,10 @@
                  [com.cognitect/transit-clj  "0.8.300"]
                  [com.cognitect/transit-cljs "0.8.239"]
 
+
+                 ;; testing deps
+
+                 [me.raynes/fs "1.4.6"]
 
                  ]
 

@@ -4,6 +4,7 @@
             [woof.cache :as cache]
             [woof.graph :as g]
 
+            [compact-uuids.core :as uuid]
 
             #?(:clj [woof.utils :as u :refer [put!? debug!]])
             #?(:cljs [woof.utils :as u])
@@ -25,44 +26,151 @@
   "TODO: write introduction to workflows")
 
 
+;; workflow = ƒ(context, steps)
+
+
+;;
+;; steps map
+
+;; steps map is a non-nested map that can be executed by woof
+;;
+;; steps = kv-map <sid, sbody>,
+;; where
+;;   sid   - unique id represented as qualified keyword or via sid function
+;;   sbody - a tuple [step-id, params], where step-id describes which step handler to use from context with particular params
+
+;; params can be a value or sid
+
+
+(def sid u/sid)
+
+(def sid? u/sid?)  ;; predicates that check parameter in workflow is a link to other action
+
+(def sid-list? u/sid-list?)
+
+
+(defn- gen-uuid []
+  #?(:clj  (java.util.UUID/randomUUID)
+     :cljs (random-uuid)))
+
+
+(defn rand-sid
+  "generates random sid"
+  ([]
+    (sid (uuid/str (gen-uuid))))
+  ([prefix]
+   (sid prefix (uuid/str (gen-uuid)))))
+
+
+
+(defn sbody
+  "generates step body for the specified step-handler-id and a value x"
+  ([step-handler-id x]
+    (sbody step-handler-id identity x))
+  ([step-handler-id f x]
+     [step-handler-id (f x)]))
+
+
+
+
+
+;;
+;; context
+
+
+;; context holds units of execution in woof
+;;
+;; context = map<step-id, step-handler>,
+;; where
+;;   step-id      - a unique keyword per context (non-qualified).
+;;   step-handler - a special kind of single-arity function with metadata assigned
+
+;; context is defined like,
+
+; {
+;    :step-handler-id { :fn (fn [a]
+;                             (str "Hello " a))
+;                        :some :metadata
+;    }
+;}
+
+; or via shorthand functions
+
+; { :step-handler-id (step-handler (fn[x]..) :some :metadata )}
+
+;; handler function can return the value (sync handler) or a core.async channel (async handler)
+
+;; also, handlers can behave differently according to the metadata - TODO:
+
+
+(defn step-handler
+  "step hander constructor function"
+
+  [f & {:keys [expands?]
+        :or {expands? false}}]
+  ;; TODO: add other possible flags and validation
+  {:fn f
+   :expands? expands?})
+
+
+
+
+(defn- gen-intermediary-steps [sid-fn step-body-fn ids]
+  (into {} (map
+             (fn [x]
+               [(sid-fn x) (step-body-fn x)])
+             ids)))
+
+
+
+
+(defn expand-handler
+  "generates an expand step handler
+
+  by default step-handler-fn returns {(rand-sid) (step-body-fn x)}
+  "
+  ([sid-fn step-body-fn]
+   (expand-handler sid-fn step-body-fn
+                   (fn[x] {(rand-sid) (step-body-fn x)}))
+   )
+  ([sid-fn step-body-fn step-handler-fn]
+   (step-handler (fn [ids]
+                      (if (sid-list? ids)
+                        (gen-intermediary-steps sid-fn step-body-fn ids)
+                        (if (sid? ids)
+                          (gen-intermediary-steps sid-fn step-body-fn [ids])
+                          (step-handler-fn ids))))
+                    :expands? true))
+  )
+
+
+
+
+
+;; context implementation is WoofContext protocol
+
+(defprotocol WoofContext
+
+  ;; returns step function by its step-id, or throws an error
+  (get-step-fn [this step-id])
+
+  ;; returns step handler metadata as a map
+  (get-step-config [this step-id])
+
+  ;; factory method for creating executor
+  (build-executor [this steps]) ;; TODO: does it belong here?
+)
+
+
+
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; public protocols
 ;;
 
-
-(defn sid
-  "generates step-id"
-  ([prefix id]
-   (sid (str prefix
-             (if (keyword? id) (name id) id))))
-  ([id]
-    (keyword (str *ns*
-                  "/"
-                  (if (keyword? id) (name id) id)))))
-
-
-(defn sbody
-  "generates step body for the step-id and a value x"
-  ([step-id f x]
-     [step-id (f x)]
-   )
-  ([step-id x]
-    (sbody step-id identity x)))
-
-
-
-;;
-;; context is an interface for map type thingy that holds step functions
-;;
-;; also context is a starting point for workflow - the impl knows how to create an executor
-(defprotocol WoofContext
-  ;; gets step function by step-id
-  (get-step-fn [this step-id])
-  (get-step-config [this step-id])
-
-  ;; factory method for creating executor
-  (build-executor [this steps]))
 
 
 
@@ -480,7 +588,7 @@
 
     (cond
       (nil? existing-result) ;; no result -> run step
-      (if (u/action-id? params)
+      (if (sid? params)
         (let [new-params (get! params)]
           (cond
             (nil? new-params) [id [step-id params]]
@@ -543,7 +651,7 @@
 
       (cond
         (nil? existing-result) ;; no result -> run step
-        (if (u/action-id? params)
+        (if (sid? params)
           (let [new-params (get! params)]
             (cond
               (nil? new-params) [id [step-id params]]

@@ -5,16 +5,29 @@
     [clojure.core.async :as async :refer [go go-loop]]))
 
 
-;; FIXME: action-id
+;; fixme: migrate to woof.wf-core
+
+(defn sid
+  "generates a particular id for a step — sid"
+  ([id]
+   (keyword (str *ns*
+                 "/"
+                 (if (keyword? id) (name id) id))))
+  ([prefix id]
+   (sid (str prefix
+             (if (keyword? id) (name id) id)))))
 
 ;; predicates that check parameter in workflow is a link to other action
-(defn action-id? [params]
-  ;; FIXME: for now, action-id should be a qualified keyword (so we can distinguish it as parameter)
-  (qualified-keyword? params))
+(defn sid?
+  "checks if id is sid: it should be qualified keyword. So we can distinguish it as parameter"
+  [id]
+  (qualified-keyword? id))
 
-(defn action-id-list? [keyz]
-  (and (coll? keyz)
-    (every? action-id? keyz)))
+
+(defn sid-list?
+  "checkis if sids is a collection where all items are sid"
+  [sids]
+  (and (coll? sids) (every? sid? sids)))
 
 
 (defn timeout
