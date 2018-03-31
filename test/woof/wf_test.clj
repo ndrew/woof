@@ -16,7 +16,7 @@
 ))
 
 
-; 1) context - holds step handlers available to a workflow
+; 1) context - contains step handlers available to a workflow
 
 (defonce SAMPLE-CONTEXT
   {
@@ -34,11 +34,11 @@
 (deftest simplest-pipeline
 
   (let [; workflow is described by a flat map with finite number of steps
-        steps (assoc (array-map)
+        steps {
                 ;; each step has it's unique id and step definition
                 ;; step definition is hiccup style vector where first el is step-id and second is step parameters
                 ::0 [:hello "World!"]
-                ::1 [:hello "Woof!"])
+                ::1 [:hello "Woof!"]}
 
          context (wf/make-context SAMPLE-CONTEXT)
 
@@ -83,42 +83,6 @@
   )
 
 
-;; runs the expanding workflow
-
-(deftest expand-map-reduce
-
-  (let [context-map {
-                      :reduce {:fn (fn [xs]
-                                     (into (array-map)
-                                           (map-indexed (fn [i x]
-                                                          ;; todo: the way of generating ns ids
-
-                                                          ;; should we pass context here ?
-                                                          [(keyword (str *ns* "/" i)) [:map x]]) xs))
-                                     )
-                               :expands? true}
-
-                      :map {:fn (fn [x]
-                                  x
-                                  )}
-
-                      }
-
-        context (wf/make-context context-map)
-        steps {
-                ::map-reduce [:reduce [1 2 3 4]]
-                }
-        ]
-
-    (let [result @(wf/sync-execute! (wf/build-executor context steps))]
-
-      (is (= (wdata/inline-results result) {::map-reduce '(1 2 3 4)}))
-      )
-    )
-
-
-
-  )
 
 
 (deftest expand-pipeline
@@ -154,6 +118,60 @@
 
       ))
   )
+
+
+;; runs the expanding workflow
+
+(deftest map-reduce-test
+
+  (let [context-map {
+          :expand {:fn (fn [xs]
+                         (into (array-map)
+                               (map-indexed (fn [i x]
+                                              [(keyword (str *ns* "/" i)) [:map x]]) xs)))
+                   :expands? true
+                   }
+
+          :collect {
+                     :fn (fn[xs] xs)
+                     :collect? true
+                     }
+
+          :map {:fn (fn [x] x)}
+        }
+        context (wf/make-context context-map)]
+
+    ;; collect step functions gather the results the sids provided to them
+    (let [steps {
+                  ::map-reduce [:collect [::1 ::2]]
+
+                  ::1 [:map 1]
+                  ::2 [:map 2]
+
+                  ::map-reduce-vals [:collect [1 2]]
+                  }
+
+          result @(wf/sync-execute! (wf/build-executor context steps))]
+        (is (= (::map-reduce result) '(1 2)))
+
+        (is (= (::map-reduce-vals result) '(1 2)))
+      )
+
+    ;; also results can be collected after workflow had been executed
+    ;;
+    (let [steps {
+            ::map-reduce-after-wf [:expand [1 2 3 4]]
+          }
+          result @(wf/sync-execute! (wf/build-executor context steps))]
+      (is (= (wdata/inline-results result) {::map-reduce-after-wf '(1 2 3 4)})))
+
+    )
+
+
+  )
+
+
+
 
 
 ;; todo: multi-expand test, like f(g(z(x)))

@@ -106,20 +106,25 @@
 (defn step-handler
   "step hander constructor function"
 
-  [f & {:keys [expands?]
-        :or {expands? false}}]
+  [f & {:keys [expands? collect?]
+        :or {expands? false
+             collect? false}}]
   ;; TODO: add other possible flags and validation
   {:fn f
-   :expands? expands?})
+   :expands? expands?
+   :collect? collect?})
 
 
 
 
-(defn- gen-intermediary-steps [sid-fn step-body-fn ids]
+(defn- steps-from-sids
+  [sid-fn step-body-fn ids]
   (into {} (map
              (fn [x]
                [(sid-fn x) (step-body-fn x)])
              ids)))
+
+
 
 
 
@@ -136,9 +141,9 @@
   ([sid-fn step-body-fn step-handler-fn]
    (step-handler (fn [ids]
                       (if (sid-list? ids)
-                        (gen-intermediary-steps sid-fn step-body-fn ids)
+                        (steps-from-sids sid-fn step-body-fn ids)
                         (if (sid? ids)
-                          (gen-intermediary-steps sid-fn step-body-fn [ids])
+                          (steps-from-sids sid-fn step-body-fn [ids])
                           (step-handler-fn ids))))
                     :expands? true))
   )
@@ -262,6 +267,7 @@
   (ready? [this])
 
   (get! [this id])
+  (get!* [this id-list])
   )
 
 
@@ -417,6 +423,12 @@
 
   (get! [this id]  ; get!
         (u/nil-get @(get-results this) id))
+
+  (get!* [this id-list]
+         ;; todo: nils?
+         (map (partial get! this) id-list)
+         )
+
 )
 
 
@@ -563,26 +575,45 @@
 
 (defn- handle-commit!
   "saves or expands the step"
-  [context executor save-fn! expand-fn! id step-id params]
+  [context executor wf-state id step-id params]
   ;; TODO: should expand work with different handler or one will do?
   ;; TODO: should the step return some typed responce?
   ;; TODO: what if step handler is not found?
 
-  (let [step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
-        f (get-step-fn executor step-id)
-        result (f params)]
-    (if (:expands? step-cfg)
-      (expand-fn! id step-id params result)
-      (save-fn! id step-id params result))
+  (let [save-fn! (partial commit! wf-state)
+        expand-fn! (partial expand! wf-state)
 
-    [id [step-id params]]))
+        step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
+        f (get-step-fn executor step-id)]
+
+    (if (and (:collect? step-cfg)
+             (sid-list? params))
+      ;; collect
+      (let [collected (get!* wf-state params)]
+        (when (not-any? nil? collected)
+          (if (:expands? step-cfg)
+            (expand-fn! id step-id params collected)
+            (save-fn! id step-id params collected))
+          ))
+      ;; process sid or value
+      (let [result (f params)]
+        (if (:expands? step-cfg)
+          (expand-fn! id step-id params result)
+          (save-fn! id step-id params result))
+
+        )
+      )
+    [id [step-id params]]
+    )
+  )
 
 
 
 ;; step processing function. parametrized by get! and commit! fns.
 (defn- do-process-step! [get! commit! [id [step-id params]]]
   (let [existing-result (get! id)]
-   ;;(println "PROCESSING " [id [step-id params]] existing-result )
+
+    ; (println "PROCESSING " [id [step-id params]] existing-result )
 
     ;;#?(:cljs (.warn js/console "PROCESSING: " (pr-str [id params "---" (get! params)]) ) )
 
@@ -645,8 +676,11 @@
     [this [id [step-id params]]]
 
 
+
     (let [existing-result (get! id)]
-      ;; (println "PROCESSING " [id [step-id params]] existing-result )
+
+
+      ;(println "PROCESSING " [id [step-id params]] existing-result )
       ;; #?(:cljs (.warn js/console "PROCESSING: " (pr-str [id params "---" (get! params)]) ) )
 
       (cond
@@ -786,7 +820,7 @@
          *steps-left (get-steps-left R)
          *results (get-results R)
 
-         commit! (partial handle-commit! context executor (partial commit! R) (partial expand! R))
+         commit! (partial handle-commit! context executor R)
 
          processor (make-processor R commit! (partial get! R))]
 
