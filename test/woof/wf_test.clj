@@ -138,6 +138,13 @@
                      }
 
           :map {:fn (fn [x] x)}
+
+          :async-map {:fn (fn[x]
+                            (let [chan (async/chan)]
+                              (go
+                               (async/<! (u/timeout 500))
+                               (async/put! chan x))
+                              chan))}
         }
         context (wf/make-context context-map)]
 
@@ -148,6 +155,12 @@
                   ::1 [:map 1]
                   ::2 [:map 2]
 
+                  ::async-map-reduce [:collect [::a1 ::a2 ::1 ::2]]
+
+                  ::a1 [:async-map 1]
+                  ::a2 [:async-map 2]
+
+
                   ::map-reduce-vals [:collect [1 2]]
                   }
 
@@ -155,6 +168,8 @@
         (is (= (::map-reduce result) '(1 2)))
 
         (is (= (::map-reduce-vals result) '(1 2)))
+
+        (is (= (::async-map-reduce result) '(1 2 1 2)))
       )
 
     ;; also results can be collected after workflow had been executed
@@ -169,9 +184,6 @@
 
 
   )
-
-
-
 
 
 ;; todo: multi-expand test, like f(g(z(x)))

@@ -590,7 +590,7 @@
              (sid-list? params))
       ;; collect
       (let [collected (get!* wf-state params)]
-        (when (not-any? nil? collected)
+        (when (not-any? #(or (nil? %1) (u/channel? %1)) collected)
           (if (:expands? step-cfg)
             (expand-fn! id step-id params collected)
             (save-fn! id step-id params collected))
