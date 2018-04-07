@@ -186,6 +186,8 @@
   )
 
 
+
+
 ;; todo: multi-expand test, like f(g(z(x)))
 
 
@@ -223,6 +225,72 @@
       )
     )
   )
+
+
+(deftest infinite-expand-test
+
+  (let [done-channel (async/chan)
+        context-map {
+          :id {:fn (fn [x]
+                     ;; (println x)
+                     x)}
+
+
+          :ui-loop {:fn (fn[x]
+                            (let [chan (async/chan)]
+                              (go
+                               (async/<! (u/timeout 10))
+                               (async/>! chan { (wf/rand-sid) [:id (System/currentTimeMillis)] })
+
+                               (async/<! (u/timeout 70))
+                               (async/>! chan { (wf/rand-sid) [:id (System/currentTimeMillis)] })
+
+
+                                )
+                              chan))
+
+                      :expands? true
+                      :infinite true
+                      }
+        }
+        context (wf/make-context context-map)]
+
+    ;; collect step functions gather the results the sids provided to them
+    (let [steps { ::ui [:ui-loop ""] }
+          xtor (wf/build-executor context steps)
+
+          c (wf/execute! xtor)]
+
+
+      (go-loop []
+        (let [[status data] (async/<! c)]
+          ;;(println status (d/pretty data)) ;; [status data]
+
+          (when (= :done status)
+
+            (async/put! done-channel data)
+            )
+
+
+          (if-not (= :done status)
+            (recur))
+
+        ))
+
+      (go
+        (async/<! (u/timeout 1000))
+        (wf/end! xtor))
+
+
+      (let [d (async/<!! done-channel)]
+        (is (= (count (::ui d)) 2))
+        )
+
+      )
+
+  )
+)
+
 
 
 

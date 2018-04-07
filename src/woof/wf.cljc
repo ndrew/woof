@@ -275,6 +275,34 @@
 ;; internal impl
 
 
+(defn- do-expand-impl! [STEPS *results id actions]
+  (if-not (get-infinite-step STEPS id)
+    (do
+
+      (swap! *results merge {id (keys actions)})
+
+      (add-steps! STEPS actions)
+      (add-pending-steps! STEPS actions)
+      (step-ready! STEPS id)
+
+      )
+    (do
+      ; (swap! *results merge {id (keys actions)})
+      (swap! *results update-in [id]
+             (fn[a b]
+               (if (seq? a)
+                 (concat a b)
+                 b))
+             (keys actions))
+
+
+      (add-steps! STEPS actions)
+      (add-pending-steps! STEPS actions)
+      ;; (step-ready! STEPS id)
+
+      )
+    )
+  )
 
 
 ; move the params to a :keys
@@ -330,61 +358,10 @@
               (let [*results (get-results this)]
 
                 #?(:clj (dosync
-                    ;; does order here matters?
-
-                    ;; todo: check for infinite
-
-
-                    (swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
-
-                    (add-steps! STEPS actions)
-                    (add-pending-steps! STEPS actions)
-                    (step-ready! STEPS id)
-
+                  (do-expand-impl! STEPS *results id actions)
 
                 ))
-                #?(:cljs (do
-
-
-                    (if-not (get-infinite-step STEPS id)
-                      (do
-
-                        (swap! *results merge {id (keys actions)})
-
-                        (add-steps! STEPS actions)
-                        (add-pending-steps! STEPS actions)
-                        (step-ready! STEPS id)
-
-                        )
-                      (do
-                        ; (swap! *results merge {id (keys actions)})
-                        (swap! *results update-in [id]
-                                                     (fn[a b]
-                                                       (if (seq? a)
-                                                         (concat a b)
-                                                         b))
-                                                     (keys actions))
-
-
-                        ;; (.warn js/console "RESULTS ARE\n" (d/pretty @*results))
-
-                        ;;(swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
-                        ; todo: concat to expanded list
-                        ;(swap! *results update-in [::id] concat (keys actions))
-
-
-                        (add-steps! STEPS actions)
-                        (add-pending-steps! STEPS actions)
-
-
-                        ;; (step-ready! STEPS id)
-
-
-                        )
-                      )
-
-
-                           ))
+                #?(:cljs (do-expand-impl! STEPS *results id actions))
 
                 )
               )
@@ -477,9 +454,6 @@
                    ))
                )
              (do
-               (println "normal expand " (d/pretty actions))
-
-
                (do-expand! this id actions)
                )))
 
@@ -1471,6 +1445,8 @@
 
   (process-results! [this]
     #?(:clj
+
+        ;; TODO: how to handle timeouts, as :timeout?
 
         (let [t (get this ::timeout 5000)]
           (future
