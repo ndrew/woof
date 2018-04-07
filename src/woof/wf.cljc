@@ -226,9 +226,7 @@
 
 
   (do-update-steps! [this added-steps])
-
   (get-infinite-step [this id])
-
   (set-infinite-step [this id result])
 
   (steps-ready? [this])
@@ -328,23 +326,64 @@
 
 
   (do-expand! [this id actions]
+
               (let [*results (get-results this)]
 
                 #?(:clj (dosync
                     ;; does order here matters?
+
+                    ;; todo: check for infinite
+
+
                     (swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
 
                     (add-steps! STEPS actions)
                     (add-pending-steps! STEPS actions)
                     (step-ready! STEPS id)
-                          ))
+
+
+                ))
                 #?(:cljs (do
-                    ;; does order here matters?
-                    (swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
 
-                    (add-steps! STEPS actions)
-                    (add-pending-steps! STEPS actions)
-                    (step-ready! STEPS id)
+
+                    (if-not (get-infinite-step STEPS id)
+                      (do
+
+                        (swap! *results merge {id (keys actions)})
+
+                        (add-steps! STEPS actions)
+                        (add-pending-steps! STEPS actions)
+                        (step-ready! STEPS id)
+
+                        )
+                      (do
+                        ; (swap! *results merge {id (keys actions)})
+                        (swap! *results update-in [id]
+                                                     (fn[a b]
+                                                       (if (seq? a)
+                                                         (concat a b)
+                                                         b))
+                                                     (keys actions))
+
+
+                        ;; (.warn js/console "RESULTS ARE\n" (d/pretty @*results))
+
+                        ;;(swap! *results merge {id (keys actions)}) ;; todo: how to save that action had been expanded
+                        ; todo: concat to expanded list
+                        ;(swap! *results update-in [::id] concat (keys actions))
+
+
+                        (add-steps! STEPS actions)
+                        (add-pending-steps! STEPS actions)
+
+
+                        ;; (step-ready! STEPS id)
+
+
+                        )
+                      )
+
+
                            ))
 
                 )
@@ -353,7 +392,6 @@
 
   (update-steps! [this params]
                  (do-update-steps! STEPS params))
-
 
 
   (commit! [this id step-id params result]
@@ -398,22 +436,50 @@
 
 
   (expand! [this id step-id params actions]
+
+
            (if (u/channel? actions)
              (let [*steps-left (get-steps-left this)
-                    status (get @*steps-left id)]
-               (when-not (= :working status)
+
+                   infinite? (:infinite (get-step-config (get this :CTX) step-id))
+                   ]
+
+               (when-not (is-step-working? STEPS id)
+
                  (swap! (get-results this) assoc id actions) ;; store channel
-                 (swap! *steps-left assoc id :working)
-                 (go
-                   (let [v (async/<! actions)]
-                     ;; TODO: handle if > 1000 actions are added
-                     ;; TODO: handle if cycle is being added
+                 ; (swap! *steps-left assoc id :working)
+                 (step-working! STEPS id)
 
-                     ;(println (d/pretty [:expand [id step-id params v]]))
 
-                     (put!? (:process-channel cfg) [:expand [id step-id params v]] 1000)))
-                 ))
+                 (if infinite?
+                   (do
+                     (when-not (get-infinite-step STEPS id)
+                       (set-infinite-step STEPS id actions)
+
+                       (go-loop []
+                                (let [v (async/<! actions)]
+                                  (put!? (:process-channel cfg) [:expand [id step-id params v]] 1000))
+
+                                (recur)
+
+                                )
+                       )
+
+                     )
+                   (go
+                     (let [v (async/<! actions)]
+                       ;; TODO: handle if > 1000 actions are added
+                       ;; TODO: handle if cycle is being added
+
+                       ;(println (d/pretty [:expand [id step-id params v]]))
+
+                       (put!? (:process-channel cfg) [:expand [id step-id params v]] 1000)))
+                   ))
+               )
              (do
+               (println "normal expand " (d/pretty actions))
+
+
                (do-expand! this id actions)
                )))
 
@@ -463,28 +529,14 @@
 
 
       (do-update-steps! [this [op nu-steps]]
-                 (cond
-                   (= op :add)
-                   (do
-                     (let [new-steps @*steps2add]
-                           ; (println "new steps" (d/pretty added-steps) "\nvs\n" (d/pretty new-steps))
-                           (when-not (empty? new-steps)
-                             (swap! *steps merge new-steps)
+          ; do not distinguish between :add and :update
 
-                             #_(println "PROCESS ADDED STEPS:\n"
-                                      "new-steps —" (d/pretty new-steps)
-                                      "steps2add —" (d/pretty @*steps2add)
-                                      )
-                             (reset! *steps2add (array-map)))))
+          (let [new-steps @*steps2add]
+            (when-not (empty? new-steps)
+                (swap! *steps merge new-steps)
 
-                   (= op :update)
-                   (do
-                     ;; <?> should we do ?
-                     ;; (swap! *steps merge new-steps)
+                (reset! *steps2add (array-map)))))
 
-                     ;; #?(:cljs (.error js/console (pr-str [op nu-steps "local " (empty? @*steps2add)])))
-                     ))
-                 )
 
         (get-infinite-step [this id]
             (get-in @*state [:infinite id]))
@@ -496,29 +548,21 @@
         (steps-ready? [this]
                       (and
                         (empty? (get @*state :infinite {}))
-                        (every? #(= % :ok) (vals @*steps-left)))
-                      )
+                        (every? #(= % :ok) (vals @*steps-left))))
 
         (add-steps! [this actions]
-                    (swap! *steps2add into actions)
-                    )
+          (swap! *steps2add into actions))
 
         (add-pending-steps! [this actions]
+          #?(:clj
+              (if (satisfies? clojure.core.protocols/IKVReduce actions)
+                (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
+                (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions))))
 
-                            ;; fixme:
-                            #?(:clj
-                            (if (satisfies? clojure.core.protocols/IKVReduce actions)
-                              (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
-                              (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions))
-                              ))
-
-                            #?(:cljs
-                              (if (satisfies? cljs.core/IKVReduce actions)
-                                (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
-                                (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions))
-                              ))
-
-                            )
+          #?(:cljs
+              (if (satisfies? cljs.core/IKVReduce actions)
+                (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
+                (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions)))))
 
         (step-ready! [this id]
                      (swap! *steps-left dissoc id))
@@ -669,13 +713,13 @@
 
 
 
-(defrecord WFStepProcessor [R commit! get! *prev-added-steps *prev-results]
+
+;; where R is WFState
+(defrecord WFStepProcessor [STATE commit! get! *prev-added-steps *prev-results]
   WoofStepProcessor
 
   (process-step!
     [this [id [step-id params]]]
-
-
 
     (let [existing-result (get! id)]
 
@@ -708,12 +752,12 @@
     (if-let [cycles (g/has-cycles steps)]
       (u/throw! (str "cycle detected " (d/pretty cycles))))
 
-    ; (println "PRODUCING:")
+;; (println "PRODUCING:")
 
     (let [ PUT_RETRY_T 1000
-         *steps (get-steps R)
-         *steps-left (get-steps-left R)
-         *results (get-results R)
+         *steps (get-steps STATE)
+         *steps-left (get-steps-left STATE)
+         *results (get-results STATE)
 
           prev-steps @*prev-added-steps
 
@@ -770,12 +814,19 @@
 
           ; #?(:cljs (.warn js/console (d/pretty["STEPS:" "added?" steps-added? "results-changed?" results-changed?])))
 
+          #_(println "__results-changed?" results-changed?
+                   "__steps-added?" steps-added?)
+
 
           (when results-changed?
 ;            (println "PRODUCING CONTUNUES: results changed")
 
             (vreset! *prev-results results)
-            (put!? process-channel [:steps [:update new-steps]] PUT_RETRY_T))
+
+            (if-not steps-added?
+              (put!? process-channel [:steps [:update new-steps]] PUT_RETRY_T))
+
+            )
 
           ;; if only added
           (when steps-added? ;(and steps-added? (not results-changed?))
@@ -783,8 +834,9 @@
 
             (vreset! *prev-added-steps new-steps)
             (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
-
           )
+
+
 
         )
 
@@ -863,6 +915,7 @@
                         )
 
               :steps (let [[steps-op _] v]
+
                        ;; loop completed, merge steps and add new ones (if any)
                        (update-steps! R v)
 
@@ -877,8 +930,9 @@
 
 
               :expand (let [[id step-id params result] v]
-                        ; (println "GOT EXPAND: " (d/pretty v))
                         (do-expand! R id result)
+
+                        (vreset! force-update true)
 
                         ;; send result
                         ;(async/>! ready-channel [:expand [id result]])
@@ -917,12 +971,11 @@
               (when (or (not same-results?)
                         @force-update
                         (not (empty? @*steps-left)) ;; - <?> will this cause different results
+                        ;(not (empty? @*steps2add))
                         )
-                #_(println "CONSUMING:\n\n"
-                         (d/pretty new-results)
-                         "steps left: " (d/pretty @*steps-left)
-                         )
 
+
+                ; #?(:cljs (.warn js/console "CONSUMING: " (d/pretty {:i i :new-results new-results :steps processed-steps :steps-left @*steps-left})))
 
                 (debug! *consumer-debugger* {:process-loop-end {:i i :new-results new-results :steps processed-steps :steps-left @*steps-left}})
 
