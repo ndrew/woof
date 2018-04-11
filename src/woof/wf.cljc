@@ -112,7 +112,9 @@
   ;; TODO: add other possible flags and validation
   {:fn f
    :expands? expands?
-   :collect? collect?})
+   :collect? collect?
+   ; TODO: add infinite
+   })
 
 
 
@@ -162,8 +164,14 @@
   ;; returns step handler metadata as a map
   (get-step-config [this step-id])
 
+
   ;; factory method for creating executor
   (build-executor [this steps]) ;; TODO: does it belong here?
+
+
+  ;;
+  (send-message [this event data])
+
 )
 
 
@@ -973,7 +981,9 @@
           ;; todo: stop not immediately when force stop
           ;; send done, or keep processing the result
           (if (or @force-stop (ready? R))
-              (async/>! ready-channel [:done @*results])
+              (let [last-results @*results]
+                (async/>! ready-channel [:done last-results])
+                (send-message context :stop last-results))
               (recur (inc i) @*results @*steps @*steps-left))))))
 
 
@@ -995,6 +1005,8 @@
           (async/>! ready-channel [:error e])))
 
       )
+
+    (send-message context :start executor)
 
     ; return channel, first there will be list of pending actions, then the completed ones be added, then channel will be close on the last
     ready-channel)))
@@ -1063,6 +1075,7 @@
                  ;; TODO:
                  )
 
+  (send-message [this event data])
   )
 
 
@@ -1087,6 +1100,8 @@
   (build-executor [this steps]
                  ;; TODO:
                  )
+  (send-message [this event data])
+
   )
 
 
@@ -1132,6 +1147,9 @@
         (build-executor [this steps]
                  ;; TODO:
                  )
+         (send-message [this event data])
+
+
 
         ))
 
@@ -1397,12 +1415,28 @@
 
 ;; WoofContext constructor
 (defn make-context
-  "creates context from context map"
+  "creates context from context map
+  possible options are:
+  {:process-channel <chan>
+   :on {:start (fn [x])
+        :stop ..
+        :other-wf-event-key
+        }}
+  "
   ([context]
    (make-context context {}))
 
   ([context options]
-   (let [{process-channel :process-channel} (merge {:process-channel (u/make-channel)} options)]
+   (let [{
+            process-channel :process-channel
+            events-map :on
+          }
+         (merge {
+                  :process-channel (u/make-channel)
+                  :on {:start (fn [data])
+                       :stop  (fn [data]) }
+
+                  } options)]
      ;; todo: add cached executor and other options
      (reify
           WoofContext
@@ -1417,7 +1451,13 @@
               (executor this
                     (make-state! this (make-state-cfg steps process-channel))
                     (u/make-channel)
-                    process-channel))))))
+                    process-channel))
+
+          (send-message [this event-key data]
+            (if-let [f (get events-map event-key)]
+              (f data)))
+
+       ))))
 
 
 
