@@ -169,7 +169,8 @@
   (build-executor [this steps]) ;; TODO: does it belong here?
 
 
-  ;;
+  ;; msg handler from from the workflow - for clean-up and some initial setup
+  ;; <?> does this have to be synchronous
   (send-message [this event data])
 
 )
@@ -617,10 +618,11 @@
       ;; collect
       (let [collected (get!* wf-state params)]
         (when (not-any? #(or (nil? %1) (u/channel? %1)) collected)
-          (if (:expands? step-cfg)
-            (expand-fn! id step-id params collected)
-            (save-fn! id step-id params collected))
-          ))
+          (let [result (f collected)]
+            (if (:expands? step-cfg)
+              (expand-fn! id step-id params result)
+              (save-fn! id step-id params result))
+            )))
       ;; process sid or value
       (let [result (f params)]
         (if (:expands? step-cfg)
