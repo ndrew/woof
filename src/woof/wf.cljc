@@ -49,6 +49,8 @@
 (def sid-list? u/sid-list?)
 
 
+
+
 (defn- gen-uuid []
   #?(:clj  (java.util.UUID/randomUUID)
      :cljs (random-uuid)))
@@ -165,19 +167,7 @@
   (get-step-config [this step-id])
 
 
-  ;; factory method for creating executor
-  (build-executor [this steps]) ;; TODO: does it belong here?
-
-
-  ;; msg handler from from the workflow - for clean-up and some initial setup
-  ;; <?> does this have to be synchronous
-  (send-message [this event data])
-
 )
-
-
-
-
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -186,7 +176,21 @@
 ;;
 
 
+;; constructor protocol that will know which execturor impl to take
 
+(defprotocol WoofExecutorFactory
+  ;; factory method for creating executor
+  (build-executor [this steps]) ;; TODO: does it belong here?
+  )
+
+
+;; msg handler from from the workflow - for clean-up and some initial setup
+
+(defprotocol WoofWorkflowMsg
+  ;; <?> does this have to be synchronous
+  (send-message [this event data])
+
+  )
 
 
 ;;
@@ -220,8 +224,6 @@
 ;; internal protocols
 
 
-;;
-;; WIP: IState
 
 (defprotocol WoofSteps
 
@@ -252,8 +254,8 @@
 
 
 ;;
-;; todo: refactor IState into model and behaviour
-(defprotocol IState
+;; todo: refactor WoofState into model and behaviour
+(defprotocol WoofState
 
   (get-initial-steps [this])
   (get-steps [this])
@@ -276,6 +278,15 @@
   (get! [this id])
   (get!* [this id-list])
   )
+
+
+(defprotocol WoofStepProcessor ;; "produces" messages while processing wf
+
+  (process-step! [this step])
+
+  (process-steps! [this process-channel steps])
+)
+
 
 
 
@@ -316,7 +327,7 @@
 
 ; move the params to a :keys
 (defrecord WFState [cfg STEPS]
-  IState
+  WoofState
   ;;
   (get-initial-steps [this] (initial-steps STEPS))
 
@@ -618,7 +629,7 @@
       ;; collect
       (let [collected (get!* wf-state params)]
         (when (not-any? #(or (nil? %1) (u/channel? %1)) collected)
-          (let [result (f collected)]
+          (let [result (f collected)] ;; TODO: can this be (f (filter-collected collected)) for collect? and expands? - or new type of step?
             (if (:expands? step-cfg)
               (expand-fn! id step-id params result)
               (save-fn! id step-id params result))
@@ -687,13 +698,6 @@
 
 
 
-
-(defprotocol WoofStepProcessor ;; "produces" messages while processing wf
-
-  (process-step! [this step])
-
-  (process-steps! [this process-channel steps])
-)
 
 
 
@@ -985,7 +989,7 @@
           (if (or @force-stop (ready? R))
               (let [last-results @*results]
                 (async/>! ready-channel [:done last-results])
-                (send-message context :stop last-results))
+                (if (satisfies? WoofWorkflowMsg context) (send-message context :stop last-results)))
               (recur (inc i) @*results @*steps @*steps-left))))))
 
 
@@ -1008,7 +1012,7 @@
 
       )
 
-    (send-message context :start executor)
+    (if (satisfies? WoofWorkflowMsg context) (send-message context :start executor))
 
     ; return channel, first there will be list of pending actions, then the completed ones be added, then channel will be close on the last
     ready-channel)))
@@ -1073,11 +1077,6 @@
   (get-step-config [this step-id]
     (get-step-config context step-id))
 
-  (build-executor [this steps]
-                 ;; TODO:
-                 )
-
-  (send-message [this event data])
   )
 
 
@@ -1099,11 +1098,6 @@
   (get-step-config [this step-id]
     (get-step-config context step-id))
 
-  (build-executor [this steps]
-                 ;; TODO:
-                 )
-  (send-message [this event data])
-
   )
 
 
@@ -1112,6 +1106,7 @@
 ;; API
 
 
+;; default executor
 (defn- executor
   "workflow constuctor"
   ([context steps]
@@ -1122,13 +1117,12 @@
                     process-chan)))
 
   ([context model ready-channel process-channel]
-
    (let [xctor (->AsyncExecutor context
                      model
                      ready-channel
                      process-channel)]
 
-     ;; spliting current wf implementation into smaller 'mixin' style protocols
+     ;; executor should (may?) also act as context, but proxy the impl to actual context
      (reify
         WoofExecutor
 
@@ -1140,20 +1134,14 @@
 
         WoofContext
 
-         (get-step-fn [this step-id]
+        (get-step-fn [this step-id]
           (get-step-fn context step-id))
 
         (get-step-config [this step-id]
           (get-step-config context step-id))
 
-        (build-executor [this steps]
-                 ;; TODO:
-                 )
-         (send-message [this event data])
-
-
-
-        ))
+        )
+     )
 
    ))
 
@@ -1176,64 +1164,6 @@
 
 ;; how the executor should be instantiated?
 
-
-
-;; transducers
-;;
-
-(defn chunk-update-xf
-  "passes one :process items  "
-  [buf-size]
-  (fn [rf]
-    (let [ctr (volatile! 0)]
-      (fn
-        ([] (rf)) ; init (arity 0) - should call the init arity on the nested transform xf, which will eventually call out to the transducing process
-        ([result] ; completion (arity 1)
-         ; why this is never called?
-         ; (println "COMPLETE" result)
-         (rf result))
-        ; Step (arity 2) - this is a standard reduction function but it is expected to call the xf step arity 0 or more times as appropriate in the transducer.
-        ; For example, filter will choose (based on the predicate) whether to call xf or not. map will always call it exactly once. cat may call it many times depending on the inputs.
-        ([result v]                         ; we ignore the input as
-         (let [[status data] v]
-           ;;(println "~~~" @ctr "~" status "~~~")
-           (if-not (= :process status)
-             (rf result v)
-             (do
-               (vswap! ctr inc)
-               (when (= buf-size @ctr)
-                 (vreset! ctr 0)
-                 (rf result v)
-               ))
-             )
-           ))))))
-
-
-
-(defn time-update-xf [interval]
-  (fn [rf]
-    (let [ctr (volatile! 0)]
-      (fn
-        ([] (rf))              ; init (arity 0)
-        ([result] (rf result)) ; completion (arity 1)
-        ; Step (arity 2) - this is a standard reduction function but it is expected to call the xf step arity 0 or more times as appropriate in the transducer.
-        ; For example, filter will choose (based on the predicate) whether to call xf or not. map will always call it exactly once. cat may call it many times depending on the inputs.
-        ([result v]                         ; we ignore the input as
-         (let [[status data] v]
-           ;;(println "~~~" @ctr "~" status "~~~")
-           (if-not (= :process status)
-             (rf result v)
-             (when (-> (u/now) (- @ctr) (> interval))
-               (vreset! ctr (u/now))
-               (rf result v)))))))))
-
-
-
-(defn time-updated-chan [exec-chan-0 tick-interval]
-  (let [exec-chan (async/pipe exec-chan-0
-                              (async/chan 1 (time-update-xf tick-interval)))]
-
-    exec-chan))
 
 
 
@@ -1283,35 +1213,6 @@
 
 
 
-;; deprecated processor
-
-
-(defrecord AsyncWFProcessor [executor options]
-  WoofResultProcessor
-
-  (process-results! [this]
-    (let [exec-chan (get options :channel (u/make-channel))
-
-          ;; todo: pass here the tick interval or other channel piping options
-
-          t (get this ::timeout)
-          op-handler (get options :op-handler
-                          (fn [[status data]]
-                            (condp = status
-                               :error (u/throw! data) ;; re-throw it, so wf will stop
-                               :done true
-
-                                false
-                              )
-                            ))]
-      (if t
-        (process-wf-loop exec-chan op-handler t (partial end! executor))
-        (process-wf-loop exec-chan op-handler))
-
-      exec-chan
-    )
-  )
-)
 
 
 
@@ -1370,6 +1271,38 @@
 
 
 
+
+
+
+
+
+;; deprecated processor
+(defrecord AsyncWFProcessor [executor options]
+  WoofResultProcessor
+
+  (process-results! [this]
+    (let [exec-chan (get options :channel (u/make-channel))
+
+          ;; todo: pass here the tick interval or other channel piping options
+
+          t (get this ::timeout)
+          op-handler (get options :op-handler
+                          (fn [[status data]]
+                            (condp = status
+                               :error (u/throw! data) ;; re-throw it, so wf will stop
+                               :done true
+
+                                false
+                              )
+                            ))]
+      (if t
+        (process-wf-loop exec-chan op-handler t (partial end! executor))
+        (process-wf-loop exec-chan op-handler))
+
+      exec-chan
+    )
+  )
+)
 
 
 (defn async-execute!
@@ -1449,15 +1382,21 @@
           (get-step-config [this step-id]
             (get-step-config-impl context step-id))
 
+          WoofExecutorFactory
+
           (build-executor [this steps]
               (executor this
                     (make-state! this (make-state-cfg steps process-channel))
                     (u/make-channel)
                     process-channel))
 
-          (send-message [this event-key data]
+           WoofWorkflowMsg
+
+           (send-message [this event-key data]
             (if-let [f (get events-map event-key)]
               (f data)))
+
+
 
        ))))
 
@@ -1543,3 +1482,14 @@
     )
 )
 
+
+
+
+;;
+;; shorthands for common transducers
+
+(def chunk-update-xf u/chunk-update-xf)
+
+(def time-update-xf u/time-update-xf)
+
+(def time-updated-chan u/time-updated-chan)
