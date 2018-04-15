@@ -202,6 +202,12 @@
   ;; starts the workflow, return a channel
   (execute! [this]) ;; TODO: do we need to pass the steps here or in executor constructor?
 
+
+  ;;
+  (execute-step! [this id step-id params])
+
+
+
   ;; halts workflow
   (end! [this]))
 
@@ -277,6 +283,7 @@
 
   (get! [this id])
   (get!* [this id-list])
+
   )
 
 
@@ -295,11 +302,22 @@
 ;; internal impl
 
 
+(defn- sid-list-from-expand-map [expand-map]
+  (let [sids (keys expand-map)]
+    (if-let [{expand-key :expand-key} (meta expand-map)]
+      (list expand-key)
+      sids)
+    )
+  )
+
+
 (defn- do-expand-impl! [STEPS *results id actions]
+
+
   (if-not (get-infinite-step STEPS id)
     (do
 
-      (swap! *results merge {id (keys actions)})
+      (swap! *results merge {id (sid-list-from-expand-map actions)})
 
       (add-steps! STEPS actions)
       (add-pending-steps! STEPS actions)
@@ -307,6 +325,8 @@
 
       )
     (do
+      ;; TODO: infinite expand-key
+
       ; (swap! *results merge {id (keys actions)})
       (swap! *results update-in [id]
              (fn[a b]
@@ -373,26 +393,12 @@
                   )))
 
 
-  (do-expand! [this id actions]
-
-              (let [*results (get-results this)]
-
-                #?(:clj (dosync
-                  (do-expand-impl! STEPS *results id actions)
-
-                ))
-                #?(:cljs (do-expand-impl! STEPS *results id actions))
-
-                )
-              )
-
 
   (update-steps! [this params]
                  (do-update-steps! STEPS params))
 
 
   (commit! [this id step-id params result]
-           ;;(println "commit!" id step-id params result)
 
            (if (u/channel? result)
 
@@ -434,12 +440,10 @@
 
   (expand! [this id step-id params actions]
 
-
            (if (u/channel? actions)
              (let [*steps-left (get-steps-left this)
-
-                   infinite? (:infinite (get-step-config (get this :CTX) step-id))
-                   ]
+                   step-cfg (get-step-config (get this :CTX) step-id)
+                   infinite? (:infinite step-cfg)]
 
                (when-not (is-step-working? STEPS id)
 
@@ -476,6 +480,18 @@
              (do
                (do-expand! this id actions)
                )))
+
+    (do-expand! [this id actions]
+              (let [*results (get-results this)]
+
+                #?(:clj (dosync
+                  (do-expand-impl! STEPS *results id actions)))
+
+                #?(:cljs (do-expand-impl! STEPS *results id actions))
+
+                ))
+
+
 
   (ready? [this]
           (steps-ready? STEPS))
@@ -611,40 +627,6 @@
 
 
 
-(defn- handle-commit!
-  "saves or expands the step"
-  [context executor wf-state id step-id params]
-  ;; TODO: should expand work with different handler or one will do?
-  ;; TODO: should the step return some typed responce?
-  ;; TODO: what if step handler is not found?
-
-  (let [save-fn! (partial commit! wf-state)
-        expand-fn! (partial expand! wf-state)
-
-        step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
-        f (get-step-fn executor step-id)]
-
-    (if (and (:collect? step-cfg)
-             (sid-list? params))
-      ;; collect
-      (let [collected (get!* wf-state params)]
-        (when (not-any? #(or (nil? %1) (u/channel? %1)) collected)
-          (let [result (f collected)] ;; TODO: can this be (f (filter-collected collected)) for collect? and expands? - or new type of step?
-            (if (:expands? step-cfg)
-              (expand-fn! id step-id params result)
-              (save-fn! id step-id params result))
-            )))
-      ;; process sid or value
-      (let [result (f params)]
-        (if (:expands? step-cfg)
-          (expand-fn! id step-id params result)
-          (save-fn! id step-id params result))
-
-        )
-      )
-    [id [step-id params]]
-    )
-  )
 
 
 
@@ -688,6 +670,7 @@
 
 
 
+
 (defn- freq-map! [steps-left]
   (merge {:working 0} (frequencies steps-left)))
 
@@ -699,32 +682,26 @@
 
 
 
-
-
-
-;; where R is WFState
-(defrecord WFStepProcessor [STATE commit! get! *prev-added-steps *prev-results]
+(defrecord WFStepProcessor [STATE XTOR *prev-added-steps *prev-results]
   WoofStepProcessor
 
   (process-step!
     [this [id [step-id params]]]
 
-    (let [existing-result (get! id)]
-
-
-      ;(println "PROCESSING " [id [step-id params]] existing-result )
-      ;; #?(:cljs (.warn js/console "PROCESSING: " (pr-str [id params "---" (get! params)]) ) )
+    (let [existing-result (get! STATE id)]
 
       (cond
-        (nil? existing-result) ;; no result -> run step
+        ;; no result -> run step
+
+        (nil? existing-result)
         (if (sid? params)
-          (let [new-params (get! params)]
+          (let [new-params (get! STATE params)]
             (cond
               (nil? new-params) [id [step-id params]]
               (u/channel? new-params) [id [step-id params]]
-              :else (commit! id step-id new-params)))
+              :else (execute-step! XTOR id step-id new-params)))
 
-          (commit! id step-id params))
+          (execute-step! XTOR id step-id params))
 
         (u/channel? existing-result) ;; waiting for channel to process result
         [id [step-id params]]
@@ -824,8 +801,6 @@
             (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
           )
 
-
-
         )
 
       )
@@ -833,15 +808,14 @@
   )
 
 
-(defn make-processor [R commit! get!]
-  ; *prev-results
-  ; commit!
-  (->WFStepProcessor
-    R commit! get!
+(defn make-processor
+  [R XTOR]
+  (->WFStepProcessor R XTOR
     (volatile! (array-map))
-    (volatile! @(get-results R))
-    )
-  )
+    (volatile! @(get-results R))))
+
+
+
 
 
 
@@ -860,9 +834,7 @@
          *steps-left (get-steps-left R)
          *results (get-results R)
 
-         commit! (partial handle-commit! context executor R)
-
-         processor (make-processor R commit! (partial get! R))]
+         processor (make-processor R executor)]
 
 
     ;;
@@ -892,15 +864,18 @@
 
 ; #?(:cljs (.warn js/console (d/pretty ["consumer" op v])))
 
-            ;; process the 'message'
+            ;; process the 'message'. TODO: via state?
             (condp = op
               :save (let [[id step-id params result] v]
                       ; got single items via async channel
                       (do-commit! R id result))
 
+              :expand (let [[id step-id params result] v]
+                        (do-expand! R id result)
+
+                        (vreset! force-update true))
               :update (do
-                        (do-update! R v)
-                        )
+                        (do-update! R v))
 
               :steps (let [[steps-op _] v]
 
@@ -908,23 +883,10 @@
                        (update-steps! R v)
 
                        ;; if update is received - force loop one more time
-                       ;; todo: move it to process-steps in some
                        (if (= :update steps-op)
-                         (vreset! force-update true)
-                         ;(async/>! ready-channel [:expand [id result]])
-                         )
+                         (vreset! force-update true))
 
                        (async/>! ready-channel [:wf-update [@*steps @*results]]))
-
-
-              :expand (let [[id step-id params result] v]
-                        (do-expand! R id result)
-
-                        (vreset! force-update true)
-
-                        ;; send result
-                        ;(async/>! ready-channel [:expand [id result]])
-                        )
 
               :back-pressure (do
                                (when-not @first-update ;; TODO: is this actually needed?
@@ -935,10 +897,7 @@
                                )
               :stop (do
                       ;; todo: close the channels in :infinite
-
-                      (vreset! force-stop true)
-                      )
-
+                      (vreset! force-stop true))
 
               ;; TODO: handle IllegalArgumentException - if unknown op is being sent
               )
@@ -949,13 +908,6 @@
                   new-results @*results
                   same-results? (= old-results new-results)]
 
-; #?(:cljs (.warn js/console (d/pretty ["same-results?" same-results?
-;                                      "force-update" @force-update
-;                                      "steps-left before" steps-left
-;                                      "steps left after" @*steps-left
-;                                      ])))
-
-
               (when (or (not same-results?)
                         @force-update
                         (not (empty? @*steps-left)) ;; - <?> will this cause different results
@@ -963,19 +915,18 @@
                         )
 
 
-                ; #?(:cljs (.warn js/console "CONSUMING: " (d/pretty {:i i :new-results new-results :steps processed-steps :steps-left @*steps-left})))
-
                 (debug! *consumer-debugger* {:process-loop-end {:i i :new-results new-results :steps processed-steps :steps-left @*steps-left}})
 
                 (if-not same-results?                               ;; send the processed results
-                  (async/>! ready-channel [:process new-results])
-                  )
+                  (async/>! ready-channel [:process new-results]))
 
-                (when (not-empty @*steps-left) ;; restart produce
+                (when (not-empty @*steps-left)
+                  ;; restart producing
                   (go
                     (debug! *producer-debugger* {:producer {:steps @*steps}}) ;; pause the producer if needed
 
-                    (try                             ;; handle next loop iteration
+                    ;; handle next loop iteration
+                    (try
                       (process-steps! processor process-channel @*steps)
                       (catch
                         #?(:cljs js/Error) #?(:clj  Exception) e
@@ -1055,6 +1006,48 @@
 
 
 
+
+(defn- handle-commit!
+  "saves or expands the step"
+  [executor context wf-state id step-id params]
+  ;; TODO: should expand work with different handler or one will do?
+  ;; TODO: should the step return some typed responce?
+  ;; TODO: what if step handler is not found?
+
+  ;; TODO: catch exception in (f ...)
+
+  (let [save-fn! (partial commit! wf-state)
+        expand-fn! (partial expand! wf-state)
+
+        step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
+        f (get-step-fn executor step-id)]
+
+    (if (and (:collect? step-cfg)
+             (sid-list? params))
+      ;; collect
+      (let [collected (get!* wf-state params)]
+        (when (not-any? #(or (nil? %1) (u/channel? %1)) collected)
+          (let [result (f collected)] ;; TODO: can this be (f (filter-collected collected)) for collect? and expands? - or new type of step?
+            (if (:expands? step-cfg)
+              (expand-fn! id step-id params result)
+              (save-fn! id step-id params result))
+            )))
+      ;; process sid or value
+      (let [result (f params)]
+        (if (:expands? step-cfg)
+          (expand-fn! id step-id params result)
+          (save-fn! id step-id params result))
+
+        )
+      )
+    [id [step-id params]]
+    )
+  )
+
+
+
+
+
 ;;
 ;;
 
@@ -1064,6 +1057,10 @@
 
   (execute! [this]
             (async-exec context this model ready-channel process-channel))
+
+  (execute-step! [this id step-id params]
+             (handle-commit! this context model id step-id params))
+
 
   (end! [this]
         (go
@@ -1085,6 +1082,9 @@
 
   (execute! [this]
             (async-exec context this model ready-channel process-channel))
+
+  (execute-step! [this id step-id params]
+                 (handle-commit! this context model id step-id params))
 
   (end! [this]
         (go
