@@ -31,6 +31,7 @@
 
 
 (defn timeout
+  "returns timeout channel"
   [ms]
   (let [c (async/chan)]
     (do ; sync timeout for java
@@ -49,6 +50,8 @@
   (System/currentTimeMillis))
 
 
+
+
 ;; tries to put a payload into channel, if failed - retries after timeout t
 ;; as a macro - it should work in go block
 (defmacro put!? [process-channel payload t]
@@ -62,6 +65,8 @@
         (async/<! ~c)
         (async/put! ~c
                     ~payload)))
+
+
 
 
 
@@ -145,3 +150,14 @@
                               (async/chan 1 (time-update-xf tick-interval)))]
 
     exec-chan))
+
+
+(defn exp-backoff
+  "exponential backoff timeout higher order function"
+  [time rate max]
+  (let [t (volatile! time)]
+    (fn []
+      (let [v @t
+          nu-t (* v rate)]
+        (vreset! t (if (< nu-t max) nu-t max))
+        v))))

@@ -21,6 +21,8 @@
 
     [woof.test-data :as test-data]
     ; [woof.wf-tester-ui :as tester-ui]
+
+    ; [woof.blog :as blog]
     )
 
 
@@ -170,6 +172,8 @@
                        (if editor-fn "edit" "")
                        (if preview-fn "prev" ""))}
 
+   [:span.dbg-k (d/pretty k)]
+
    (if editor-fn
      (editor-fn))
 
@@ -180,6 +184,86 @@
   ))
 
 
+(defn- get-value [result k]
+  (let [get! (partial u/nil-get result)
+        raw-data (get! k)]
+    (if (wf/sid-list? raw-data)
+      (map get! raw-data)
+      raw-data)))
+
+
+
+(rum/defc <wf-full-step-ui>
+  < rum/reactive
+  { :key-fn (fn [_ _ [header _]] header)}
+  [result *editors [k v]]
+
+  (let [[action params] v
+
+        {param-editors :pre
+         previews :post} @*editors
+
+        editor-chan (get param-editors k)
+
+        ;; todo: take sid-list into account
+        show-param-editor? (and editor-chan
+                                (if (wf/sid? params) (not (u/channel? (get result params))) true))
+
+
+        editor-fn (if show-param-editor?
+                    (fn []
+                      (if (wf/sid? params)
+                        (if-let [nu-params (get result params)]
+                          (<wf-step-editor> (str (name k) action ": ") nu-params editor-chan))
+                        (<wf-step-editor> (str (name k) action ": ") params editor-chan))
+                      )
+                    nil)
+
+        preview-chan (get previews k)
+
+        preview-fn (if preview-chan
+                     (fn []
+                       [:.preview
+                        (ui/menubar "Preview"
+                                    [["ok" (fn[]
+                                             (go
+                                               (async/>! preview-chan :ok))
+                                             ;; TODO:
+                                             (swap! *editors update-in [:post] dissoc k)
+                                             )]])
+                        [:div.preview-content
+
+                         (let [get! (partial u/nil-get result)
+                               preview-data (get! (second v))]
+                           (if (wf/sid-list? preview-data)
+                             (map get! preview-data)
+                             preview-data))
+
+                         ]])
+                     nil)
+
+        ]
+
+    (<wf-step-ui> k v result editor-fn preview-fn)
+    )
+  )
+
+
+#_(let [gsteps (group-by
+                 (fn[[step-id sbody]]
+                   (let [v (get-value result step-id)]
+                     (cond
+                       (u/channel? v) :channel
+                       (wf/sid? v) :sid
+                       (wf/sid-list? v) :sid-list
+                       :else :v
+                       )
+                     )
+                   )
+                 actual-steps)]
+         [:pre (pr-str
+                 (keys gsteps) )]
+         )
 
 
 (rum/defc <wf-results-ui>
@@ -187,80 +271,85 @@
   { :key-fn (fn [header _ _] header)}
 
   [header result actual-steps *editors]
-
-  ;; FIXME:
-  (let [{param-editors :pre
-         previews :post} @*editors]
-    ;(println "wf-results-ui" (u/now))
-
     ;; todo: store changed params
-    (into [:div.steps]
-          (map (fn [[k v]]
-                 (let [[action params] v
+    [:.results
 
-                       editor-chan (get param-editors k)
+       (into [:div.steps]
+          (map (partial <wf-full-step-ui> result *editors)
+                actual-steps
+               ))
+     ]
 
-                       show-param-editor? (and editor-chan
-                                              (if (wf/sid? params) (not (u/channel? (get result params))) true))
-
-                       editor-fn (if show-param-editor?
-                                   (fn []
-                                     (if (wf/sid? params)
-                                       (if-let [nu-params (get result params)]
-                                         (<wf-step-editor> (str (name k) action ": ") nu-params editor-chan))
-                                       (<wf-step-editor> (str (name k) action ": ") params editor-chan))
-                                     )
-                                   nil)
-
-                       preview-chan (get previews k)
-
-                       preview-fn (if preview-chan
-                         (fn []
-                           [:.preview
-                                (ui/menubar "Preview"
-                                            [["ok" (fn[]
-                                                     (go
-                                                       (async/>! preview-chan :ok))
-                                                     ;; TODO:
-                                                     (swap! *editors update-in [:post] dissoc k)
-                                                     )]])
-                                [:div (pr-str (u/nil-get result (second v)))]])
-                         nil)
-
-                       ]
-
-                   (<wf-step-ui> k v result editor-fn preview-fn)
-                   )))
-          actual-steps)))
+  )
 
 
 
 ;; todo: remove this to op-map
 
+(defonce *backpressure-cache (atom nil) )
+(defonce *backpressure-t (atom 0) )
+
 (defn workflow-handler [*result r]
+
   (let [[status data] r
         done? (= :done status)]
 
+
+
     (when (= :error status)
+     (.warn js/console r)
 
       (swap! *result assoc-in [::wf-status] ::error)
       (swap! *result assoc-in [::result] data))
 
 
-    (when (= :expand status)
-      (let [[x-id nu-steps] data]
-        ;; todo: check if this breaks done-percentage
-        (swap! *result update-in [::steps] merge nu-steps)
-        (swap! *result assoc-in [::result] data)
-        ))
 
-    (when (= :process status)
-      (swap! *result assoc-in [::result] data))
+    (when (and
+            (= :back-pressure status)
+            (nil? @*backpressure-cache))
 
-    (when (= :wf-update status)
-      (swap! *result assoc-in [::steps] (first data))
-      (swap! *result assoc-in [::result] (second data))
+      ; (println "GOT backpressure")
+      (reset! *backpressure-t (u/now))
+      (reset! *backpressure-cache @*result)
       )
+
+
+
+    ;; backpressure for react rendering
+
+    (let [*resulting-map (if (nil? @*backpressure-cache)
+                           (do *result)
+                           (let [bp-time (- (u/now) @*backpressure-t)]
+                             ;(< (- (u/now) @*backpressure-t) 1000)
+                             ;(println bp-time)
+
+                             (if (> bp-time 1000)
+                               (do
+                                 (reset! *result @*backpressure-cache)
+                                 (reset! *backpressure-cache nil)
+                                 *result)
+                               *backpressure-cache
+                               )
+                             )
+                           )]
+
+      (when (= :expand status)
+        (let [[x-id nu-steps] data]
+          ;; todo: check if this breaks done-percentage
+          (swap! *resulting-map update-in [::steps] merge nu-steps)
+          (swap! *resulting-map assoc-in [::result] data)
+          ))
+
+      (when (= :process status)
+        (swap! *resulting-map assoc-in [::result] data))
+
+      (when (= :wf-update status)
+        (swap! *resulting-map assoc-in [::steps] (first data))
+        (swap! *resulting-map assoc-in [::result] (second data)))
+
+      )
+
+
 
     (when done?
       (swap! *result assoc-in [::wf-status] ::done)
@@ -269,16 +358,6 @@
     (swap! *result update-in [::history] conj r)
 
     (not done?)))
-
-
-
-(defn- passthought-fn [preview-chan s] ;; todo: maybe there is pipe fn for channel?
-  (let [c (async/chan)]
-    (go-loop []
-             (let [v (async/<! preview-chan)] ; read from preview chan
-               (async/put! c s)
-               (recur)))
-    c))
 
 
 
@@ -340,7 +419,7 @@
 
 ;; generate test workflow
 
-(defonce TEST-WF-STEP-COUNT 25)
+(defonce TEST-WF-STEP-COUNT 70)
 
 (defn generate-wf-fn [UI-STATE]
   (fn []
@@ -354,6 +433,9 @@
                    ::start (u/now)})
 
     (set-status UI-STATE ::steps-ui)
+
+
+
     ((gen-new-wf-f! TEST-WF-STEP-COUNT))))
 
 
@@ -398,13 +480,38 @@
 (defn- run-wf-mi [model callback]
   ["run 🏃"
    (fn []
-     (run-wf model callback))])
+     (run-wf model callback)
+
+     )])
 
 (defn- re-run-mi [ui-model]
   ["re-run" (fn []
-              (set-status ui-model ::steps-ui))])
+              (set-status ui-model ::steps-ui)
+              )])
+
 
 ;; preview test
+;;
+;;
+
+
+(defn- passthought-fn [preview-chan s]
+
+  (.log js/console "PREVIEW FN:" s)
+
+  (let [c (async/chan)]
+      (go-loop []
+               (let [v (async/<! preview-chan)] ; read from preview chan
+                 ; (.log js/console s)
+
+                 (async/put! c s)
+                 (recur)))
+      c)
+
+  )
+
+
+
 
 (defn- preview-mi [model UI-STATE]
   ["preview test"
@@ -412,31 +519,19 @@
      (let [preview-chan (async/chan)] ;; todo: use different channel for ui
 
        (add-post-editor UI-STATE ::preview preview-chan)
-       (app-model/merge-context model {:preview {:fn (partial passthought-fn preview-chan) :infinite true}})
+       (app-model/merge-context model {:preview {:fn (partial passthought-fn preview-chan)
+                                                 :infinite true
+                                                 :collect? true
+                                                 ;:expands? true
+                                                 }})
 
        ;; todo: pass rum component into preview fn
        (app-model/merge-steps model {
-                                      ::test-preview  [:8 10]
+                                      ;; ::test-preview  [:8 10]
+                                      ::test-preview [:process-post "Blog Post (kinda)"]
                                       ::preview [:preview ::test-preview]
+
                                       })))
-   ]
-  )
-
-;;
-(defn- ajax-step-mi [model UI-STATE]
-
-  ["ajax wf"
-   (fn[]
-     ;; ws/make-ajax-handler
-
-     (app-model/merge-context model
-                              {:ajax {:fn ws/transit-handler}})
-
-     (app-model/merge-steps model {
-                                      ::test-ajax  [:ajax (ws/resolve-url "/ajax")]
-                                      })
-
-     )
    ]
   )
 
@@ -461,6 +556,7 @@
                                 ;::editor-source-1  [:8 3]
                                 ;::editor-source  [:8 ::editor-source-1]
 
+
                                 ::nested-1  [:identity-async ::nested-e]
                                 ::nested-e [:hello ::e-result-1]
 
@@ -468,12 +564,35 @@
                                 ::editor [:edit-params "Hello!"]
                                 ::e-result-1  [:identity-async ::editor]
 
-                                ::tick   [:8 100]
+                                ;; ::process [:process-post "Blog Post (kinda)"]
+
+                                ;; ::tick   [:8 100]
                                 })
 
        ))
    ]
   )
+
+
+;;
+(defn- ajax-step-mi [model UI-STATE]
+
+  ["ajax wf"
+   (fn[]
+     ;; ws/make-ajax-handler
+
+     (app-model/merge-context model
+                              {:ajax {:fn ws/transit-handler}})
+
+     (app-model/merge-steps model {
+                                      ::test-ajax  [:ajax (ws/resolve-url "/ajax")]
+                                      })
+
+     )
+   ]
+  )
+
+
 
 ;; infinity test
 
@@ -656,7 +775,7 @@
 
 
     [:div
-     (<graph>)
+     ;; (<graph>)
 
      [:header header]
 
@@ -851,17 +970,21 @@
 
 
 
+(defn mount-app []
+  (rum/mount (<app-ui> *APP-STATE)
+             ;(blog/<blog-ui>)
+           (. js/document (getElementById "app"))))
 
-(rum/mount (<app-ui> *APP-STATE)
-           (. js/document (getElementById "app")))
+
+(mount-app)
 
 
 ; todo:
 
 (add-watch *APP-STATE :watcher
   (fn [key atom old-state new-state]
-    (rum/mount (<app-ui> *APP-STATE)
-               (. js/document (getElementById "app")))))
+    (mount-app)
+    ))
 
 
 
@@ -869,7 +992,9 @@
 (defn on-js-reload []
   ;; todo: force close all channels
 
-  (.clear js/console))
+  ;;(.clear js/console)
+
+  )
 
 
 

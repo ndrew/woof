@@ -7,6 +7,8 @@
     [woof.wf :as wf]
 
     [woof.wf-ui :as wf-ui] ;; todo: move to different ns
+
+
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]
@@ -69,7 +71,48 @@
                 chan))
         :infinite true
         }
+
+
+    :front-matter (wf/step-handler (fn [f]
+                                     "{ 'READY': true }"))
+
+
+    :render-post (wf/step-handler (fn[[cfg post-body]]
+                                      ;[cfg post-body]
+
+                                      (str "<post>"
+                                           cfg
+                                           "\n\n"
+                                           post-body
+                                           "</post>")
+
+                                      )
+                                    :collect? true
+                                    )
+
+    :process-post (wf/step-handler
+                    (fn [f]
+                      (let [read-post-k (wf/rand-sid "io-")
+                            cfg-k (wf/rand-sid "cfg-")
+                            result-k (wf/rand-sid "result-")]
+
+                          (with-meta
+                          {
+                           ; start 2 'threads'
+                           read-post-k (wf/sbody :identity f)
+                           cfg-k (wf/sbody :front-matter read-post-k)
+                           ; process them
+                           result-k (wf/sbody :render-post (list cfg-k read-post-k))
+                          }
+                          {:expand-key result-k}
+                          ))
+
+                      )
+                    :expands? true)
+
     }
+
+
   )
 
 

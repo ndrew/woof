@@ -128,3 +128,15 @@
                               (async/chan 1 (time-update-xf tick-interval)))]
 
     exec-chan))
+
+
+(defn exp-backoff
+  "exponential backoff timeout higher order function"
+  [time rate max]
+  (let [t (volatile! time)]
+    (fn []
+      (let [v @t
+          nu-t (* v rate)]
+        (vreset! t (if (< nu-t max) nu-t max))
+        v))))
+

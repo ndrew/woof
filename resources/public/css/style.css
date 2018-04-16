@@ -11,7 +11,8 @@ body, pre, input, button {
 }
 
 
-body { padding: 1rem; }
+body { padding: 1rem;
+}
 
 #app {
 /*   outline: 3px solid lightgrey; */
@@ -196,11 +197,23 @@ body { padding: 1rem; }
 
 
 .step-ui > .preview {
-  background-color: rgba(128,127,127,.1333);
+  background-color: rgba(133,127,127,.07333);
   margin-bottom: .5rem;
+
+  min-height: 10rem;
+  padding: .5rem;
+}
+
+.preview > .preview-content {
+
+  margin: 1rem;
+
 }
 
 
-.graph svg {
-  width: 80vw;
+.step-ui > .dbg-k {
+  color: gray;
+  font-size: smaller;
 }
+
+
