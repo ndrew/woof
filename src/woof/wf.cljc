@@ -619,7 +619,7 @@
 (def ^:dynamic *producer-debugger* nil)
 
 ;; backpressure
-(def WORKING-MAX 30)
+;;(def WORKING-MAX 30)
 
 
 
@@ -682,7 +682,7 @@
 
 
 
-(defrecord WFStepProcessor [STATE XTOR *prev-added-steps *prev-results]
+(defrecord WFStepProcessor [STATE XTOR options]
   WoofStepProcessor
 
   (process-step!
@@ -718,132 +718,149 @@
 
     ;; FIXME: put processing into queue
 
-    (go
-      (debug! *producer-debugger* {:producer {:steps steps}}) ;; pause the producer if needed
+    (let [{*prev-added-steps ::prev-added-steps
+           *prev-results ::prev-results
+           WORKING-MAX :working-max
+           PARALLEL-MAX :parallel-max
+           } options
 
-      ;; handle next loop iteration
-      (try
-        ;(process-steps! processor ready-channel process-channel @*steps)
-
-        (if-let [cycles (g/has-cycles steps)]
-            (u/throw! (str "cycle detected " (d/pretty cycles))))
-
-
-        (let [ PUT_RETRY_T 1000
-               *steps (get-steps STATE)
-               *steps-left (get-steps-left STATE)
-               *results (get-results STATE)
-
-               prev-steps @*prev-added-steps
-
-               get-freqs (fn [] (freq-map (vals @*steps-left)))
-
-               *new-steps (volatile! (array-map))
-
-               i (volatile! 0) ;; cycle counter
-               backpressure-update (volatile! 0)
-               backpressure-sent (volatile! (u/now))
-
-               ;; TODO: this should be part of backpressure logic
-               start-freqs (get-freqs)
-               prev-freqs (volatile! start-freqs)
-
-               timer-fn (u/exp-backoff 50 2 10000)
-               ]
+          initial-freqs (freq-map (vals @(get-steps-left STATE)))
+          ]
 
 
-          (doseq [step steps]
-              ;; TODO: randomize steps?
+      (when (> PARALLEL-MAX (:working initial-freqs)) ;; there is a capacity for producing more
 
-              (let [freqs (get-freqs)] ;; TODO: do we need to change freqs on each step?
-                (vreset! prev-freqs freqs)
+        (go
+          (debug! *producer-debugger* {:producer {:steps steps}}) ;; pause the producer if needed
 
-                ;  #_(if (= @prev-freqs freqs) ;; debug output if wf is stuck
-                ;     (let [pending-steps (keys (into {} (filter #(-> % val u/channel?)) @*results))]
-                ;       (println  "waiting for "
-                ;         (if (< 5 (count pending-steps))
-                ;           (count pending-steps)
-                ;           (str (d/pretty @*results) "\n" (d/pretty @*steps-left))))))
+          ;; handle next loop iteration
+          (try
+            ;(process-steps! processor ready-channel process-channel @*steps)
 
+            (if-let [cycles (g/has-cycles steps)]
+              (u/throw! (str "cycle detected " (d/pretty cycles))))
 
 
+            (let [ PUT_RETRY_T 1000
+                   *steps (get-steps STATE)
+                   *steps-left (get-steps-left STATE)
+                   *results (get-results STATE)
 
-                (if (> WORKING-MAX (:working freqs))
-                  (let [[k v] (process-step! this step)]
-                    (vswap! *new-steps assoc k v))
-                  ;; send process on first backpressure
-                  (do
-                    (when-not (> 10 (- @i @backpressure-update))
-                      ;; (println "backpressure " (d/pretty freqs) @i @backpressure-update)
+                   prev-steps @*prev-added-steps
 
-                      (let [wait-time (timer-fn)]
-                        ;#?(:cljs (.warn js/console "pausing producer for " wait-time "backpressure cycle " @backpressure-update))
+                   get-freqs (fn [] (freq-map (vals @*steps-left)))
 
-                        (if (> (- (u/now) @backpressure-sent) 1000) ;; FIXME: send on each second - maybe use transducer?
-                          (do
-                            (put! process-channel [:back-pressure freqs])
-                            (vreset! backpressure-sent (u/now))
+                   *new-steps (volatile! (array-map))
+
+                   i (volatile! 0) ;; cycle counter
+                   backpressure-update (volatile! 0)
+                   backpressure-sent (volatile! (u/now))
+
+                   ;; TODO: this should be part of backpressure logic
+                   start-freqs (get-freqs)
+                   prev-freqs (volatile! start-freqs)
+
+                   timer-fn (u/exp-backoff 50 2 10000)
+                   ]
+
+
+              (doseq [step steps]
+                ;; TODO: randomize steps?
+
+                (let [freqs (get-freqs)] ;; TODO: do we need to change freqs on each step?
+                  (vreset! prev-freqs freqs)
+
+                  ;  #_(if (= @prev-freqs freqs) ;; debug output if wf is stuck
+                  ;     (let [pending-steps (keys (into {} (filter #(-> % val u/channel?)) @*results))]
+                  ;       (println  "waiting for "
+                  ;         (if (< 5 (count pending-steps))
+                  ;           (count pending-steps)
+                  ;           (str (d/pretty @*results) "\n" (d/pretty @*steps-left))))))
+
+
+
+
+                  (if (> WORKING-MAX (:working freqs))
+                    (let [[k v] (process-step! this step)]
+                      (vswap! *new-steps assoc k v))
+                    ;; send process on first backpressure
+
+                    (do
+                      (when-not (> 10 (- @i @backpressure-update))
+                        ; (println "backpressure " (d/pretty freqs) @i @backpressure-update)
+
+                        (let [wait-time (timer-fn)]
+                          ;#?(:cljs (.warn js/console "pausing producer for " wait-time "backpressure cycle " @backpressure-update))
+
+                          (if (> (- (u/now) @backpressure-sent) 1000) ;; FIXME: send on each second - maybe use transducer?
+                            (do
+                              (put! process-channel [:back-pressure freqs])
+                              (vreset! backpressure-sent (u/now))
+                              )
+                            ;(vswap! backpressure-sent inc)
                             )
-                          ;(vswap! backpressure-sent inc)
+
+                          (async/<! (u/timeout wait-time)) ;; todo: incremental timeout
                           )
 
-                        (async/<! (u/timeout wait-time)) ;; todo: incremental timeout
-                        )
+                        ; #?(:cljs (.warn js/console "resuming" (d/pretty (get-freqs))))
 
-                      ; #?(:cljs (.warn js/console "resuming" (d/pretty (get-freqs))))
-
-                      ;(println "backpressure!")
-                      ;; send this once per
+                        ;(println "backpressure!")
+                        ;; send this once per
 
 
-                      (vreset! backpressure-update @i))))
-                )
-
-              (vswap! i inc)
-            )
-
-            (let [new-steps @*new-steps
-                  results @*results
-
-                  steps-added? (not (= prev-steps new-steps))
-                  results-changed? (not (= @*prev-results results))]
-
-
-              (when (or steps-added?
-                        results-changed? )
-
-                ; #?(:cljs (.warn js/console (d/pretty["STEPS:" "added?" steps-added? "results-changed?" results-changed?])))
-
-                #_(println "__results-changed?" results-changed?
-                           "__steps-added?" steps-added?)
-
-
-                (when results-changed?
-                  ;            (println "PRODUCING CONTUNUES: results changed")
-
-                  (vreset! *prev-results results)
-
-                  (if-not steps-added?
-                    (put!? process-channel [:steps [:update new-steps]] PUT_RETRY_T))
-
+                        (vreset! backpressure-update @i))))
                   )
 
-                ;; if only added
-                (when steps-added? ;(and steps-added? (not results-changed?))
-                  ;            (println "PRODUCING CONTUNUES: steps added")
-
-                  (vreset! *prev-added-steps new-steps)
-                  (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
+                (vswap! i inc)
                 )
+
+              (let [new-steps @*new-steps
+                    results @*results
+
+                    steps-added? (not (= prev-steps new-steps))
+                    results-changed? (not (= @*prev-results results))]
+
+
+                (when (or steps-added?
+                          results-changed? )
+
+                  ; #?(:cljs (.warn js/console (d/pretty["STEPS:" "added?" steps-added? "results-changed?" results-changed?])))
+
+                  #_(println "__results-changed?" results-changed?
+                             "__steps-added?" steps-added?)
+
+
+                  (when results-changed?
+                    ;            (println "PRODUCING CONTUNUES: results changed")
+
+                    (vreset! *prev-results results)
+
+                    (if-not steps-added?
+                      (put!? process-channel [:steps [:update new-steps]] PUT_RETRY_T))
+
+                    )
+
+                  ;; if only added
+                  (when steps-added? ;(and steps-added? (not results-changed?))
+                    ;            (println "PRODUCING CONTUNUES: steps added")
+
+                    (vreset! *prev-added-steps new-steps)
+                    (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
+                  )
+
+                )
+
 
               )
 
+            (catch
+              #?(:cljs js/Error) #?(:clj  Exception) e
+              (async/>! ready-channel [:error e]))))
 
-          )
+        )
 
-      (catch
-        #?(:cljs js/Error) #?(:clj  Exception) e
-        (async/>! ready-channel [:error e]))))
+      )
 
     )
 
@@ -851,10 +868,15 @@
 
 
 (defn make-processor
-  [R XTOR]
-  (->WFStepProcessor R XTOR
-    (volatile! (array-map))
-    (volatile! @(get-results R))))
+  [STATE XTOR]
+  (->WFStepProcessor STATE XTOR
+                     {::prev-added-steps (volatile! (array-map))     ;;  *prev-added-steps
+                      ::prev-results (volatile! @(get-results STATE)) ;; *prev-results
+                      :working-max 50 ;; WORKING-MAX
+                      :parallel-max 10 ;; PARALLEL-MAX
+                      ;;
+                      })
+  )
 
 
 
@@ -946,6 +968,12 @@
                                  ;; timer-fn
                                  )
                                 (async/>! ready-channel [:back-pressure :what-to-put-here])
+                               ; should this event be via resulting channel, or via send-message?
+                               ;   +
+                               ;   -
+
+                               ; backpressure start/stop?
+
 
                                )
               :stop (do
