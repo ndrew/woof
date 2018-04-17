@@ -201,6 +201,7 @@
 
   ;; starts the workflow, return a channel
   (execute! [this]) ;; TODO: do we need to pass the steps here or in executor constructor?
+  ;; todo: pass opts here?
 
 
   ;;
@@ -209,7 +210,7 @@
 
 
   ;; halts workflow
-  (end! [this]))
+  (end! [this])) ;; should return channel. and receive opts
 
 
 
@@ -722,13 +723,21 @@
            *prev-results ::prev-results
            WORKING-MAX :working-max
            PARALLEL-MAX :parallel-max
+           PENDING-MAX :pending-max
            } options
 
           initial-freqs (freq-map (vals @(get-steps-left STATE)))
           ]
 
 
-      (when (> PARALLEL-MAX (:working initial-freqs)) ;; there is a capacity for producing more
+      ;; two ways of limiting the producing:
+        ;; 1) do not start the go block
+        ;; 2) wait in go block
+
+      (when  (or (> PARALLEL-MAX (:working initial-freqs))
+                 false)  ;; (> PENDING-MAX (:pending initial-freqs))
+
+                ;; there is a capacity for producing more
 
         (go
           (debug! *producer-debugger* {:producer {:steps steps}}) ;; pause the producer if needed
@@ -760,34 +769,40 @@
                    start-freqs (get-freqs)
                    prev-freqs (volatile! start-freqs)
 
-                   timer-fn (u/exp-backoff 50 2 10000)
+                   timer-fn (u/exp-backoff 10 2 10000)
+
+                   CHECK-BACKPRESSURE-ON 10
                    ]
 
 
               (doseq [step steps]
                 ;; TODO: randomize steps?
 
-                (let [freqs (get-freqs)] ;; TODO: do we need to change freqs on each step?
-                  (vreset! prev-freqs freqs)
 
-                  ;  #_(if (= @prev-freqs freqs) ;; debug output if wf is stuck
-                  ;     (let [pending-steps (keys (into {} (filter #(-> % val u/channel?)) @*results))]
-                  ;       (println  "waiting for "
-                  ;         (if (< 5 (count pending-steps))
-                  ;           (count pending-steps)
-                  ;           (str (d/pretty @*results) "\n" (d/pretty @*steps-left))))))
+                ;  #_(if (= @prev-freqs freqs) ;; debug output if wf is stuck
+                ;     (let [pending-steps (keys (into {} (filter #(-> % val u/channel?)) @*results))]
+                ;       (println  "waiting for "
+                ;         (if (< 5 (count pending-steps))
+                ;           (count pending-steps)
+                ;           (str (d/pretty @*results) "\n" (d/pretty @*steps-left))))))
 
 
 
 
-                  (if (> WORKING-MAX (:working freqs))
-                    (let [[k v] (process-step! this step)]
-                      (vswap! *new-steps assoc k v))
-                    ;; send process on first backpressure
 
-                    (do
-                      (when-not (> 10 (- @i @backpressure-update))
-                        ; (println "backpressure " (d/pretty freqs) @i @backpressure-update)
+                (let [[k v] (process-step! this step)]
+                  (vswap! *new-steps assoc k v)
+
+                  ;; send process on first backpressure
+                  (when-not (> CHECK-BACKPRESSURE-ON (- @i @backpressure-update))
+                    (let [freqs (get-freqs)] ;; check freqs every 20th
+
+                      ;; check the trend
+                      (vreset! prev-freqs freqs)
+
+                      (when (> (:working freqs) WORKING-MAX ) ;;
+
+                        ;; (println "backpressure " (d/pretty freqs) @i @backpressure-update)
 
                         (let [wait-time (timer-fn)]
                           ;#?(:cljs (.warn js/console "pausing producer for " wait-time "backpressure cycle " @backpressure-update))
@@ -801,19 +816,17 @@
                             )
 
                           (async/<! (u/timeout wait-time)) ;; todo: incremental timeout
-                          )
+                          ))
 
-                        ; #?(:cljs (.warn js/console "resuming" (d/pretty (get-freqs))))
+                      ; #?(:cljs (.warn js/console "resuming" (d/pretty (get-freqs))))
 
-                        ;(println "backpressure!")
-                        ;; send this once per
+                      ;(println "backpressure!")
+                      ;; send this once per
 
 
-                        (vreset! backpressure-update @i))))
-                  )
+                      (vreset! backpressure-update @i))))
 
-                (vswap! i inc)
-                )
+                (vswap! i inc))
 
               (let [new-steps @*new-steps
                     results @*results
@@ -872,8 +885,10 @@
   (->WFStepProcessor STATE XTOR
                      {::prev-added-steps (volatile! (array-map))     ;;  *prev-added-steps
                       ::prev-results (volatile! @(get-results STATE)) ;; *prev-results
+
                       :working-max 50 ;; WORKING-MAX
-                      :parallel-max 10 ;; PARALLEL-MAX
+                      :parallel-max 20 ;; PARALLEL-MAX
+                      :pending-max 100
                       ;;
                       })
   )
@@ -906,16 +921,20 @@
     (go
 
       ;; wait if needed, before producing any results
+
       (debug! *consumer-debugger* { :process-loop-start {
                                                             :i 0
                                                             :old-results @*results
                                                             :steps steps
                                                             :steps-left @*steps-left}})
 
-      (let [; timer-fn (u/exp-backoff 100 2 5000)
+      (let [timer-fn (u/exp-backoff 10 2 250)
             first-update (volatile! false)
             force-update (volatile! false)
             force-stop   (volatile! false)]
+
+
+
         ;; wait for results via process-channel
         (loop [i 0
                old-results @*results
@@ -987,7 +1006,11 @@
             ;; process the result
             (let [processed-steps @*steps
                   new-results @*results
-                  same-results? (= old-results new-results)]
+                  same-results? (= old-results new-results)
+
+                  new-steps-left @*steps-left
+                  same-steps-left? (= steps-left new-steps-left)
+                  ]
 
               (when (or (not same-results?)
                         @force-update
@@ -996,14 +1019,26 @@
                         )
 
 
-                (debug! *consumer-debugger* {:process-loop-end {:i i :new-results new-results :steps processed-steps :steps-left @*steps-left}})
+                (debug! *consumer-debugger* {:process-loop-end {:i i :new-results new-results :steps processed-steps :steps-left new-steps-left}})
 
                 (if-not same-results?                               ;; send the processed results
                   (async/>! ready-channel [:process new-results]))
 
-                (when (not-empty @*steps-left)
-                  ;; restart producing
-                  (process-steps! processor ready-channel process-channel @*steps)
+                (when (not-empty new-steps-left)
+                  ;;
+
+                  (if (or @force-update (not same-steps-left?)) ;; wait
+                    ;; restart-producing
+                    (process-steps! processor ready-channel process-channel @*steps)
+
+                    (do ;; do we need to sleep in consumer?
+                      #_(let [ms (timer-fn)]
+                       (println " wait " ms "ms")
+                      (async/<! (u/timeout ms))))
+
+                    )
+
+
                   ))
               )
 

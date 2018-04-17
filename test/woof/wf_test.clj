@@ -13,19 +13,22 @@
 
     [criterium.core :as criterium]
 
+
 ))
+
 
 
 ; 1) context - contains step handlers available to a workflow
 
-(defonce SAMPLE-CONTEXT
-  {
+(defonce SAMPLE-CONTEXT {
+
     :hello {:fn (fn [a]                  ;; each step handler accepts 1 argument
                   (str "Hello " a))}
+
     :timeout200 {:fn (fn [a]
                        (Thread/sleep 200)
                        (str "Hello " a))}
-    })
+})
 
 
 
@@ -53,6 +56,7 @@
       (is (= (wdata/extract-results v [::0]) {::0 "Hello World!"}))
       (is (= (wdata/extract-results v [::1]) {::1 "Hello Woof!"}))))
 )
+
 
 
 
@@ -118,6 +122,7 @@
 
       ))
   )
+
 
 
 ;; runs the expanding workflow
@@ -227,6 +232,9 @@
   )
 
 
+
+
+
 (deftest infinite-expand-test
 
   (let [done-channel (async/chan)
@@ -295,7 +303,6 @@
 
 
 
-
 (deftest error-handling
 
   ;; in case of something workflow will throw an exception
@@ -319,6 +326,7 @@
         (is (thrown? Exception @(wf/sync-execute! (xctor no-such-step) 10)))
         )))
     )
+
 
 
 
@@ -431,6 +439,8 @@
 
 
 
+
+
 (defn wf-test-data [N]
   (let [{
           test-context :context
@@ -452,7 +462,7 @@
   ;; TODO: test profiling
   ;(prof/start {})
   (dotimes [i 1]
-    (wf-test-data 40) ;; why more is failing?
+    (wf-test-data 80) ;; why more is failing?
     ;(println "Yo!")
 
     )
