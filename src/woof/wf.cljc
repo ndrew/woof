@@ -292,7 +292,9 @@
 
   (process-step! [this step])
 
-  (process-steps! [this ready-channel process-channel steps])
+  (produce-steps! [this ready-channel process-channel steps])
+
+  (consume-steps! [this ready-channel process-channel])
 )
 
 
@@ -657,6 +659,7 @@
         [id [step-id params]])))
 
 
+
 (defn- put! [c v] ;; TODO: does this even work?
   (let [err (volatile! false)]
     (try
@@ -686,7 +689,9 @@
 (defrecord WFStepProcessor [STATE XTOR options]
   WoofStepProcessor
 
-  (process-step!
+
+
+  (process-step! ;; FIXME: how this different from handle commit?
     [this [id [step-id params]]]
 
     (let [existing-result (get! STATE id)]
@@ -712,7 +717,116 @@
     )
 
 
-  (process-steps!
+  (consume-steps!
+    [this ready-channel process-channel]
+
+    ;; consumer. processes results from processing channel and pipes them to resulting channel
+
+    (let [ ; PUT_RETRY_T 1000
+
+           *steps (get-steps STATE)
+           *steps-left (get-steps-left STATE)
+           *results (get-results STATE)
+
+           messenger (get options :messenger)
+           notify-ui! (fn [msg-key msg]
+                        (if messenger (send-message messenger msg-key msg)))
+           ]
+
+
+    (go
+
+      ;; wait if needed, before producing any results
+
+      (debug! *consumer-debugger* { :process-loop-start { ;; TODO: do not evaluate debug output - be lazy
+                                                          :i 0
+                                                          :old-results @*results
+                                                          :steps (get-initial-steps STATE)
+                                                          :steps-left @*steps-left}})
+
+      (let [force-update (volatile! false)
+            force-stop   (volatile! false)]
+        ;;
+        ;; start consume loop
+        (loop [i 0
+
+               old-results @*results
+               steps (get-initial-steps STATE)
+               steps-left @*steps-left]
+
+
+          (let [r (async/<! process-channel) ;; TODO: inject processing logic via transducer?
+                [op v] r]
+
+
+            ;; consume the 'message'.        <?>: what if unknown op is sent?
+            (condp = op
+              :save (let [[id step-id params result] v]     ; step is done, store the result
+                      (do-commit! STATE id result))
+
+              :expand (let [[id step-id params result] v]   ; step expanded
+                        (do-expand! STATE id result)
+                        (vreset! force-update true))
+
+              :update (do-update! STATE v)  ;; <?> when this happens?
+
+
+              :steps (let [[steps-op _] v]                   ; loop completed, merge steps and add new ones (if any)
+                       (update-steps! STATE v)
+
+                       (if (= :update steps-op)              ; if update is received - force loop one more time
+                         (vreset! force-update true))
+
+                       (async/>! ready-channel [:wf-update [@*steps @*results]]))
+
+              :back-pressure (do                             ; producer notified us of backpressure
+                              ;; todo: send backpressure via msg channel
+                               (async/>! ready-channel [:back-pressure :what-to-put-here])
+                               (notify-ui! :back-pressure :what-to-put-here))
+              :stop (do
+                      ;; todo: gracefully shutdown
+                      ;;   close the channels in :infinite
+                      (vreset! force-stop true)))
+
+
+            (let [processed-steps @*steps
+                  new-results @*results
+                  same-results? (= old-results new-results)
+
+                  new-steps-left @*steps-left
+                  same-steps-left? (= steps-left new-steps-left)]
+
+              (when (or (not same-results?) @force-update (not (empty? @*steps-left)))
+                ; <?> will force-update cover not empty @*steps2add
+
+                (debug! *consumer-debugger* {:process-loop-end {:i i :new-results new-results :steps processed-steps :steps-left new-steps-left}})
+
+                (if-not same-results?                                ; send the processed results
+                  (async/>! ready-channel [:process new-results]))
+
+
+                (when (and                                           ; restart-producing
+                        (not-empty new-steps-left)
+                        (or @force-update (not same-steps-left?)))
+                  (produce-steps! this ready-channel process-channel @*steps)))
+              )
+
+            ;; todo: stop not immediately when force stop
+
+            (if (or @force-stop (ready? STATE))                        ; send done, or keep processing the result
+              (let [last-results @*results]
+                (async/>! ready-channel [:done last-results])
+                (notify-ui! :stop last-results))
+              (recur (inc i) @*results @*steps @*steps-left))   ;; todo: add timeout/termination if i is growing
+            )
+          )
+
+         ;;
+        )
+      )))
+
+
+  (produce-steps!
     [this ready-channel process-channel steps]
 
     ;; note that should be in a single go block
@@ -742,10 +856,8 @@
         (go
           (debug! *producer-debugger* {:producer {:steps steps}}) ;; pause the producer if needed
 
-          ;; handle next loop iteration
+          ;; handle next iteration
           (try
-            ;(process-steps! processor ready-channel process-channel @*steps)
-
             (if-let [cycles (g/has-cycles steps)]
               (u/throw! (str "cycle detected " (d/pretty cycles))))
 
@@ -777,17 +889,6 @@
 
               (doseq [step steps]
                 ;; TODO: randomize steps?
-
-
-                ;  #_(if (= @prev-freqs freqs) ;; debug output if wf is stuck
-                ;     (let [pending-steps (keys (into {} (filter #(-> % val u/channel?)) @*results))]
-                ;       (println  "waiting for "
-                ;         (if (< 5 (count pending-steps))
-                ;           (count pending-steps)
-                ;           (str (d/pretty @*results) "\n" (d/pretty @*steps-left))))))
-
-
-
 
 
                 (let [[k v] (process-step! this step)]
@@ -880,15 +981,23 @@
   )
 
 
-(defn make-processor
-  [STATE XTOR]
-  (->WFStepProcessor STATE XTOR
-                     {::prev-added-steps (volatile! (array-map))     ;;  *prev-added-steps
-                      ::prev-results (volatile! @(get-results STATE)) ;; *prev-results
 
-                      :working-max 50 ;; WORKING-MAX
-                      :parallel-max 20 ;; PARALLEL-MAX
-                      :pending-max 100
+(defn step-processor-impl
+  [STATE XTOR CTX] ;; context only for send-message
+
+  (->WFStepProcessor STATE XTOR
+                     {
+                       ;; volatile vars for statefull processing
+                        ::prev-added-steps (volatile! (array-map))     ;;  *prev-added-steps
+                        ::prev-results (volatile! @(get-results STATE)) ;; *prev-results
+
+                       ;; back-pressure configs
+                        :working-max 50 ;; WORKING-MAX
+                        :parallel-max 20 ;; PARALLEL-MAX
+                        :pending-max 100
+
+                       ;;
+                        :messenger (if (satisfies? WoofWorkflowMsg CTX) CTX nil)
                       ;;
                       })
   )
@@ -899,10 +1008,96 @@
 
 
 
-(defn- async-exec
-  "workflow running algorithm"
-  ([context executor R ready-channel process-channel]
 
+
+
+
+
+
+;; WoofContext impl
+
+(defn- get-step-config-impl [context step-id]
+  (get context step-id))
+
+
+(defn- get-step-impl [context] ;; context as map in atom
+  (fn [step-id]
+    (let [step-cfg (get-step-config-impl context step-id)]
+        (if-let [f (:fn step-cfg)]
+          f
+          (fn [v]
+            (throw
+              #?(:clj (Exception. (str "No step handler " step-id " in context" )))
+              #?(:cljs (js/Error. (str "No step handler " step-id " in context" )))
+            ))))))
+
+
+
+(defn- get-step-cached-impl [context cache]
+  ;; cache is ICache
+  (fn [step-id]
+    (let [step-cfg (get-step-config-impl context step-id)]
+      (if (:expands? step-cfg) ;; todo: add cache flag?
+        (:fn step-cfg)
+        (cache/memoize! cache (:fn step-cfg) step-id)))
+    )
+  )
+
+
+
+
+
+
+
+(defn- handle-commit!
+  "run! step implementation for WoofExecutor"
+  [executor context wf-state id step-id params]
+  ;; TODO: should expand work with different handler or one will do?
+  ;; TODO: should the step return some typed responce?
+  ;; TODO: what if step handler is not found?
+
+  ;; TODO: catch exception in (f ...)
+
+  (let [save-fn! (partial commit! wf-state)
+        expand-fn! (partial expand! wf-state)
+
+        step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
+        f (get-step-fn executor step-id)]
+
+    (if (and (:collect? step-cfg)
+             (sid-list? params))
+      ;; collect
+      (let [collected (get!* wf-state params)]
+        (when (not-any? #(or (nil? %1) (u/channel? %1)) collected)
+          (let [result (f collected)] ;; TODO: can this be (f (filter-collected collected)) for collect? and expands? - or new type of step?
+            (if (:expands? step-cfg)
+              (expand-fn! id step-id params result)
+              (save-fn! id step-id params result))
+            )))
+      ;; process sid or value
+      (let [result (f params)]
+        (if (:expands? step-cfg)
+          (expand-fn! id step-id params result)
+          (save-fn! id step-id params result))
+
+        )
+      )
+    [id [step-id params]]
+    )
+  )
+
+
+
+
+(defn- async-consume
+  "workflow running algorithm"
+  ([context R ready-channel process-channel processor executor ]
+
+
+
+   (consume-steps! processor ready-channel process-channel)
+
+   ;; todo: remove executor
 
    ;; todo: add notification channel for ui updates
    ;; todo: rename R to something better
@@ -912,21 +1107,14 @@
          *steps (get-steps R)
          *steps-left (get-steps-left R)
          *results (get-results R)
-
-         processor (make-processor R executor)]
+          ]
 
 
     ;;
     ;; consumer. processes results from processing channel and pipes them to resulting channel
-    (go
+    #_(go
 
       ;; wait if needed, before producing any results
-
-      (debug! *consumer-debugger* { :process-loop-start {
-                                                            :i 0
-                                                            :old-results @*results
-                                                            :steps steps
-                                                            :steps-left @*steps-left}})
 
       (let [timer-fn (u/exp-backoff 10 2 250)
             first-update (volatile! false)
@@ -945,9 +1133,6 @@
           ;; TODO: inject processing logic via transducer
           (let [r (async/<! process-channel)
                 [op v] r]
-
-; #?(:cljs (.warn js/console (d/pretty ["consumer" op v])))
-
             ;; process the 'message'. TODO: via state?
             (condp = op
               :save (let [[id step-id params result] v]
@@ -996,7 +1181,8 @@
 
                                )
               :stop (do
-                      ;; todo: close the channels in :infinite
+                      ;; todo: gracefully shutdown
+                      ;;   close the channels in :infinite
                       (vreset! force-stop true))
 
               ;; TODO: handle IllegalArgumentException - if unknown op is being sent
@@ -1029,7 +1215,7 @@
 
                   (if (or @force-update (not same-steps-left?)) ;; wait
                     ;; restart-producing
-                    (process-steps! processor ready-channel process-channel @*steps)
+                    (produce-steps! processor ready-channel process-channel @*steps)
 
                     (do ;; do we need to sleep in consumer?
                       #_(let [ms (timer-fn)]
@@ -1051,97 +1237,22 @@
               (recur (inc i) @*results @*steps @*steps-left))))))
 
 
+    )
+
     ;;
     ;; producer goroutine
-    (go
-      (async/>! ready-channel [:init @*results]) ;; is this needed?
-      )
-
-    (process-steps! processor ready-channel process-channel steps)
-
-    (if (satisfies? WoofWorkflowMsg context) (send-message context :start executor))
-
-    ; return channel, first there will be list of pending actions, then the completed ones be added, then channel will be close on the last
-    ready-channel)))
+   (go
+      ;; notify that processing started. Is this needed? maybe use send-message
+      (async/>! ready-channel [:init @(get-results R)]))
 
 
+   (produce-steps! processor ready-channel process-channel (get-initial-steps R))
 
+   (if (satisfies? WoofWorkflowMsg context) (send-message context :start executor))
 
-
-;; WoofContext impl
-
-(defn- get-step-config-impl [context step-id]
-  (get context step-id))
-
-
-(defn- get-step-impl [context] ;; context as map in atom
-  (fn [step-id]
-    (let [step-cfg (get-step-config-impl context step-id)]
-        (if-let [f (:fn step-cfg)]
-          f
-          (fn [v]
-            (throw
-              #?(:clj (Exception. (str "No step handler " step-id " in context" )))
-              #?(:cljs (js/Error. (str "No step handler " step-id " in context" )))
-            ))))))
-
-
-
-(defn- get-step-cached-impl [context cache]
-  ;; cache is ICache
-  (fn [step-id]
-    (let [step-cfg (get-step-config-impl context step-id)]
-      (if (:expands? step-cfg) ;; todo: add cache flag?
-        (:fn step-cfg)
-        (cache/memoize! cache (:fn step-cfg) step-id)))
-    )
-  )
-
-
-
-
-
-
-
-(defn- handle-commit!
-  "saves or expands the step"
-  [executor context wf-state id step-id params]
-  ;; TODO: should expand work with different handler or one will do?
-  ;; TODO: should the step return some typed responce?
-  ;; TODO: what if step handler is not found?
-
-  ;; TODO: catch exception in (f ...)
-
-  (let [save-fn! (partial commit! wf-state)
-        expand-fn! (partial expand! wf-state)
-
-        step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
-        f (get-step-fn executor step-id)]
-
-    (if (and (:collect? step-cfg)
-             (sid-list? params))
-      ;; collect
-      (let [collected (get!* wf-state params)]
-        (when (not-any? #(or (nil? %1) (u/channel? %1)) collected)
-          (let [result (f collected)] ;; TODO: can this be (f (filter-collected collected)) for collect? and expands? - or new type of step?
-            (if (:expands? step-cfg)
-              (expand-fn! id step-id params result)
-              (save-fn! id step-id params result))
-            )))
-      ;; process sid or value
-      (let [result (f params)]
-        (if (:expands? step-cfg)
-          (expand-fn! id step-id params result)
-          (save-fn! id step-id params result))
-
-        )
-      )
-    [id [step-id params]]
-    )
-  )
-
-
-
+   ; return channel, first there will be list of pending actions, then the completed ones be added, then channel will be close on the last
+   ready-channel
+   ))
 
 
 ;;
@@ -1152,8 +1263,9 @@
   WoofExecutor
 
   (execute! [this]
-            (async-exec context this model ready-channel process-channel))
+            (async-consume context model ready-channel process-channel (step-processor-impl model this context) this))
 
+  ;; todo: move to the processor
   (execute-step! [this id step-id params]
              (handle-commit! this context model id step-id params))
 
@@ -1177,7 +1289,7 @@
   WoofExecutor
 
   (execute! [this]
-            (async-exec context this model ready-channel process-channel))
+            (async-consume context model ready-channel process-channel (context model this context) this ))
 
   (execute-step! [this id step-id params]
                  (handle-commit! this context model id step-id params))
