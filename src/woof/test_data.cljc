@@ -52,11 +52,11 @@
   "builds a context map with step fns"
   [idx]
   (reduce
-    (gen-step-fn #(str "s-" %) (fn [k i v]
+    (gen-step-fn #(str "s-" %) (fn [k i v] ;; todo: return metadata for fn
                                  (debug-out! "FN" k i v)
                                  (let [c (async/chan)
                                        t (+ (int (rand 1000))
-                                            (if (odd? i) (int (rand 10000)) 0))]
+                                            (if (odd? i) (int (rand 3000)) 0))]
                                    (go
                                      (async/<! (u/timeout t))
                                      (debug-out! k "DONE!")

@@ -266,18 +266,38 @@
          )
 
 
-(rum/defc <wf-results-ui>
+(rum/defcs <wf-results-ui>
   < rum/reactive
+   (rum/local true ::pending-only?)
   { :key-fn (fn [header _ _] header)}
 
-  [header result actual-steps *editors]
+  [local header result actual-steps *editors]
     ;; todo: store changed params
     [:.results
 
-       (into [:div.steps]
+       (ui/menubar "" [["pending?" (fn []
+                                   (swap! (::pending-only? local) not)
+                                   )]])
+
+       (if @(::pending-only? local)
+          (do
+            (map (partial <wf-full-step-ui> result *editors)
+                 (filter (fn[[step-id sbody]]
+                      (let [v (get-value result step-id)]
+                        (or
+                         (u/channel? v)
+                         (wf/sid? v)
+                         (wf/sid-list? v)
+                         ))) actual-steps))
+            )
+         (into [:div.steps]
           (map (partial <wf-full-step-ui> result *editors)
-                actual-steps
-               ))
+                actual-steps))
+         )
+
+
+
+
      ]
 
   )
@@ -288,6 +308,7 @@
 
 (defonce *backpressure-cache (atom nil) )
 (defonce *backpressure-t (atom 0) )
+
 
 (defn workflow-handler [*result r]
 
@@ -304,7 +325,7 @@
 
 
 
-    (when (and
+    #_(when (and
             (= :back-pressure status)
             (nil? @*backpressure-cache))
 
@@ -390,6 +411,7 @@
   )
 
 
+
 (defn make-ui-state [local]
   ; (::result local)
 
@@ -419,7 +441,7 @@
 
 ;; generate test workflow
 
-(defonce TEST-WF-STEP-COUNT 70)
+(defonce TEST-WF-STEP-COUNT 300)
 
 (defn generate-wf-fn [UI-STATE]
   (fn []
