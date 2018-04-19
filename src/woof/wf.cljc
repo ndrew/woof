@@ -627,25 +627,12 @@
 (def ^:dynamic *consumer-debugger* nil)
 (def ^:dynamic *producer-debugger* nil)
 
-;; backpressure
-;;(def WORKING-MAX 30)
-
-
-
-
-
-
-
-
-
 
 ;; step processing function. parametrized by get! and commit! fns.
 (defn- do-process-step! [get! commit! [id [step-id params]]]
   (let [existing-result (get! id)]
-
     ; (println "PROCESSING " [id [step-id params]] existing-result )
-
-    ;;#?(:cljs (.warn js/console "PROCESSING: " (pr-str [id params "---" (get! params)]) ) )
+    ; #?(:cljs (.warn js/console "PROCESSING: " (pr-str [id params "---" (get! params)]) ) )
 
     (cond
       (nil? existing-result) ;; no result -> run step
@@ -666,150 +653,117 @@
 
 
 
-(defn- put! [c v] ;; TODO: does this even work?
-  (let [err (volatile! false)]
-    (try
-      (async/put! c v)
-      (catch
-        #?(:clj Throwable)
-        #?(:cljs js/Error)
-        e
-        (println "Error while putting into channel!")
-        (vreset! err true)))
-    (not @err)))
 
 
 
 
 
 
-
-(defn- freq-map! [steps-left]
+(defn- freq-map!
+  "builds map with number of working and pending steps"
+  [steps-left]
   (merge {:working 0} (frequencies steps-left)))
 
 (def freq-map (memoize freq-map!))
 
 
-
 (defprotocol WoofBackPressure
-  (can-produce? [this])
 
-  (handle-backpressure [this i]))
+  (start-producing? [this])
+
+  (stop-producing? [this i]))
+
 
 
 (defrecord WFSimpleBackPressure [STATE *bp options]
   WoofBackPressure
 
-  (can-produce?  ;; ! should be called first
+
+
+  (start-producing?  ;; ! should be called first
     [this]
 
     (let [freqs (merge {:working 0 :pending 0}
-                       (freq-map (vals @(get-steps-left STATE))))]
+                       (freq-map (vals @(get-steps-left STATE))))
+          min-t (get options :notify-ms-min 10)
+          max-t (get options :notify-ms-max 10000)
+          ]
 
       (swap! *bp merge {
                          :freqs freqs
                          :current-i 0
-                         :timer (u/exp-backoff 10 2 10000)
-                        })
+                         :timer (u/exp-backoff min-t 2 max-t)
+                         })
 
       (let [b (> (:working-threshold options 20) (:working freqs))]
-
-        (if b
-          (println "can-produce? " (d/pretty freqs) (> (:working-threshold options 20) (:working freqs))))
-
+        ; (if b (println "can-produce? " (d/pretty freqs) (> (:working-threshold options 20) (:working freqs))))
         b
-        )
-            )
+        )))
 
-    )
 
-  (handle-backpressure
+  (stop-producing?
     [this i]
 
-    (let [CHECK-BACKPRESSURE-ON 20
-          bi (get @*bp :current-i 0)
-          ]
+    (let [CHECK-BACKPRESSURE-ON 20 ;; todo: do we need to checking for bp every time or this should be in produce?
+          bi (get @*bp :current-i 0)]
 
       (if (= bi CHECK-BACKPRESSURE-ON)
         (let [freqs (merge {:working 0 :pending 0}
                        (freq-map (vals @(get-steps-left STATE))))
-              prev-freqs (get @*bp :freqs)
 
-              timer-fn (get @*bp :timer)
-              ]
+              max-t (get options :notify-ms-max 4000)
+              bp-t (get options :working-ms-threshold 80)
 
+              {prev-freqs :freqs
+               timer-fn  :timer} @*bp
 
-            (swap! *bp merge { :freqs freqs
-                                :current-i 0})
+              {currently-working :working
+               currently-pending :pending} freqs
 
-            (if (and
-                  (> (:working freqs) (:working-max options 20))
-                  (> (:working freqs) 0)
-                  )
-              (let [wait-time (timer-fn)]
-
-                (println "handle-backpressure "
-                         (:working-max options 20)
-                         (:working freqs)
-
-                         (d/pretty freqs) wait-time "ms.")
+              {prev-working :working
+               prev-pending :pending} prev-freqs]
 
 
-                (if (and
-                      (= prev-freqs freqs)
-                      (= 10000 wait-time)
-                      (not (= {:working 0, :pending 0} freqs))
-                      )
+          (swap! *bp merge { :freqs freqs
+                             :current-i 0})
 
-                  (let [steps-left @(get-steps-left STATE)
-                        CTX (get options :CTX)
-                        steps @(get-steps STATE)
-                        ]
+          (if (and
+                (> currently-working (:working-threshold options 20))
+                (> currently-working 0))
 
-                    (println "STUCK!" "steps left:" (d/pretty steps-left) "steps 2 add: " (d/pretty @(get-steps2add STATE))
-                             ;;(pr-str steps)
-                             )
-                    #_(doseq [[k _] steps-left]
-                      (println k)
+            (let [pending-grows? (> (- currently-pending prev-pending) 0)
+                  working-grows? (> (- currently-working prev-working) 0)
+                  over-working? (> currently-working (:working-max options 50))
 
-                      (loop [[step-handler params] (get steps k)]
-                        (println (pr-str [step-handler params])
-                                 (pr-str (get! STATE params))
-                                 )
-
-                        (if (u/sid? params)
-                          (recur (get steps params))
-                          (do
-                            (go
-                              (let [v (async/<! ((get-step-fn CTX step-handler) params))]
-
-                                (println "VVV" (d/pretty v))
-
-                                )
+                  wait-time (timer-fn)
+                  over-threshold? (>= wait-time bp-t)]
 
 
-                              )
-                            )
-                          )
-
-                        )
-                      (println "======")
-
-                      )
-
-                    )
-
-
-                  )
-
-                wait-time
+              #_(if (and
+                    (= prev-freqs freqs)
+                    (= max-t wait-time)
+                    (not (= {:working 0, :pending 0} freqs)))
+                   (println "wf is stuck!") ;; todo: notifying of backpressure
                 )
-              nil
+
+
+
+              (let [stop-produce? (or over-working?
+                (cond
+                  (and pending-grows?       working-grows?)       true
+                  (and pending-grows?       (not working-grows?)) over-threshold?
+                  (and (not pending-grows?) working-grows?)       over-threshold?
+                  :else false
+                  ))]
+
+                stop-produce?
+                )
               )
+            )
           )
         (do
           (swap! *bp update :current-i inc)
-          nil)
+          false)
         )
 
       )
@@ -965,7 +919,7 @@
 
     (let [{
             *prev-added-steps ::prev-added-steps
-             *prev-results ::prev-results
+            *prev-results ::prev-results
 
             WORKING-MAX :working-max
             PARALLEL-MAX :parallel-max
@@ -974,8 +928,8 @@
 
            initial-freqs (freq-map (vals @(get-steps-left STATE)))
 
-           start-produce? (fn[] (if-let [BP (get options :bp)] (can-produce? BP) true))
-           bp-wait-t (fn[i] (if-let [BP (get options :bp)] (handle-backpressure BP i) nil))
+           start-produce? (fn[] (if-let [BP (get options :bp)] (start-producing? BP) true))
+           stop-produce? (fn[i] (if-let [BP (get options :bp)] (stop-producing? BP i) false))
 
            PUT_RETRY_T 1000
           ]
@@ -986,8 +940,6 @@
         ;; 2) wait in go block
 
       ;; can-produce?
-
-
 
       (when (start-produce?) ; there is a capacity for producing more
 
@@ -1000,48 +952,29 @@
             (if-let [cycles (g/has-cycles steps)]
               (u/throw! (str "cycle detected " (d/pretty cycles))))
 
-            #?(:cljs
-                (.log js/console (u/now))
-                )
+
+            ; #?(:cljs (.log js/console (u/now))) ;; todo: right now it's a marker that producing started
 
 
-            (let [ ;i (volatile! 0) ;; cycle counter
-
-                   *steps (get-steps STATE)
+            (let [ *steps (get-steps STATE)
                    *steps-left (get-steps-left STATE)
                    *results (get-results STATE)
 
                    prev-steps @*prev-added-steps
-
-                   *new-steps (volatile! (array-map))
-                   ]
+                   *new-steps (volatile! (array-map))]
 
 
               (loop [steps steps
                      i 0]
 
                 (when-not (empty? steps)
-
                   (let [step (first steps)
                         [k v] (process-step! this step)]
                     (vswap! *new-steps assoc k v))
 
-                  (if (nil? (bp-wait-t i))
-                    (recur (rest steps) (inc i))
-                    )
-                  )
-                )
-
-              #_(doseq [step steps]        ;; todo: steps shuffling or other strategies ?
-                (let [[k v] (process-step! this step)]
-                  (vswap! *new-steps assoc k v)
-
-                  (when-let [wait-t (bp-wait-t i)]              ; pause producing in case of back-pressure
-                    (async/<! (u/timeout wait-t))
-
-                    ))
-
-                (vswap! i inc))
+                  ;; should we exit here, or resume with new steps?
+                  (if-not (stop-produce? i)
+                    (recur (rest steps) (inc i)))))
 
 
               (let [new-steps @*new-steps
@@ -1054,25 +987,15 @@
                 (when (or steps-added?
                           results-changed? )
 
-                  ; #?(:cljs (.warn js/console (d/pretty["STEPS:" "added?" steps-added? "results-changed?" results-changed?])))
-
-                  #_(println "__results-changed?" results-changed?
-                             "__steps-added?" steps-added?)
-
-
                   (when results-changed?
-                    ;            (println "PRODUCING CONTUNUES: results changed")
-
                     (vreset! *prev-results results)
 
                     (if-not steps-added?
-                      (put!? process-channel [:steps [:update new-steps]] PUT_RETRY_T))
-
-                    )
+                      (put!? process-channel [:steps [:update new-steps]] PUT_RETRY_T)))
 
                   ;; if only added
                   (when steps-added? ;(and steps-added? (not results-changed?))
-                    ;            (println "PRODUCING CONTUNUES: steps added")
+                    ; (println "PRODUCING CONTUNUES: steps added")
 
                     (vreset! *prev-added-steps new-steps)
                     (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
@@ -1116,10 +1039,19 @@
 
                         :bp (->WFSimpleBackPressure STATE
                                                      (atom {:freqs {:working 0 :pending 0}
-                                                             :current-i 0 })
+                                                             :current-i 0
+                                                             :bp-time 0
+                                                            })
                                                      {
                                                        :working-threshold 30
+
                                                        :working-max 50
+
+                                                       :working-ms-threshold 160
+
+                                                       :notify-ms-max 4000
+                                                       :notify-ms-min 20
+
                                                        :CTX CTX
                                                       }
                                                      )
