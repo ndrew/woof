@@ -268,7 +268,7 @@
 
 (rum/defcs <wf-results-ui>
   < rum/reactive
-   (rum/local true ::pending-only?)
+   (rum/local false ::pending-only?)
   { :key-fn (fn [header _ _] header)}
 
   [local header result actual-steps *editors]
@@ -488,9 +488,42 @@
        (app-model/merge-context model xpand-context)
        (app-model/merge-steps   model xpand-steps)
        )
+     )
+   ]
+  )
+
+(defn- uroboros-test-mi [model]
+  ["uruboros"
+   (fn[]
+     (app-model/merge-context model {:in {:fn (fn[x]
+                                                (let [chan> (async/chan)]
+                                                  (go []
+
+                                                      ;(async/put! chan> {(wf/rand-sid) "UPD 1"})
+                                                      (async/put! chan> "hello")
+                                                      (async/<! (u/timeout 1000))
+                                                      (async/put! chan> "hello1")
+                                                      ;(async/put! chan> {(wf/rand-sid) "UPD 2"})
+                                                      )
+                                                  chan>)
+                                                )
+                                          :infinite true}
+                                     :out {:fn (fn[x]
+                                                 (println "OUT" x)
+                                                 x)
+                                           ;:collect? true
+                                           ;;:infinite true
+                                           }
+                                     })
+
+     (app-model/merge-steps   model {::IN  [:in {}]
+                                     ::OUT [:out ::IN]
+                                     })
 
      )
    ]
+
+
   )
 
 ;; run workflow
@@ -814,6 +847,8 @@
                          (ajax-step-mi model UI-STATE)
                          (generate-wf-mi UI-STATE)
                          (expand-test-mi model)
+                         (uroboros-test-mi model)
+
                          (editor-mi model UI-STATE)
                          (preview-mi model UI-STATE)
                          (infinity-mi model)

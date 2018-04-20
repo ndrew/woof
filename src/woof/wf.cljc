@@ -270,12 +270,15 @@
   (get-steps-left [this])
   (get-results [this])
 
-  (do-commit! [this id result])
+  (do-commit! [this id step-id result])
   (do-update! [this msg])
 
   (do-expand! [this id actions])
 
   (commit! [this id step-id params result])
+
+  (infinite-commit! [this id step-id params result]) ; experimental
+
   (expand! [this id step-id params result])
 
   (update-steps! [this added-steps])
@@ -368,83 +371,99 @@
   (get-results [this] (get this :RESULTS))
 
 
-  (do-commit! [this id result]
-      (let [*results (get-results this)]
+  (do-commit! [this id step-id result]
+      (let [*results (get-results this)
+            step-cfg (get-step-config (get this :CTX) step-id)
+            infinite? (:infinite step-cfg)]
 
     #?(:clj  (dosync
                 (swap! *results assoc id result)
 
-                 (step-ready! STEPS id) ;; todo: dissoc only if not infinite mode
+                 (step-ready! STEPS id)
+                 ;; todo: how to commit infinite?
+
+
                ))
     #?(:cljs (do
                 (swap! *results assoc id result)
-                (step-ready! STEPS id) ;; todo: dissoc only if not infinite mode
+                (step-ready! STEPS id)
+
+                ;; todo: how to commit infinite?
+
+                 ;;(add-pending-steps! STEPS d-steps)
+
              ))
     ))
 
 
-  (do-update! [this msg]
-              (let [[id step-id params result] msg]
-                ;(println "UPDATE: " (d/pretty msg))
+  (do-update!
+    [this msg]
+    (let [[id step-id params result] msg]
 
-                (let [d-steps (rest (g/get-dependant-steps (steps STEPS) id))]
-                  ;;
+      (let [d-steps (rest (g/get-dependant-steps (steps STEPS) id))]
+        ;;
 
-                  (swap! (get-results this) (partial apply dissoc) d-steps)
+        (swap! (get-results this) (partial apply dissoc) d-steps)
 
-                  (add-pending-steps! STEPS d-steps)
+        (add-pending-steps! STEPS d-steps)
 
-                  (do-commit! this id result)
-                  ;; put update only if things had changed
-                  (go
-                    (put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
+        ;; todo: infinite: proper handle update here
+        (do-commit! this id step-id result)
+        ;; put update only if things had changed
+        (go
+          (put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
 
-                  )))
+        )))
 
 
 
   (update-steps! [this params]
                  (do-update-steps! STEPS params))
 
+  (infinite-commit!
+    [this id step-id params result]
+    ;; for now
+    (if (u/channel? result)
+      (if-not (is-step-working? STEPS id)
+        (do
+          (swap! (get-results this) assoc id result)
+          (step-working! STEPS id)
 
-  (commit! [this id step-id params result]
+          (when-not (get-infinite-step STEPS id)
+            (set-infinite-step STEPS id result) ;; store channel
 
-           (if (u/channel? result)
-
-             (let [*steps-left (get-steps-left* STEPS)
-                   infinite? (:infinite (get-step-config (get this :CTX) step-id))]
-
-               (if-not (is-step-working? STEPS id)
-                 (do
-
-                   (swap! (get-results this) assoc id result)
-                   (step-working! STEPS id)
-
-                   (if infinite?
-                     (do
-
-                       (when-not (get-infinite-step STEPS id)
-                         (set-infinite-step STEPS id result) ;; store channel
-                         (go-loop []
-                           (let [v (async/<! result)] ;; u/<?
-                             ;; TODO: do we need to close the channel
-                             ;; #?(:cljs (.warn js/console "infinite!" (pr-str [:update [id step-id params v]]) ))
-
-
-                             (put!? (:process-channel cfg) [:update [id step-id params v]] 1000))
-                             (recur))
-                         )
-
-                       )
-                    (go
+            (go-loop []
                      (let [v (async/<! result)] ;; u/<?
                        ;; TODO: do we need to close the channel
-                       (put!? (:process-channel cfg) [:save [id step-id params v]] 1000))) ;;
+
+                       ;; force update when there is a new value from infinite step
+                       (put!? (:process-channel cfg) [:update [id step-id params v]] 1000))
+
+                       ;; TODO: stop recurring on workflow stop
+
+                     (recur)
                      )
-                   )
-                 )
-               )
-             (do-commit! this id result)))
+            )
+
+
+          )))
+
+    )
+
+
+  (commit!
+    [this id step-id params result]
+    (if (u/channel? result)
+      (if-not (is-step-working? STEPS id)
+        (do
+          (swap! (get-results this) assoc id result)
+          (step-working! STEPS id)
+          (go
+            (let [v (async/<! result)] ;; u/<?
+              ;; TODO: do we need to close the channel
+              (put!? (:process-channel cfg) [:save [id step-id params v]] 1000)))))
+
+      (do-commit! this id step-id result)))
 
 
   (expand! [this id step-id params actions]
@@ -850,7 +869,7 @@
             ;; consume the 'message'.        <?>: what if unknown op is sent?
             (condp = op
               :save (let [[id step-id params result] v]     ; step is done, store the result
-                      (do-commit! STATE id result))
+                      (do-commit! STATE id step-id result))
 
               :expand (let [[id step-id params result] v]   ; step expanded
                         (do-expand! STATE id result)
@@ -884,7 +903,9 @@
                   new-steps-left @*steps-left
                   same-steps-left? (= steps-left new-steps-left)]
 
-              (when (or (not same-results?) @force-update (not (empty? @*steps-left)))
+              (when (or (not same-results?)
+                        @force-update
+                        (not (empty? @*steps-left)))
                 ; <?> will force-update cover not empty @*steps2add
 
                 (debug! *consumer-debugger* {:process-loop-end {:i i :new-results new-results :steps processed-steps :steps-left new-steps-left}})
@@ -896,7 +917,9 @@
                 (when (and                                           ; restart-producing
                         (not-empty new-steps-left)
                         (or @force-update (not same-steps-left?)))
-                  (produce-steps! this ready-channel process-channel @*steps)))
+                  (produce-steps! this ready-channel process-channel @*steps)
+
+                  ))
               )
 
             ;; todo: stop not immediately when force stop
@@ -1000,6 +1023,9 @@
                     (vreset! *prev-added-steps new-steps)
                     (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
                   )
+
+
+
 
                 )
 
@@ -1121,6 +1147,7 @@
         step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
         f (get-step-fn executor step-id)]
 
+
     (if (and (:collect? step-cfg)
              (sid-list? params))
       ;; collect
@@ -1133,12 +1160,21 @@
             )))
       ;; process sid or value
       (let [result (f params)]
-        (if (:expands? step-cfg)
-          (expand-fn! id step-id params result)
-          (save-fn! id step-id params result))
+
+        (if-not (:infinite step-cfg)
+          (if (:expands? step-cfg)
+            (expand-fn! id step-id params result)
+            (save-fn! id step-id params result))
+          (do
+            ; todo: does this work properly?
+            (infinite-commit! wf-state id step-id params result)
+            )
+          )
 
         )
       )
+
+
     [id [step-id params]]
     )
   )
