@@ -425,30 +425,51 @@
   (update-steps! [this params]
                  (do-update-steps! STEPS params))
 
-  (infinite-commit!
-    [this id step-id params result]
-
-    ;; todo: one day
-
-
-    (step-working! STEPS id)
-
-    )
-
 
   (commit!
     [this id step-id params result]
     (if (u/channel? result)
-      (if-not (is-step-working? STEPS id)
+      (let [;*steps-left (get-steps-left this)
+            step-cfg (get-step-config (get this :CTX) step-id)
+            infinite? (:infinite step-cfg)]
+
+        (if-not (is-step-working? STEPS id)
         (do
           (swap! (get-results this) assoc id result)
           (step-working! STEPS id)
-          (go
-            (let [v (async/<! result)] ;; u/<?
-              ;; TODO: do we need to close the channel
-              (put!? (:process-channel cfg) [:save [id step-id params v]] 1000)))))
 
-      (do-commit! this id step-id result)))
+          (if infinite?
+            (go-loop
+              []
+              (let [v (async/<! result)] ;; u/<?
+                ;(swap! (get-results wf-state) assoc id v)
+
+                (do-commit! this id step-id v)
+                ;; force update when there is a new value from infinite step
+                (do-update! this [id step-id params v])
+                (step-working! STEPS id)
+
+
+                ;; TODO: do we need to close the channel
+                ;; TODO: stop recurring on workflow stop
+                (recur)))
+            (go
+              (let [v (async/<! result)] ;; u/<?
+                ;; TODO: do we need to close the channel
+                (put!? (:process-channel cfg) [:save [id step-id params v]] 1000)))
+
+            ))
+          )
+        )
+
+
+
+      (do-commit! this id step-id result))
+
+
+
+
+    )
 
 
   (expand! [this id step-id params actions]
@@ -1128,11 +1149,14 @@
 
 ;;   (locking *out* (println "handle-commit!" id))
 
-  (let [save-fn! (partial commit! wf-state)
-        expand-fn! (partial expand! wf-state)
+  (let [step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
+        f (get-step-fn executor step-id)
 
-        step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
-        f (get-step-fn executor step-id)]
+        store-result! (fn[result]
+                        (if (:expands? step-cfg)
+                          (expand! wf-state id step-id params result)
+                          (commit! wf-state id step-id params result)))
+        ]
 
 
     (if (and (:collect? step-cfg)
@@ -1140,58 +1164,10 @@
       ;; collect
       (let [collected (get!* wf-state params)]
         (when (not-any? #(or (nil? %1) (u/channel? %1)) collected)
-          (let [result (f collected)] ;; TODO: can this be (f (filter-collected collected)) for collect? and expands? - or new type of step?
-            (if (:expands? step-cfg)
-              (expand-fn! id step-id params result)
-              (save-fn! id step-id params result))
-            )))
+          (store-result! (f collected))))
       ;; process sid or value
-      (do
-          (if-not (:infinite step-cfg)
-
-            (let [result (f params)]  ; handle finite steps as before
-              (if (:expands? step-cfg)
-                (expand-fn! id step-id params result)
-                (save-fn! id step-id params result)))
-            (do
-
-              ;; (locking *out* (println "before infinite-commit!" id (d/pretty (get! wf-state id))))
-
-              (let [result (f params)]
-                ;; (locking *out* (println "infinite-commit!" id result))
-
-                (when (u/channel? result)
-                  (go-loop []
-                    (let [v (async/<! result)] ;; u/<?
-                      ;; (locking *out* (println "GOT V" v id))
-
-                      ;(swap! (get-results wf-state) assoc id v)
-                      (if (:expands? step-cfg)
-                        (expand-fn! id step-id params v)
-                        (save-fn! id step-id params v))
-
-                      ;; force update when there is a new value from infinite step
-                      (do-update! wf-state [id step-id params v])
-                      (infinite-commit! wf-state id step-id params v)
-
-                      ;(put!? (:process-channel cfg) [:update [id step-id params v]] 1000))
-
-                      ;; TODO: do we need to close the channel
-                      ;; TODO: stop recurring on workflow stop
-                      (recur))
-
-
-                    ))
-                ;; what if infinite step returns not a channel
-                ;;  do (infinite-commit! wf-state id step-id params result)
-              )
-
-
-              )
-
-          )
-        )
-      )
+      (store-result! (f params))
+     )
 
 
     [id [step-id params]]
