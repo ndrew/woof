@@ -388,31 +388,29 @@
   (get-results [this] (get this :RESULTS))
 
   (do-commit! [this id step-id result]
-      (let [*results (get-results this)
-            step-cfg (get-step-config (get this :CTX) step-id)
-            infinite? (:infinite step-cfg)]
-
-      ;; (locking *out* (println "do-commit!" id result))
-
-
-    #?(:clj  (dosync
-                (swap! *results assoc id result)
-
-                 (step-ready! STEPS id)
-                 ;; todo: how to commit infinite?
+              (let [*results (get-results this)
+                    step-cfg (get-step-config (get this :CTX) step-id)
+                    infinite? (and
+                                (:infinite step-cfg)
+                                (not (nil? (get @(get this :INF) id))))
 
 
-               ))
-    #?(:cljs (do
-                (swap! *results assoc id result)
-                (step-ready! STEPS id)
+                    ]
 
-                ;; todo: how to commit infinite?
 
-                 ;;(add-pending-steps! STEPS d-steps)
+                #?(:clj  (dosync
+                           (swap! *results assoc id result)
 
-             ))
-    ))
+                           (if-not infinite?
+                             (step-ready! STEPS id))
+
+                           ))
+                #?(:cljs (do
+                           (swap! *results assoc id result)
+                           (if-not infinite?
+                             (step-ready! STEPS id))
+                           ))
+                ))
 
 
   (do-update!
@@ -431,15 +429,19 @@
             (swap! (get-results this) (partial apply dissoc) d-steps)
             (add-pending-steps! STEPS d-steps)
             (do-commit! this id step-id result)
+
+            ;; todo: does this is needed?
             (go
               (put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
             )
           (do
             (swap! (get-results this) (partial apply dissoc) d-steps)
-            (add-pending-steps! STEPS d-steps)
+            ;(add-pending-steps! STEPS d-steps)
+
             (do-commit! this id step-id result)
-            (go
+            #_(go
               (put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
+
             )
           )
 
@@ -464,9 +466,6 @@
   (commit!
     [this id step-id params result]
 
-    (locking *out* (println "commit\t" id result))
-
-
     (if (u/channel? result)
       (let [;*steps-left (get-steps-left this)
             step-cfg (get-step-config (get this :CTX) step-id)
@@ -481,34 +480,29 @@
             (step-working! STEPS id)
 
             ;; todo: merge these into single go-loop block
+            ;; todo: do we need to close the channel
+            ;; todo: stop recurring on workflow stop
             (if infinite?
               (do
-
                 (swap! *inf assoc id :working) ; save that we have infinite action
 
                 (go-loop
                   []
                   (let [v (async/<! result)] ;; u/<?
-                    ;(swap! (get-results wf-state) assoc id v)
-
                     (put!? (:process-channel cfg) [:update [id step-id params v]] 1000)
-
-
-                    ;; TODO: do we need to close the channel
-                    ;; TODO: stop recurring on workflow stop
                     (recur))))
               (go
                 (let [v (async/<! result)] ;; u/<?
-                  ;; TODO: do we need to close the channel
-                  (put!? (:process-channel cfg) [:save [id step-id params v]] 1000)))
-
-              ))
+                  (put!? (:process-channel cfg) [:save [id step-id params v]] 1000)))))
             )
         )
 
+      (do
 
-
-      (do-commit! this id step-id result))
+        (locking *out* (println "\ndo-commit!:\n" id "\n" result))
+        (do-commit! this id step-id result)
+        )
+      )
 
     )
 
@@ -659,11 +653,7 @@
         (steps-ready? [this]
                       (let [ready? (and (empty? (get @*state :infinite {}))
                                         (every? #(= % :ok) (vals @*steps-left)))]
-
-                        (locking *out* (println "=======" ready? "========"))
-
-                        ready?
-                        ))
+                        ready?))
 
         (add-steps! [this actions]
           (locking *out* (println "\tadd steps" actions))
@@ -882,6 +872,10 @@
   (process-step!
     [this [id [step-id params]]]
 
+
+    (locking *out* (println "_____ " id (if (u/channel? params) "<chan>" params )))
+
+
     (let [existing-result (get! STATE id)
           run-step! (partial execute-step! XTOR id step-id)]
 
@@ -943,7 +937,7 @@
                 [op v] r]
 
 
-            #_(locking *out* (println "=> " op
+            (locking *out* (println "=> " op
                                     (cond (= op :expand) (str (pr-str (first v)) "\n")
                                           (= op :steps) (str (pr-str (first v))  "\n")
                                           :else "")
@@ -1044,7 +1038,7 @@
            PUT_RETRY_T 1000
 
 
-          dbg-map #(reduce (fn[r [k v]]
+           dbg-map #(reduce (fn[r [k v]]
                          (assoc r k
                            (cond (u/channel? v) :chan
                                  (and (vector? v) (keyword? (first v)))
@@ -1106,11 +1100,12 @@
                                    )
                     results-changed? (not (= @*prev-results results))]
 
-
                 (when (or steps-added?
                           results-changed? )
 
-                  #_(locking *out* (println "steps-added? " steps-added? "\n"
+                  (locking *out* (println "|\t\t\t" "~" "\t\t\t|"))
+
+                  (locking *out* (println "steps-added? " steps-added?
                                           (if steps-added?
                                             (str (pr-str (dbg-map prev-steps)) "\n"
                                                  (pr-str (dbg-map new-steps)))
@@ -1119,6 +1114,9 @@
 
                                           "\nresults-changed? " results-changed? "\n"
                                           ))
+
+                                    (locking *out* (println "|\t\t\t" "~" "\t\t\t|"))
+
 
                   (when results-changed?
                     (vreset! *prev-results results)
