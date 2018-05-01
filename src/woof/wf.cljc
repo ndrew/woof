@@ -21,11 +21,6 @@
         )))
 
 
-
-(comment
-  "TODO: write introduction to workflows")
-
-
 ;; workflow = ƒ(context, steps)
 
 
@@ -47,8 +42,6 @@
 (def sid? u/sid?)  ;; predicates that check parameter in workflow is a link to other action
 
 (def sid-list? u/sid-list?)
-
-
 
 
 (defn- gen-uuid []
@@ -105,6 +98,9 @@
 ;; also, handlers can behave differently according to the metadata - TODO:
 
 
+;; right now the step handler behaviour is determined at 'compile' time
+;    TODO: dynamic expands? collects? etc.
+
 (defn step-handler
   "step hander constructor function"
 
@@ -156,8 +152,15 @@
 
 
 
-;; context implementation is WoofContext protocol
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; public protocols
+;;
+
+
+;;
+;; context implementation is WoofContext protocol
 (defprotocol WoofContext
 
   ;; returns step function by its step-id, or throws an error
@@ -168,29 +171,6 @@
 
 
 )
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; public protocols
-;;
-
-
-;; constructor protocol that will know which execturor impl to take
-
-(defprotocol WoofExecutorFactory
-  ;; factory method for creating executor
-  (build-executor [this steps]) ;; TODO: does it belong here?
-  )
-
-
-;; msg handler from from the workflow - for clean-up and some initial setup
-
-(defprotocol WoofWorkflowMsg
-  ;; <?> does this have to be synchronous
-  (send-message [this event data])
-
-  )
 
 
 ;;
@@ -214,6 +194,23 @@
 
 
 
+;;
+;; constructor protocol that will know which execturor impl to take
+(defprotocol WoofExecutorFactory
+  ;; factory method for creating executor
+  (build-executor [this steps])) ;; TODO: does it belong here?
+
+
+
+
+;;
+;; msg handler from from the workflow - for clean-up and some initial setup
+(defprotocol WoofWorkflowMsg
+  ;; <?> does this have to be synchronous
+  (send-message [this event data]))
+
+
+
 
 ;;
 ;; protocol for processing workflow results
@@ -232,6 +229,7 @@
 
 
 
+;;
 (defprotocol WoofSteps
 
   (initial-steps [this])
@@ -244,17 +242,23 @@
 
 
   (do-update-steps! [this added-steps])
+
+
+  ;; todo: handle infinite steps
+  (get-infinite-steps [this])
   (get-infinite-step [this id])
   (set-infinite-step [this id result])
+
 
   (steps-ready? [this])
 
   (add-steps! [this steps])
   (add-pending-steps! [this steps])
 
-  (step-ready! [this id])
-  (step-working! [this id])
 
+  (step-ready! [this id])
+
+  (step-working! [this id])
   (is-step-working? [this id])
 )
 
@@ -277,8 +281,6 @@
 
   (commit! [this id step-id params result])
 
-  (infinite-commit! [this id step-id params result]) ; experimental
-
   (expand! [this id step-id params result])
 
   (update-steps! [this added-steps])
@@ -288,7 +290,7 @@
   (get! [this id])
   (get!* [this id-list])
 
-  )
+)
 
 
 
@@ -304,6 +306,15 @@
   (consume-steps! [this ready-channel process-channel])
 )
 
+
+
+;;
+;;
+(defprotocol WoofBackPressure
+
+  (start-producing? [this])
+
+  (stop-producing? [this i]))
 
 
 
@@ -325,6 +336,7 @@
 
 (defn- do-expand-impl! [STEPS *results id actions]
 
+  #_(locking *out* "do-expand-impl!" id actions)
 
   (if-not (get-infinite-step STEPS id)
     (do
@@ -333,6 +345,7 @@
 
       (add-steps! STEPS actions)
       (add-pending-steps! STEPS actions)
+
       (step-ready! STEPS id)
 
       )
@@ -350,6 +363,9 @@
 
       (add-steps! STEPS actions)
       (add-pending-steps! STEPS actions)
+
+      ;; (set-infinite-step STEPS id
+
       ;; (step-ready! STEPS id)
 
       )
@@ -357,19 +373,19 @@
   )
 
 
-; move the params to a :keys
+
 (defrecord WFState [cfg STEPS]
   WoofState
+
   ;;
   (get-initial-steps [this] (initial-steps STEPS))
 
   (get-steps [this] (get-steps* STEPS))
   (get-steps2add [this] (get-steps2add* STEPS))
+
   (get-steps-left [this] (get-steps-left* STEPS))
 
-
   (get-results [this] (get this :RESULTS))
-
 
   (do-commit! [this id step-id result]
       (let [*results (get-results this)
@@ -401,73 +417,98 @@
 
   (do-update!
     [this msg]
-    (let [[id step-id params result] msg]
+    (let [[id step-id params result] msg
+          step-cfg (get-step-config (get this :CTX) step-id)
+          infinite? (:infinite step-cfg)
+          ]
 
-      ;; (locking *out* (println "do-update!"))
 
       (let [d-steps (rest (g/get-dependant-steps (steps STEPS) id))]
         ;;
 
-        (swap! (get-results this) (partial apply dissoc) d-steps)
-
-        (add-pending-steps! STEPS d-steps)
-
-        ;; todo: infinite: proper handle update here
-        (do-commit! this id step-id result)
-        ;; put update only if things had changed
-        (go
-          (put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
+        (if (not infinite?)
+          (do
+            (swap! (get-results this) (partial apply dissoc) d-steps)
+            (add-pending-steps! STEPS d-steps)
+            (do-commit! this id step-id result)
+            (go
+              (put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
+            )
+          (do
+            (swap! (get-results this) (partial apply dissoc) d-steps)
+            (add-pending-steps! STEPS d-steps)
+            (do-commit! this id step-id result)
+            (go
+              (put!? (:process-channel cfg) [:steps [:update d-steps]] 1000))
+            )
+          )
 
         )))
 
 
 
   (update-steps! [this params]
+                ; previously it indicated that steps were added
+                ; FIXME: check if the value of infinite steps changed
+
+
+                 #_(locking *out* (println
+                                  "\nupdate-steps!: \t"
+                                  (d/pretty @(get-steps-left* STEPS))
+                                  "\n" (d/pretty (get-infinite-steps STEPS))
+                                  ))
+
                  (do-update-steps! STEPS params))
 
 
   (commit!
     [this id step-id params result]
+
+    (locking *out* (println "commit\t" id result))
+
+
     (if (u/channel? result)
       (let [;*steps-left (get-steps-left this)
             step-cfg (get-step-config (get this :CTX) step-id)
-            infinite? (:infinite step-cfg)]
+            infinite? (:infinite step-cfg)
+
+             *inf (get this :INF)]
+
 
         (if-not (is-step-working? STEPS id)
-        (do
-          (swap! (get-results this) assoc id result)
-          (step-working! STEPS id)
+          (do
+            (swap! (get-results this) assoc id result)
+            (step-working! STEPS id)
 
-          (if infinite?
-            (go-loop
-              []
-              (let [v (async/<! result)] ;; u/<?
-                ;(swap! (get-results wf-state) assoc id v)
+            ;; todo: merge these into single go-loop block
+            (if infinite?
+              (do
 
-                (do-commit! this id step-id v)
-                ;; force update when there is a new value from infinite step
-                (do-update! this [id step-id params v])
-                (step-working! STEPS id)
+                (swap! *inf assoc id :working) ; save that we have infinite action
+
+                (go-loop
+                  []
+                  (let [v (async/<! result)] ;; u/<?
+                    ;(swap! (get-results wf-state) assoc id v)
+
+                    (put!? (:process-channel cfg) [:update [id step-id params v]] 1000)
 
 
-                ;; TODO: do we need to close the channel
-                ;; TODO: stop recurring on workflow stop
-                (recur)))
-            (go
-              (let [v (async/<! result)] ;; u/<?
-                ;; TODO: do we need to close the channel
-                (put!? (:process-channel cfg) [:save [id step-id params v]] 1000)))
+                    ;; TODO: do we need to close the channel
+                    ;; TODO: stop recurring on workflow stop
+                    (recur))))
+              (go
+                (let [v (async/<! result)] ;; u/<?
+                  ;; TODO: do we need to close the channel
+                  (put!? (:process-channel cfg) [:save [id step-id params v]] 1000)))
 
-            ))
-          )
+              ))
+            )
         )
 
 
 
       (do-commit! this id step-id result))
-
-
-
 
     )
 
@@ -516,6 +557,9 @@
                )))
 
     (do-expand! [this id actions]
+                ;; FIXME: do we have to add this to linked infinite actions?
+              (locking *out* (println "do-expand!" id "\n\n" (d/pretty actions)))
+
               (let [*results (get-results this)]
 
                 #?(:clj (dosync
@@ -528,7 +572,10 @@
 
 
   (ready? [this]
-          (steps-ready? STEPS))
+          (and
+            (steps-ready? STEPS)
+            (empty? @(get this :INF)))
+          )
 
 
   (get! [this id]  ; get!
@@ -556,6 +603,7 @@
 
 
 (defn- make-steps-model! [steps]
+
   (let [*state (atom {:infinite {}})
         *results (atom (array-map))
 
@@ -563,10 +611,13 @@
         *steps2add (atom (array-map))
         *steps-left (atom (reduce-kv (fn [a k v] (assoc a k :pending)) {} steps))]
 
+
     (reify WoofSteps
+
       (initial-steps [this] steps)
 
       (steps [this] @*steps)
+
       (get-steps* [this] *steps)
       (get-steps2add* [this] *steps2add)
       (get-steps-left* [this] *steps-left)
@@ -576,28 +627,53 @@
           ; do not distinguish between :add and :update
 
           (let [new-steps @*steps2add]
-            (when-not (empty? new-steps)
-                (swap! *steps merge new-steps)
+            (if (empty? new-steps)
+                (do
+                  ;; update
+                  ;; (locking *out* (println "update steps:\t" nu-steps))
+                  )
+                (do
+                  (swap! *steps merge new-steps)
+                  (reset! *steps2add (array-map))))
 
-                (reset! *steps2add (array-map)))))
+            ))
 
+
+
+        (get-infinite-steps [this]
+            (get-in @*state [:infinite]))
 
         (get-infinite-step [this id]
             (get-in @*state [:infinite id]))
 
+
         (set-infinite-step [this id result]
+            (locking *out* (println "\tinfinite step" id))
+
             (swap! *state update-in [:infinite] assoc id result))
 
 
+        (is-step-working? [this id]
+                         (= :working (get @*steps-left id)))
+
         (steps-ready? [this]
-                      (and
-                        (empty? (get @*state :infinite {}))
-                        (every? #(= % :ok) (vals @*steps-left))))
+                      (let [ready? (and (empty? (get @*state :infinite {}))
+                                        (every? #(= % :ok) (vals @*steps-left)))]
+
+                        (locking *out* (println "=======" ready? "========"))
+
+                        ready?
+                        ))
 
         (add-steps! [this actions]
+          (locking *out* (println "\tadd steps" actions))
+
           (swap! *steps2add into actions))
 
+
         (add-pending-steps! [this actions]
+          (locking *out* (println "\tadd pending steps" actions))
+
           #?(:clj
               (if (satisfies? clojure.core.protocols/IKVReduce actions)
                 (swap! *steps-left merge (reduce-kv (fn [a k v] (assoc a k :pending)) {} actions))
@@ -609,13 +685,15 @@
                 (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions)))))
 
         (step-ready! [this id]
+                     (locking *out* (println "\tworking" id))
+
                      (swap! *steps-left dissoc id))
 
         (step-working! [this id]
+                    (locking *out* (println "\tworking" id))
+
                       (swap! *steps-left assoc id :working))
 
-        (is-step-working? [this id]
-                         (= :working (get @*steps-left id)))
       )
     )
   )
@@ -627,7 +705,7 @@
 (defn- make-state! [context state-config]
 
   (let [*results (atom (array-map))
-
+        *infinite (atom {})
         steps-model (make-steps-model! (:steps state-config))
         ]
 
@@ -637,6 +715,8 @@
       ; pass the optional params
         :CTX context ;; FIXME: pass context implicit
         :RESULTS *results
+
+        :INF *infinite
       )
     )
 )
@@ -691,12 +771,6 @@
 
 (def freq-map (memoize freq-map!))
 
-
-(defprotocol WoofBackPressure
-
-  (start-producing? [this])
-
-  (stop-producing? [this i]))
 
 
 
@@ -835,24 +909,20 @@
 
     ;; consumer. processes results from processing channel and pipes them to resulting channel
 
-    (let [ ; PUT_RETRY_T 1000
+    (let [ *steps       (get-steps STATE)
+           *steps-left  (get-steps-left STATE)
+           *results     (get-results STATE)
 
-           *steps (get-steps STATE)
-           *steps-left (get-steps-left STATE)
-           *results (get-results STATE)
-
-           messenger (get options :messenger)
-           notify-ui! (fn [msg-key msg]
-                        (if messenger (send-message messenger msg-key msg)))
+           messenger    (get options :messenger)
+           notify-ui!   (fn [msg-key msg]
+                          (if messenger (send-message messenger msg-key msg)))
            ]
 
 
     (go
 
       ;; wait if needed, before producing any results
-
-      (debug! *consumer-debugger* { :process-loop-start { ;; TODO: do not evaluate debug output - be lazy
-                                                          :i 0
+      (debug! *consumer-debugger* { :process-loop-start { :i 0                     ;; TODO: do not evaluate debug output - be lazy
                                                           :old-results @*results
                                                           :steps (get-initial-steps STATE)
                                                           :steps-left @*steps-left}})
@@ -864,6 +934,7 @@
         (loop [i 0
 
                old-results @*results
+
                steps (get-initial-steps STATE)
                steps-left @*steps-left]
 
@@ -872,8 +943,16 @@
                 [op v] r]
 
 
+            #_(locking *out* (println "=> " op
+                                    (cond (= op :expand) (str (pr-str (first v)) "\n")
+                                          (= op :steps) (str (pr-str (first v))  "\n")
+                                          :else "")
+                                    ))
+
+
             ;; consume the 'message'.        <?>: what if unknown op is sent?
             (condp = op
+
               :save (let [[id step-id params result] v]     ; step is done, store the result
                       (do-commit! STATE id step-id result))
 
@@ -881,10 +960,12 @@
                         (do-expand! STATE id result)
                         (vreset! force-update true))
 
-              :update (do-update! STATE v)  ;; <?> when this happens?
+               ;; <?> when this happens?
+              :update (do-update! STATE v)
 
 
               :steps (let [[steps-op _] v]                   ; loop completed, merge steps and add new ones (if any)
+
                        (update-steps! STATE v)
 
                        (if (= :update steps-op)              ; if update is received - force loop one more time
@@ -961,6 +1042,15 @@
            stop-produce? (fn[i] (if-let [BP (get options :bp)] (stop-producing? BP i) false))
 
            PUT_RETRY_T 1000
+
+
+          dbg-map #(reduce (fn[r [k v]]
+                         (assoc r k
+                           (cond (u/channel? v) :chan
+                                 (and (vector? v) (keyword? (first v)))
+                                    [(first v) (if (u/channel? (second v)) :chan (second v))] ;; :x ;(str v) ;[(name v) (if (u/channel? (second v)) :chan (second v))]
+                                 :else v))
+                         ) {} %)
           ]
 
 
@@ -1009,12 +1099,26 @@
               (let [new-steps @*new-steps
                     results @*results
 
-                    steps-added? (not (= prev-steps new-steps))
+                    ;; todo: check difference
+                    steps-added? (and
+                                   (not (= prev-steps new-steps))
+                                   (not (= (keys prev-steps) (keys new-steps)))
+                                   )
                     results-changed? (not (= @*prev-results results))]
 
 
                 (when (or steps-added?
                           results-changed? )
+
+                  #_(locking *out* (println "steps-added? " steps-added? "\n"
+                                          (if steps-added?
+                                            (str (pr-str (dbg-map prev-steps)) "\n"
+                                                 (pr-str (dbg-map new-steps)))
+                                            ""
+                                            )
+
+                                          "\nresults-changed? " results-changed? "\n"
+                                          ))
 
                   (when results-changed?
                     (vreset! *prev-results results)
@@ -1025,6 +1129,8 @@
                   ;; if only added
                   (when steps-added? ;(and steps-added? (not results-changed?))
                     ; (println "PRODUCING CONTUNUES: steps added")
+
+
 
                     (vreset! *prev-added-steps new-steps)
                     (put!? process-channel [:steps [:add new-steps]] PUT_RETRY_T))
@@ -1052,51 +1158,48 @@
 
 
 
+
 (defn step-processor-impl
+  "constructor for step processor"
   [STATE XTOR CTX] ;; context only for send-message
 
-  (->WFStepProcessor STATE XTOR
-                     {
-                       ;; volatile vars for statefull processing
-                        ::prev-added-steps (volatile! (array-map))     ;;  *prev-added-steps
-                        ::prev-results (volatile! @(get-results STATE)) ;; *prev-results
+  (->WFStepProcessor
+    STATE XTOR
+    {
+      ;; volatile vars for statefull processing
+      ::prev-added-steps (volatile! (array-map))     ;;  *prev-added-steps
+      ::prev-results (volatile! @(get-results STATE)) ;; *prev-results
 
-                       ;; back-pressure configs
-                        :working-max 50 ;; WORKING-MAX
-                        :parallel-max 20 ;; PARALLEL-MAX
-                        :pending-max 100
+      ;; back-pressure configs
+      :working-max 50 ;; WORKING-MAX
+      :parallel-max 20 ;; PARALLEL-MAX
+      :pending-max 100
 
-                       ;;
-                        :messenger (if (satisfies? WoofWorkflowMsg CTX) CTX nil)
+      ;;
+      :messenger (if (satisfies? WoofWorkflowMsg CTX) CTX nil)
 
-                        :bp (->WFSimpleBackPressure STATE
-                                                     (atom {:freqs {:working 0 :pending 0}
-                                                             :current-i 0
-                                                             :bp-time 0
-                                                            })
-                                                     {
-                                                       :working-threshold 30
+      :bp (->WFSimpleBackPressure
+            STATE
+            (atom {:freqs {:working 0 :pending 0}
+                   :current-i 0
+                   :bp-time 0
+                   })
+            {
+              :working-threshold 30
 
-                                                       :working-max 50
+              :working-max 50
 
-                                                       :working-ms-threshold 160
+              :working-ms-threshold 160
 
-                                                       :notify-ms-max 4000
-                                                       :notify-ms-min 20
+              :notify-ms-max 4000
+              :notify-ms-min 20
 
-                                                       :CTX CTX
-                                                      }
-                                                     )
-                      ;;
-                      })
+              :CTX CTX
+              }
+            )
+      ;;
+      })
   )
-
-
-
-
-
-
-
 
 
 
@@ -1128,9 +1231,7 @@
     (let [step-cfg (get-step-config-impl context step-id)]
       (if (:expands? step-cfg) ;; todo: add cache flag?
         (:fn step-cfg)
-        (cache/memoize! cache (:fn step-cfg) step-id)))
-    )
-  )
+        (cache/memoize! cache (:fn step-cfg) step-id)))))
 
 
 
@@ -1147,7 +1248,6 @@
 
   ;; TODO: catch exception in (f ...)
 
-;;   (locking *out* (println "handle-commit!" id))
 
   (let [step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
         f (get-step-fn executor step-id)
@@ -1157,6 +1257,11 @@
                           (expand! wf-state id step-id params result)
                           (commit! wf-state id step-id params result)))
         ]
+
+
+
+    #_(locking *out* (println "handle-commit!" id
+                             (:collect? step-cfg) (sid-list? params)))
 
 
     (if (and (:collect? step-cfg)
@@ -1203,10 +1308,16 @@
 ;;
 
 
+
+;;
+;; default executor
 (defrecord AsyncExecutor [context model ready-channel process-channel]
   WoofExecutor
 
+  ;; todo: wiretap the process-channel for debug
+
   (execute! [this]
+
             (do-async-process-steps! context model ready-channel process-channel (step-processor-impl model this context) this))
 
   ;; todo: move to the processor
@@ -1224,33 +1335,12 @@
     (get-step-fn context step-id))
 
   (get-step-config [this step-id]
-    (get-step-config context step-id))
-
-  )
+    (get-step-config context step-id)))
 
 
-(defrecord CachedAsyncExecutor [cache context model ready-channel process-channel]
-  WoofExecutor
 
-  (execute! [this]
-            (do-async-process-steps! context model ready-channel process-channel (context model this context) this ))
 
-  (execute-step! [this id step-id params]
-                 (handle-commit! this context model id step-id params))
 
-  (end! [this]
-        (go
-          (async/>! process-channel [:stop this])))
-
-  WoofContext
-
-  (get-step-fn [this step-id]
-    (get-step-fn context step-id))
-
-  (get-step-config [this step-id]
-    (get-step-config context step-id))
-
-  )
 
 
 
@@ -1258,7 +1348,7 @@
 ;; API
 
 
-;; default executor
+;; executor constructor fn
 (defn- executor
   "workflow constuctor"
   ([context steps]
@@ -1292,25 +1382,8 @@
         (get-step-config [this step-id]
           (get-step-config context step-id))
 
-        )
-     )
+        ))))
 
-   ))
-
-
-(defn cached-executor
-  "workflow constuctor, step function results are memoized"
-  ([context steps]
-   (let [process-chan (u/make-channel)]
-    (cached-executor context
-                    (make-state! context (make-state-cfg steps process-chan))
-                    (u/make-channel)
-                    process-chan)))
-  ([context model ready-channel process-channel]
-    (->CachedAsyncExecutor (cache/->Cache (atom {}))
-                     context model
-                     ready-channel
-                     process-channel)))
 
 
 
@@ -1323,9 +1396,6 @@
 ;; ========================================================
 
 (defn- process-wf-result [v]
-
-  ;;(println "process-wf-result" (d/pretty v))
-
   (if (u/exception? v)
     (u/throw! v)
     (if (nil? v)
@@ -1348,19 +1418,7 @@
        (async/<! (u/timeout t))
       ;; todo: check if wf had ended
        (end-fn)
-    ))
-)
-
-
-
-(comment
-            ;; use destructuring like these
-               { init-handler :init
-                process-handler :process
-                wf-handler :wf-update
-               ; :or { process-handler (fn [data] (println (d/pretty data))) }
-               } options
-          )
+    )))
 
 
 
@@ -1645,3 +1703,47 @@
 (def time-update-xf u/time-update-xf)
 
 (def time-updated-chan u/time-updated-chan)
+
+
+
+
+;;
+;; TODO: to test cached executor, for infinite steps
+
+
+(defrecord CachedAsyncExecutor [cache context model ready-channel process-channel]
+  WoofExecutor
+
+  (execute! [this]
+            (do-async-process-steps! context model ready-channel process-channel (context model this context) this ))
+
+  (execute-step! [this id step-id params]
+                 (handle-commit! this context model id step-id params))
+
+  (end! [this]
+        (go
+          (async/>! process-channel [:stop this])))
+
+  WoofContext
+
+  (get-step-fn [this step-id]
+    (get-step-fn context step-id))
+
+  (get-step-config [this step-id]
+    (get-step-config context step-id)))
+
+
+(defn cached-executor
+  "workflow constuctor, step function results are memoized"
+  ([context steps]
+   (let [process-chan (u/make-channel)]
+    (cached-executor context
+                    (make-state! context (make-state-cfg steps process-chan))
+                    (u/make-channel)
+                    process-chan)))
+  ([context model ready-channel process-channel]
+    (->CachedAsyncExecutor (cache/->Cache (atom {}))
+                     context model
+                     ready-channel
+                     process-channel)))
+
