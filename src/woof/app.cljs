@@ -48,7 +48,7 @@
       ;; workflow definition
       :workflow {
                   :name "TEST WORKFLOW"
-                  :steps (assoc (array-map) ::woof [:identity "test wf!"])
+                  :steps (array-map) ; (assoc (array-map) ::woof [:identity "test wf!"])
                   }
 
 
@@ -517,7 +517,8 @@
                                      })
 
      (app-model/merge-steps   model {::IN  [:in {}]
-                                     ::OUT [:out ::IN]
+
+                                      ::OUT [:out ::IN]
                                      })
 
      )
@@ -975,8 +976,11 @@
                    (if socket
                      (into actions [["client ping"
                                      (fn[]
-                                       (.send socket (ws/write-transit [:client-ping "Hello"]))
+                                       ;(ws/send! server [:debug (str "Ping " (u/now))])
 
+                                       (ws/send! server [:server-time ""])
+
+                                       ;(.send socket (ws/write-transit [:client-ping "Hello"]))
                                        )]])
                      actions
                      )

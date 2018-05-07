@@ -45,7 +45,10 @@
   (start [this])
 
   (get-socket [this])
+
+  (send! [this msg])
   )
+
 
 
 (defn server-wf-handler[model r]
@@ -108,15 +111,13 @@
       (set! (.-onmessage socket)
         (fn [event]
 
-          (println "GOT" (.-data event))
+          (let [[status msg] (read-transit (.-data event))]
+;            (println "DATA" data)
+            (println status msg)
 
-          (let [[data msg] (read-transit (.-data event))]
+            (on-message status msg)
 
-;;            (println "DATA" data)
-
-            (if (= :ping data)
-              (.send socket (write-transit :pong))
-              (on-message msg))))))
+            ))))
 
 
     (when on-close
@@ -136,14 +137,18 @@
              (vreset! *socket
                       (connect url
                                :on-open    (fn []
-                                             (println "ws open")
-                                             ; (.log js/console socket)
-                                             )
-                               :on-close   (fn [] (println "ws close"))
-                               :on-message (fn [msg] (println "got " msg))))
+                                             (println "ws open"))
+                               :on-close   (fn []
+                                             (println "ws close"))
+                               :on-message (fn [status msg]
+                                             (println "got " msg))
+                               ))
              )
 
       (get-socket [this] @*socket)
+
+      (send! [this msg]
+             (.send @*socket (write-transit msg)))
       )
     )
   )
