@@ -161,3 +161,10 @@
           nu-t (* v rate)]
         (vreset! t (if (< nu-t max) nu-t max))
         v))))
+
+
+
+;; single arity fn inline macro
+(defmacro inline--fn [the-fn]
+  `(~the-fn)
+  )

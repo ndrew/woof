@@ -23,4 +23,7 @@
                     ~payload)))
 
 
-
+;; single arity fn inline macro
+(defmacro inline--fn [the-fn]
+  `(~the-fn)
+  )
