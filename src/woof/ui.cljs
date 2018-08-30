@@ -28,7 +28,10 @@
 (rum/defcs data-editor   <   rum/reactive
                              (rum/local false ::editing)
                              (rum/local nil   ::value)
-  "primitive type editor"
+  "primitive edn editor
+  - stops editing via esc
+  - saves changes via enter
+  "
   [{*EDITING?   ::editing
     *NEW-VALUE  ::value} change-fn d]
 
@@ -40,7 +43,11 @@
     (if @*EDITING?
         [:div.edn.data.edit [:input {:on-change    (fn [s] (reset! *NEW-VALUE (.. s -target -value)))
                                      :on-blur      (fn[e] (change (d/to-primitive @*NEW-VALUE)))
-                                     :on-key-press (fn[e] (if (== 13 (.-charCode e)) (change (d/to-primitive @*NEW-VALUE))))
+                                     :on-key-down (fn[e]
+                                                    (if (== 27 (.-keyCode e))
+                                                      (reset! *EDITING? false)))
+                                     :on-key-press (fn[e]
+                                                     (if (== 13 (.-charCode e)) (change (d/to-primitive @*NEW-VALUE))))
                                      :value @*NEW-VALUE}]]
 
         ;; data
@@ -49,6 +56,7 @@
                            (swap! *EDITING? not)
                            (reset! *NEW-VALUE d))}
        (d/pretty d)])))
+
 
 
 ;;;;;;;;;;;

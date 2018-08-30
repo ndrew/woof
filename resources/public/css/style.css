@@ -17,7 +17,8 @@ body { padding: 1rem;
 #app {
 /*   outline: 3px solid lightgrey; */
   min-height: 95vh;
-/*   display: flex; */
+  padding: .5rem;
+
 }
 
 
@@ -122,6 +123,7 @@ body { padding: 1rem;
 
 #app .steps {
   margin-top: 1rem;
+
 }
 
 .steps .step-ui {
@@ -148,20 +150,15 @@ body { padding: 1rem;
 }
 
 .step-ui > .step > .result {
-/*   flex: 2 0; */
-/*   font-weight: bold; */
-
   min-width: 200px;
-
   margin-right: 1.5rem;
 }
 
 
 .step-ui > .step .info {
   min-width: 350px;
-
-
 }
+
 
 .step-ui > .step .k {
   min-width: 100px;
@@ -217,3 +214,36 @@ body { padding: 1rem;
 }
 
 
+
+
+.wfui .main-menu {
+  margin-top: 1rem;
+}
+
+
+
+.context-ui {
+  background-color: rgba(200,0,0,.03333);
+}
+
+.steps-map-ui {
+  background-color: rgba(0,200,0,.03333);
+}
+
+.context-ui,
+.steps-map-ui {
+  padding: .75rem;
+
+}
+
+.context-ui .edn.data {
+  min-width: 15rem;
+  background-color: rgba(133,127,127,.07333);
+  margin: .75rem 0rem .75rem 1rem;
+}
+
+.context-ui .edn.result {
+  display: inline-block;
+  min-width: 7rem;
+  outline: 1px solid rgba(133,127,127,.1333);
+}

@@ -41,3 +41,22 @@
   [:span.tag
    {:class (get status-classes-map status "")}
    (get status-caption-map status "")])
+
+
+
+(rum/defc <step-status>   <    rum/static
+                               {:key-fn (fn [k _ _] k)}
+  [k step r]
+
+  (let [ch? (u/channel? r)
+        status (if ch? ::running
+                 (get {nil ::not-started, :nil ::error} r ::done))]
+    [:div.step
+     [:div.result
+      (if ch? "…" (pr-str r))]
+     [:div.info
+      [:span.k (pr-str k)]
+      [:span.action (d/pretty step)]
+
+     (<wf-status-ui> status)]]))
+

@@ -20,9 +20,11 @@
     [woof.utils :as u]
 
     [woof.test-data :as test-data]
-    ; [woof.wf-tester-ui :as tester-ui]
 
-    ; [woof.blog :as blog]
+    [woof.server-ui :as ws-ui]
+
+    ; [woof.wf-tester-ui :as tester-ui]
+    [woof.ui.wf-runner :as runner]
     )
 
 
@@ -31,17 +33,16 @@
     [woof.utils-macros :refer [put!?]]))
 
 
+;;
+;; init
 
 (enable-console-print!)
 
 
-
-
-
-(defonce *APP-STATE
-
-  (atom
-    {
+(defn init-state
+  "provides initial state map"
+  []
+  {
       ;; workflow context
       :context (app-model/default-context)
 
@@ -58,11 +59,33 @@
 
       :xctor nil
       :xctor-chan nil
+      }
+  )
 
-      }))
+(defonce *APP-STATE (atom (init-state)))
+
 
 
 (def cursor (partial rum/cursor-in *APP-STATE))
+
+(defn first-init-state
+  "returns state to be merged to "
+  []
+  (let [model (app-model/wf-state
+                (cursor [:context])
+                (cursor [:workflow])
+                (cursor [:xctor])
+                (cursor [:xctor-chan])
+                )]
+    {:ui-model model
+     :server (ws/ws-server "/api/websocket" model)
+     }
+    )
+)
+
+
+
+
 
 
 
@@ -83,21 +106,6 @@
 
 
 
-(rum/defc <step-status>   <    rum/static
-                               {:key-fn (fn [k _ _] k)}
-  [k step r]
-
-  (let [ch? (u/channel? r)
-        status (if ch? ::running
-                 (get {nil ::not-started, :nil ::error} r ::done))]
-    [:div.step
-     [:div.result
-      (if ch? "…" (pr-str r))]
-     [:div.info
-      [:span.k (pr-str k)]
-      [:span.action (d/pretty step)]
-
-     (wf-ui/<wf-status-ui> status)]]))
 
 
 ;; todo: add css animation on value update
@@ -180,7 +188,7 @@
    (if preview-fn
      (preview-fn))
 
-   (<step-status> k v (u/nil-get result k))]
+   (wf-ui/<step-status> k v (u/nil-get result k))]
   ))
 
 
@@ -584,7 +592,7 @@
        ;; todo: pass rum component into preview fn
        (app-model/merge-steps model {
                                       ;; ::test-preview  [:8 10]
-                                      ::test-preview [:process-post "Blog Post (kinda)"]
+                                      ::test-preview [:process-post "Preview (kinda)"]
                                       ::preview [:preview ::test-preview]
 
                                       })))
@@ -943,120 +951,69 @@
 
 
 
-(rum/defcs <server-ui> < rum/reactive
-                         (rum/local nil  ::socket)
-  [local model server]
-  (let [actions [ ["init ws" (fn[]
-                                  (ws/start server)
-                                (reset! (::socket local) (ws/get-socket server)))]
-
-                  ["client-server wf"
-                   (fn[]
-                     (app-model/start! model
-                                       (fn [model]
-                                         (let [opts {
-                                                      :channel (app-model/get-xctor-chan model)
-                                                      :op-handler (partial ws/server-wf-handler model)
-                                                      }
-                                               xctor (app-model/get-xctor model)
-                                               worker (wf/->AsyncWFProcessor xctor opts)]
-
-                                           (wf/process-results! worker)
-                                           )
-                                         ))
+;;;
 
 
-                     )
-                   ]
-                  ]
-        socket @(::socket local)
-        ]
-    [:div
-       (ui/menubar "Server:"
-                   (if socket
-                     (into actions [["client ping"
-                                     (fn[]
-                                       ;(ws/send! server [:debug (str "Ping " (u/now))])
+(defn ui-state
+  "provides state map atom for the ui updates"
+  []
 
-                                       (ws/send! server [:server-time ""])
+  runner/*UI-STATE   ;; *APP-STATE
+)
 
-                                       ;(.send socket (ws/write-transit [:client-ping "Hello"]))
-                                       )]])
-                     actions
-                     )
-                   )]))
+(defn init-state!
+  "initializes first ui update, if needed"
+  []
+    #_(when-not (::initialized @*APP-STATE)
+      (swap! *APP-STATE merge (first-init-state) {::initialized true}))
+
+  (runner/init-wf)
+  )
 
 
 (rum/defcs <app-ui>
   < rum/reactive [local *STATE]
 
-  ;; todo: put model in state, so it can be reset
-  (let [model (:ui-model @*STATE)
-        server (:server @*STATE)]
-
+  (let [model (:ui-model @*STATE)]
     [:div#app
+       ;; WIP: running workflow via on server
+       ;;   (ws-ui/<server-ui> model (:server @*STATE))
 
-     (<server-ui> model server)
-     (<wf-ui>
+     #_(<wf-ui>
        (cursor [:context])
        (cursor [:workflow])
-       model
+       model)
 
-       )
+       (runner/<wf-runner-ui> *STATE)
+
 
      ]))
 
 
-;; init
-
-(when-not (::initialized @*APP-STATE)
-
-  ;; (println "init!")
-
-
-  (let [model (app-model/wf-state
-                (cursor [:context])
-                (cursor [:workflow])
-                (cursor [:xctor])
-                (cursor [:xctor-chan])
-                )]
-
-    (swap! *APP-STATE merge
-           {:ui-model model
-            :server (ws/ws-server "/api/websocket" model)
-            ::initialized true})
-    )
-
-  )
 
 
 
-(defn mount-app []
-  (rum/mount (<app-ui> *APP-STATE)
-             ;(blog/<blog-ui>)
-           (. js/document (getElementById "app"))))
+(defn watch-ui-state!
+  "adds watcher to a ui state map"
+  [f]
+  (add-watch (ui-state) :ui
+             (fn [key atom old-state new-state]
+               (f))))
 
 
-(mount-app)
+;;
+;; mount the application
 
+(let [el (. js/document (getElementById "app"))
+      app-fn #(<app-ui> (ui-state))
+      mount-app #(rum/mount (app-fn) el)]
 
-; todo:
+  (watch-ui-state! mount-app)
+  (init-state!)
 
-(add-watch *APP-STATE :watcher
-  (fn [key atom old-state new-state]
-    (mount-app)
-    ))
+  (defn on-js-reload []
+    (mount-app)) ;; re-mount app on js reload
 
-
-
-
-(defn on-js-reload []
-  ;; todo: force close all channels
-
-  ;;(.clear js/console)
-
-  )
-
-
+)
 
 

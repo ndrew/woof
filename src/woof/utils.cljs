@@ -68,7 +68,25 @@
 
 
 
+;;
 
+(defn wiretap-chan
+  "splits in-chan into internal channel and resulting channel"
+  [in-chan wiretap-handler]
+  (let [mult-c (async/mult in-chan)
+
+        dbg-chan (async/chan)
+        piped-c  (async/chan)]
+
+    (async/tap mult-c dbg-chan)
+    (async/tap mult-c piped-c)
+
+    (go-loop []
+             (wiretap-handler (async/<! dbg-chan))
+             (recur))
+
+    piped-c)
+  )
 
 
 
