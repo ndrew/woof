@@ -343,9 +343,13 @@
 
 (defn- sid-list-from-expand-map [expand-map]
   (let [sids (keys expand-map)]
-    (if-let [{expand-key :expand-key} (meta expand-map)]
+
+    ;; fixme: why this is here
+    #_(if-let [{expand-key :expand-key} (meta expand-map)] ;; ???
       (list expand-key)
       sids)
+
+    sids
     )
   )
 
@@ -794,33 +798,6 @@
 (def ^:dynamic *producer-debugger* nil)
 
 
-;; step processing function. parametrized by get! and commit! fns.
-(defn- do-process-step! [get! commit! [id [step-id params]]]
-  (let [existing-result (get! id)]
-    ; (println "PROCESSING " [id [step-id params]] existing-result )
-    ; #?(:cljs (.warn js/console "PROCESSING: " (pr-str [id params "---" (get! params)]) ) )
-
-    (cond
-      (nil? existing-result) ;; no result -> run step
-      (if (sid? params)
-        (let [new-params (get! params)]
-          (cond
-            (nil? new-params) [id [step-id params]]
-            (u/channel? new-params) [id [step-id params]]
-            :else (commit! id step-id new-params)))
-
-        (commit! id step-id params))
-
-      (u/channel? existing-result) ;; waiting for channel to process result
-      [id [step-id params]]
-
-      :else ;; already processed
-        [id [step-id params]])))
-
-
-
-
-
 
 
 
@@ -978,6 +955,7 @@
   ;; processes 'step' [sid <sbody>]
   (process-step!
     [this [id [step-id params]]]
+
 
 
     (let [existing-result (get! STATE id)
@@ -1423,6 +1401,32 @@
 
 
 
+;; FIXME: remove these
+;; step processing function. parametrized by get! and commit! fns.
+#_(defn- do-process-step! [get! commit! [id [step-id params]]]
+  (let [existing-result (get! id)]
+    (println "do-process-step! " [id [step-id params]] existing-result )
+    ; #?(:cljs (.warn js/console "PROCESSING: " (pr-str [id params "---" (get! params)]) ) )
+
+    (cond
+      (nil? existing-result) ;; no result -> run step
+      (if (sid? params)
+        (let [new-params (get! params)]
+          (cond
+            (nil? new-params) [id [step-id params]]
+            (u/channel? new-params) [id [step-id params]]
+            :else (commit! id step-id new-params)))
+
+        (commit! id step-id params))
+
+      (u/channel? existing-result) ;; waiting for channel to process result
+      [id [step-id params]]
+
+      :else ;; already processed
+        [id [step-id params]])))
+
+
+
 
 (defn- do-handle-commit! [executor context wf-state id step-id params]
   (let [step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
@@ -1435,7 +1439,6 @@
 
         ]
 
-
     ;; fixme: why f is called several times
 
     (if (and (:collect? step-cfg)
@@ -1446,7 +1449,6 @@
           (store-result! (f collected))))
       ;; process sid or value
       (do ;; (nil? (get! wf-state id))
-
 
         #_(if infinite? (dosync (store-result! (f params)))
                               (store-result! (f params)))
@@ -1569,7 +1571,7 @@
 
   ;; todo: move to the processor
   (execute-step! [this id step-id params]
-             (handle-commit! this context model id step-id params))
+                 (handle-commit! this context model id step-id params))
 
 
   (end! [this]

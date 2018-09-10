@@ -30,6 +30,11 @@
   (and (coll? sids) (every? sid? sids)))
 
 
+(defn sid-map [pairs] ;; or use (assoc (array-map) k1 v1 k2 v2)
+  (into (array-map) (map identity pairs)))
+
+
+
 (defn timeout
   "returns timeout channel"
   [ms]

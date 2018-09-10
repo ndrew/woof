@@ -125,6 +125,66 @@
 
 
 
+
+(deftest simple-expand-test
+
+  ;; test that expand step produces new steps, both sync and async
+
+  (let [expand-steps {::1 [:id 1]
+                      ::2 [:id 2]
+                      ::3 [:id 3]
+                      }
+
+        async-expand-steps {
+                             ::a1 [:id 1]
+                             ::a2 [:id 2]
+                             ::a3 [:id 3]
+                             }
+        context-map {
+                      :id {:fn identity}
+                      :expand* {:fn (fn [xs] expand-steps)
+                                :expands? true}
+
+                      :async-expand* {:fn (fn[x]
+                                            (let [chan (async/chan)]
+                                              (go
+                                                (async/put! chan async-expand-steps))
+                                              chan))
+                                      :expands? true
+                                      }
+                      }
+        context (wf/make-context context-map)]
+
+    (let [steps {
+                  ::e* [:expand* ""]
+                  ::ae* [:async-expand* ""]
+                  }
+
+          result @(wf/sync-execute! (wf/build-executor context steps))]
+
+      ;; ensure added steps had been executed
+      (is (= (::1 result) 1))
+      (is (= (::2 result) 2))
+      (is (= (::3 result) 3))
+
+      (is (= (::a1 result) 1))
+      (is (= (::a2 result) 2))
+      (is (= (::a3 result) 3))
+
+      ;; ensure the the added sid list is returned
+      (is (= (::e* result) '(::1 ::2 ::3)))
+      (is (= (::ae* result) '(::a1 ::a2 ::a3)))
+
+      ;; ensure the intermediary results are ommitted if the results are inlined
+      (is (= {
+               ::e* '(1 2 3)
+               ::ae* '(1 2 3)} (wdata/inline-results result)))
+      ;result
+      ))
+  )
+
+
+
 ;; runs the expanding workflow
 
 (deftest map-reduce-test
@@ -193,6 +253,8 @@
 
 
 
+
+
 ;; todo: multi-expand test, like f(g(z(x)))
 
 
@@ -230,7 +292,6 @@
       )
     )
   )
-
 
 
 
