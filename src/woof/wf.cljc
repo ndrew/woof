@@ -64,10 +64,10 @@
 
 (defn sbody
   "generates step body for the specified step-handler-id and a value x"
-  ([step-handler-id x]
-    (sbody step-handler-id identity x))
-  ([step-handler-id f x]
-     [step-handler-id (f x)]))
+  ([step-handler-id param]
+    (sbody step-handler-id identity param))
+  ([step-handler-id f param]
+     [step-handler-id (f param)]))
 
 
 
