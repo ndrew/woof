@@ -25,5 +25,8 @@
 
 ;; single arity fn inline macro
 (defmacro inline--fn [the-fn]
-  `(~the-fn)
-  )
+  `(~the-fn))
+
+
+(defmacro inline--fn1 [the-fn v]
+  `(~the-fn ~v))
