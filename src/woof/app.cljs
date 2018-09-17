@@ -78,7 +78,8 @@
                 (cursor [:xctor-chan])
                 )]
     {:ui-model model
-     :server (ws/ws-server "/api/websocket" model)
+
+     :server (ws/ws-server "/api/websocket")
      }
     )
 )
@@ -958,16 +959,20 @@
   "provides state map atom for the ui updates"
   []
 
-  runner/*UI-STATE   ;; *APP-STATE
+  ;; *APP-STATE
+  ;; runner/*UI-STATE
+  ws-ui/*UI-STATE
 )
 
 (defn init-state!
   "initializes first ui update, if needed"
   []
-    #_(when-not (::initialized @*APP-STATE)
+
+  #_(when-not (::initialized @*APP-STATE)
       (swap! *APP-STATE merge (first-init-state) {::initialized true}))
 
-  (runner/init-wf)
+  ; (runner/init-wf)
+  (ws-ui/init-wf)
   )
 
 
@@ -984,8 +989,9 @@
        (cursor [:workflow])
        model)
 
-       (runner/<wf-runner-ui> *STATE)
+     ;; (runner/<wf-runner-ui> *STATE)
 
+      (ws-ui/<ws-tester> *STATE)
 
      ]))
 

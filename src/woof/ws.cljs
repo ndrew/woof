@@ -47,55 +47,13 @@
   (get-socket [this])
 
   (send! [this msg])
+
+  (close! [this])
   )
 
 
 
-(defn server-wf-handler[model r]
-  (let [[status data] r
-        done? (= :done status)]
 
-    (println status)
-
-    (when (= :init status)
-      ;; send
-
-      )
-
-    (when (= :error status)
-      ;; (swap! *result assoc-in [::wf-status] ::error)
-      ;; (swap! *result assoc-in [::result] data)
-
-      )
-
-
-    (when (= :expand status)
-      ;(let [[x-id nu-steps] data]
-        ;; todo: check if this breaks done-percentage
-      ;  (swap! *result update-in [::steps] merge nu-steps)
-      ;  (swap! *result assoc-in [::result] data)
-      ;  )
-
-      )
-
-    (when (= :process status)
-      ;(swap! *result assoc-in [::result] data)
-      )
-
-    (when (= :wf-update status)
-      ;(swap! *result assoc-in [::steps] (first data))
-      ;(swap! *result assoc-in [::result] (second data))
-      )
-
-    (when done?
-      ;(swap! *result assoc-in [::wf-status] ::done)
-      ;(swap! *result assoc-in [::result] data)
-      )
-
-    ;(swap! *result update-in [::history] conj r)
-
-    (not done?))
-  )
 
 
 (defn connect [url & {:keys [on-open on-close on-message]}]
@@ -113,7 +71,7 @@
 
           (let [[status msg] (read-transit (.-data event))]
 ;            (println "DATA" data)
-            (println status msg)
+            ;(println status msg)
 
             (on-message status msg)
 
@@ -128,33 +86,32 @@
 
 
 
-
-(defn ws-server [url model]
+;; todo: add kv params for open close
+(defn ws-server [url & r]  ;; {:keys [on-open on-close on-message]}
   (let [*socket (volatile! nil)]
 
     (reify WoofServer
       (start [this]
              (vreset! *socket
-                      (connect url
-                               :on-open    (fn []
-                                             (println "ws open"))
-                               :on-close   (fn []
-                                             (println "ws close"))
-                               :on-message (fn [status msg]
-                                             (println "got " msg))
-                               ))
-             )
+                      (apply (partial connect url) r)))
 
       (get-socket [this] @*socket)
 
       (send! [this msg]
              (.send @*socket (write-transit msg)))
+
+      (close! [this]
+              (if-let [socket @*socket]
+                (.close socket)))
       )
     )
   )
 
 
 
+
+;;
+;; ajax requests
 
 
 (defn- ajax!
@@ -167,8 +124,6 @@
                (js/setTimeout #(callback res) 0))))
          (or method "GET")))
 
-;;
-;; ajax requests
 
 (defn ajax-handler [url]
   (let [ch (async/chan 1)

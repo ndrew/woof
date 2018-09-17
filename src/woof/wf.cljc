@@ -6,7 +6,7 @@
 
             [compact-uuids.core :as uuid]
 
-            #?(:clj [woof.utils :as u :refer [put!? debug! inline--fn]])
+            #?(:clj [woof.utils :as u :refer [put!? debug! inline--fn inline--fn1]])
             #?(:cljs [woof.utils :as u])
 
 
@@ -17,7 +17,7 @@
   #?(:cljs
       (:require-macros
           [cljs.core.async.macros :refer [go go-loop]]
-          [woof.utils-macros :refer [put!? debug! inline--fn]]
+          [woof.utils-macros :refer [put!? debug! inline--fn inline--fn1]]
         )))
 
 
@@ -344,7 +344,7 @@
 (defn- sid-list-from-expand-map [expand-map]
   (let [sids (keys expand-map)]
 
-    ;; fixme: why this is here
+    ;; fixme: handle expand key for client-server communication
     #_(if-let [{expand-key :expand-key} (meta expand-map)] ;; ???
       (list expand-key)
       sids)
@@ -1951,6 +1951,63 @@
 
 (def time-updated-chan u/time-updated-chan)
 
+
+;;
+;;
+
+(defn receive-steps-handler
+  "creates a step handler config [:your-handler-name <in-channel>] that will wait for the steps from <in-channel>.
+  Parametrizeble by optional :step-fn param "
+  [& {:keys [step-fn]
+      :or {step-fn identity}}]
+  {
+    :fn (fn [in>]
+          (let [chan> (async/chan)]
+            (go-loop []
+                     (let [new-steps (async/<! in>)]
+
+                       (if-not (map? new-steps)
+                         (u/throw! (str "invalid expand map passed to :in " (d/pretty new-steps))))
+
+                       ; (locking *out* (println "server: IN" (d/pretty new-steps)))
+
+                       (async/put! chan> (step-fn new-steps))
+                       ;; todo: use :expand-key instead of having intermediary steps
+                       ;; #_(async/put! chan> (with-meta {sid v} {:expand-key sid}))
+                       )
+                     (recur))
+            chan>))
+    :infinite true
+    :expands? true
+    }
+  )
+
+
+(defn send-value-handler
+  "parametrizable function that generate send value handler"
+  [out-chan<
+   & {:keys [v-fn out-fn]
+      :or {v-fn identity
+           out-fn identity
+           }} ]
+
+
+  (go-loop []
+           (if-let [v (async/<! out-chan<)]
+             ;; redirect the wf output onto wire
+             (do
+               (inline--fn1 out-fn v)
+               (recur))
+             )
+           )
+
+
+  {:fn (fn [v]
+         (go
+           (async/>! out-chan< (v-fn v)))
+         )
+   :collect? true
+   })
 
 
 

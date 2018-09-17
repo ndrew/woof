@@ -1,4 +1,5 @@
 (ns woof.server
+  "woof client/server communication endpoint."
   (:require
     [compojure.core :as compojure]
     [compojure.route :as route]
@@ -20,18 +21,60 @@
   (:gen-class))
 
 
+;;
+;;
+
+
+;; current executor
 (def *ws-wf (atom nil))
+
+;; executor channel
+(def *ws-chan (atom nil))
+
+;; receiving wf in channel
+(def *ws-in-chan (atom nil))
+;; receiving wf out channel
+(def *ws-out-chan (atom nil))
+
+;; current socket channel
+(def *ws-socket-chan (atom nil))
+
 
 (def *ws-context
   (atom
     {
 
+      ;; identity function
+      :v  {:fn (fn[a] (identity a))}
+
+      ;; debug
+      :log  {:fn (fn[a]
+                   (locking *out* (println "DBG:" a))
+                   (identity a))}
+
+      ;; reference
+      :&v {:fn (fn[a]
+                 {(wf/rand-sid) [:v a]})
+           :expands? true}
+
+      ;; collect
+      :v* {:fn identity :collect? true}
+
+      ;; zipper
+      :zip {:fn (fn [vs]
+                  (partition (count vs) (apply interleave vs)))
+            :collect? true}
+
+
+      ;; older steps
       :debug (wf/step-handler (fn[x]
                                 (println "DBG: " (d/pretty x))
                                 x))
 
       :server-time (wf/step-handler (fn[x]
                                 [:server-time (u/now)]))
+
+
 
 
       ;; step handler that waits for commands from in> channel
@@ -56,15 +99,10 @@
           :infinite true
           :expands? true
           }
-
-
-
       }
 
 
 ))
-
-
 
 
 
@@ -86,85 +124,90 @@
 
 
 
-(compojure/defroutes app
-  (compojure/GET "/api/websocket" [:as req]
+;;
+;; receiving workflow
 
+(defn init-receiving-wf!
+  "inits a receiving workflow"
+  [chan]
+  (let [in-chan> (async/chan)
+        out-chan< (async/chan)]
 
-    (httpkit/with-channel req chan
+    (swap! *ws-context merge
+           { :client< (wf/receive-steps-handler
+                        :step-fn (fn [steps]
+                                   (println "SERVER RECEIVE: " (d/pretty steps))
+                                   steps
+                                   ))
 
-      (swap! *ws-context merge
-             ;; todo: separate collect and not collect hadlers
-             {:out {
-               :fn (fn[xs]
-                 ;xs
-                 (locking *out* (println "OUT:" (last xs)))
+             :client> (wf/send-value-handler out-chan<
+                                             :v-fn (fn[v]
+                                                     (println "SERVER SEND: " (d/pretty v))
+                                                     v)
+                                             :out-fn (fn [z]
+                                                       (println "SEND TO SOCKET:" z)
+                                                       (httpkit/send! @*ws-socket-chan (write-transit-str z))
+                                                       ))
+             })
 
-                 (httpkit/send! chan (write-transit-str (last xs)))
+    (println "SERVER: initializing receiving wf")
 
-                 xs
-                 )
-
-             :collect? true
-             :infinite true
-                     }
-
-              })
-
-
-      (println "CONTEXT:" @*ws-context)
-
-      (let [in-chan> (async/chan)
-            steps {
-              ::IN [:in in-chan>]
-              ::OUT [:out ::IN]}
-
+    (let [steps {
+                  ::loop [:client< in-chan>]
+                  }
 
           executor (wf/build-executor (wf/make-context @*ws-context) steps)
-          wf-chan> (wf/execute! executor)]
+          ]
 
-        (httpkit/on-close chan
-                          (fn [status]
-                            (println "Disconnected")
-                            (wf/end! executor)
-                            ))
+      ;; store executor and in/out chans
+      (reset! *ws-in-chan in-chan>)
+      (reset! *ws-out-chan out-chan<)
 
-        (httpkit/on-receive chan
-                            (fn [payload]
-                                (println "Recieved:" (read-transit-str payload))
-
-                              (let [msg (read-transit-str payload)
-                                     [ping message] msg]
-
-                                (go
-                                  (async/put! in-chan> msg))
-                                )))
-
-
-        (go-loop []
-           (let [[status data] (async/<! wf-chan>)]
-             ; (locking *out* (println status (d/pretty data)))
-
-             (if (not
-                     (or (= :done status)
-                         (= :error status)))
-               (recur))
-             ))
-
-
-        )
+      (reset! *ws-wf executor)
+      (reset! *ws-socket-chan chan)
+      )
+    )
+  )
 
 
 
+(defn process-message!
+  "processes message and adds it to a receiving wf"
+  [in-chan> payload]
+  (let [msg (read-transit-str payload)]
+    (go
+      (async/put! in-chan> msg))))
 
 
-      ))
+(defn close-receiving-wf! [xtor status]
+  (println "WS: Disconnected" status)
+  (wf/end! xtor)
+  ;; todo: collect ws result?
+)
 
-  (compojure/GET "/" [] (response/resource-response "public/index.html"))
 
+;;
+;; server
+
+(compojure/defroutes app
+  ;; serve the application
+  (compojure/GET    "/" [] (response/resource-response "public/index.html"))
+  (route/resources   "/" {:root "public"})
+  ;; websocket
+  (compojure/GET "/api/websocket" [:as req]
+    (httpkit/with-channel req chan
+
+      (init-receiving-wf! chan) ;; fixme: use local state instead of atoms
+
+      (httpkit/on-receive chan (partial process-message! @*ws-in-chan))
+      (httpkit/on-close chan   (partial close-receiving-wf! @*ws-wf))
+
+      ;; run the workflow
+      (wf/process-results! (wf/->ResultProcessor @*ws-wf {}))))
+
+  ;; testing ajax calls
   (compojure/GET "/ajax" [] (write-transit-str "Hello from AJAX"))
-
-  (route/resources "/" {:root "public"}))
-
+)
 
 
 (defonce server (atom nil))
