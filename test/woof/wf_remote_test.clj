@@ -139,6 +139,7 @@
 
                (locking *out* (println "server: IN" (d/pretty v)))
 
+               ;; todo: use :expand-key instead of having intermediary steps
                #_(async/put! chan> (with-meta
                                      {sid v}
                                      {:expand-key sid}))
@@ -185,7 +186,7 @@
 
 
 
-
+;; todo: use handler generators
 
 
 #_(do
@@ -279,7 +280,7 @@
 
 
 ; run to stop
-(do
+#_(do
   (wf/end! @*server-wf)
   (wf/end! @*client-wf)
   )
