@@ -22,22 +22,27 @@
 
 
 ;;
+;; websocket workflow
+
+;; (compojure/GET "/your/websocket/url" [:as req]
+;;  (httpkit/with-channel
+;;    req chan
+;;    ;; chan — socket channel
+;;
+;;    (ws-wf! chan  ;; will run the workflow
+;;      (fn[socket in out] {}) ;; -> context map,
+;;      (fn[in out] {})        ;; -> steps
+
+      ;; messages from socket channel are put to in channel is linked to a ws
+
+      ;; message from workflow should be put to out channel,
+      ;;   which later should be written to socket via
+      ;;
+      ;;  (httpkit/send! socket-chan (write-transit-str value))
+
+;;  )))
 ;;
 
-
-;; current executor
-(def *ws-wf (atom nil))
-
-;; executor channel
-(def *ws-chan (atom nil))
-
-;; receiving wf in channel
-(def *ws-in-chan (atom nil))
-;; receiving wf out channel
-(def *ws-out-chan (atom nil))
-
-;; current socket channel
-(def *ws-socket-chan (atom nil))
 
 
 (def *ws-context
@@ -74,34 +79,7 @@
       :server-time (wf/step-handler (fn[x]
                                 [:server-time (u/now)]))
 
-
-
-
-      ;; step handler that waits for commands from in> channel
-      :in {
-          :fn (fn[in>]
-
-
-                (let [chan> (async/chan)]
-                  (go-loop []
-                           (let [v (async/<! in>)
-                                 sid (wf/rand-sid)]
-
-                             (println "processing " v sid)
-
-                             (async/put! chan> (with-meta
-                                                 {sid v}
-                                                        {:expand-key sid}))
-                             )
-                           (recur))
-                  chan>))
-
-          :infinite true
-          :expands? true
-          }
       }
-
-
 ))
 
 
@@ -124,67 +102,80 @@
 
 
 
-;;
-;; receiving workflow
+;; todo: add optional named arguments to ws f
 
-(defn init-receiving-wf!
-  "inits a receiving workflow"
-  [chan]
+(defn ws-wf!
+  "compojure handler for httpkit/with-channel"
+  [socket-chan context-fn steps-fn]
+
   (let [in-chan> (async/chan)
-        out-chan< (async/chan)]
+        out-chan< (async/chan)
 
-    (swap! *ws-context merge
-           { :client< (wf/receive-steps-handler
-                        :step-fn (fn [steps]
-                                   (println "SERVER RECEIVE: " (d/pretty steps))
-                                   steps
-                                   ))
+        context-map (context-fn socket-chan in-chan> out-chan<)
+        steps        (steps-fn in-chan> out-chan<)]
 
-             :client> (wf/send-value-handler out-chan<
-                                             :v-fn (fn[v]
-                                                     (println "SERVER SEND: " (d/pretty v))
-                                                     v)
-                                             :out-fn (fn [z]
-                                                       (println "SEND TO SOCKET:" z)
-                                                       (httpkit/send! @*ws-socket-chan (write-transit-str z))
-                                                       ))
-             })
+    (let [xtor (wf/build-executor (wf/make-context context-map)
+                                   steps)]
 
-    (println "SERVER: initializing receiving wf")
+      (httpkit/on-receive socket-chan
+        (fn [payload]
+          (let [msg (read-transit-str payload)]
+            (go
+              (async/put! in-chan> msg)))))
 
-    (let [steps {
-                  ::loop [:client< in-chan>]
-                  }
+      (httpkit/on-close socket-chan
+        (fn [status]
+          (wf/end! xtor)
+          ;; maybe, get the wf results some how
 
-          executor (wf/build-executor (wf/make-context @*ws-context) steps)
-          ]
+          (async/close! in-chan>)
+          (async/close! out-chan<)
+          ))
 
-      ;; store executor and in/out chans
-      (reset! *ws-in-chan in-chan>)
-      (reset! *ws-out-chan out-chan<)
-
-      (reset! *ws-wf executor)
-      (reset! *ws-socket-chan chan)
+      ;; run the workflow
+      (wf/process-results! (wf/->ResultProcessor xtor {}))
       )
     )
   )
 
 
+(defn ws-prepare-content-map
+  "returns the context config for the ws workflow"
+  [socket-chan in out-chan<]  ;; context-map
 
-(defn process-message!
-  "processes message and adds it to a receiving wf"
-  [in-chan> payload]
-  (let [msg (read-transit-str payload)]
-    (go
-      (async/put! in-chan> msg))))
+  (merge @*ws-context         ;; use context 'shared' between client and server
+         {
+
+           ;; expand step that adds steps to the current ws
+           :client<  (wf/receive-steps-handler
+                       :step-fn (fn [steps]
+                                  (println "SERVER RECEIVE: " (d/pretty steps))
+                                  steps))
 
 
-(defn close-receiving-wf! [xtor status]
-  (println "WS: Disconnected" status)
-  (wf/end! xtor)
-  ;; todo: collect ws result?
-)
+           ;; step that sends the value back to client
+           :client> (wf/send-value-handler out-chan<
+                                           :v-fn (fn[v]
+                                                   (println "SERVER SEND: " (d/pretty v))
+                                                   v)
+                                           :out-fn (fn [z]
+                                                     (println "SEND TO SOCKET:" z)
+                                                     (httpkit/send! socket-chan (write-transit-str z))
+                                            ))
 
+           ;; todo :client>*
+
+           }))
+
+(defn ws-prepare-steps
+  "returns initial steps for the ws workflow"
+  [in-chan> out]
+
+  {
+    ;; optional initialization can be done here
+    ::receive-loop [:client< in-chan>]
+    }
+  )
 
 ;;
 ;; server
@@ -195,19 +186,14 @@
   (route/resources   "/" {:root "public"})
   ;; websocket
   (compojure/GET "/api/websocket" [:as req]
-    (httpkit/with-channel req chan
+                 (httpkit/with-channel req chan
+                   (ws-wf! chan ws-prepare-content-map
+                                 ws-prepare-steps)))
 
-      (init-receiving-wf! chan) ;; fixme: use local state instead of atoms
 
-      (httpkit/on-receive chan (partial process-message! @*ws-in-chan))
-      (httpkit/on-close chan   (partial close-receiving-wf! @*ws-wf))
-
-      ;; run the workflow
-      (wf/process-results! (wf/->ResultProcessor @*ws-wf {}))))
 
   ;; testing ajax calls
-  (compojure/GET "/ajax" [] (write-transit-str "Hello from AJAX"))
-)
+  (compojure/GET "/ajax" [] (write-transit-str "Hello from AJAX")))
 
 
 (defonce server (atom nil))
