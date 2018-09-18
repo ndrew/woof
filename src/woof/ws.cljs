@@ -5,6 +5,7 @@
     [cognitect.transit :as transit]
 
     [woof.data :as d]
+    [woof.utils :as u]
 
     )
 
@@ -37,9 +38,8 @@
     (str websocket-protocol "//" (.-host location) url)))
 
 
-;; ws
-
-
+;;
+;; woof webservice protocol
 
 (defprotocol WoofServer
   (start [this])
@@ -49,33 +49,32 @@
   (send! [this msg])
 
   (close! [this])
-  )
+)
 
 
 
 
-
-
-(defn connect [url & {:keys [on-open on-close on-message]}]
+(defn connect [url & {:keys [on-open on-close on-message ready-chan]}]
   (let [url    (ws-resolve-url url)
         socket (js/WebSocket. url)]
 
-    (when on-open
+
       (set! (.-onopen socket)
         (fn [event]
-          (on-open))))
+
+          (when ready-chan
+            (go
+              (async/put! ready-chan socket)))
+          (when on-open
+            (on-open)
+
+          )))
 
     (when on-message
       (set! (.-onmessage socket)
         (fn [event]
-
           (let [[status msg] (read-transit (.-data event))]
-;            (println "DATA" data)
-            ;(println status msg)
-
-            (on-message status msg)
-
-            ))))
+            (on-message status msg)))))
 
 
     (when on-close
@@ -86,14 +85,21 @@
 
 
 
-;; todo: add kv params for open close
-(defn ws-server [url & r]  ;; {:keys [on-open on-close on-message]}
+;; ws constructor
+(defn ws-server
+  "available options are on-open on-close on-message"
+  [url & r]  ;; {:keys [on-open on-close on-message]}
   (let [*socket (volatile! nil)]
 
     (reify WoofServer
       (start [this]
-             (vreset! *socket
-                      (apply (partial connect url) r)))
+
+             (let [ready-chan (async/chan)
+                   socket (apply (partial connect url)
+                                 (concat r [:ready-chan ready-chan]))] ;; check if the :ready-chan is present
+
+               (vreset! *socket socket)
+               ready-chan))
 
       (get-socket [this] @*socket)
 
@@ -102,10 +108,7 @@
 
       (close! [this]
               (if-let [socket @*socket]
-                (.close socket)))
-      )
-    )
-  )
+                (.close socket))))))
 
 
 

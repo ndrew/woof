@@ -555,7 +555,7 @@
 
                 (go-loop
                   []
-                  (let [v (async/<! result)] ;; u/<?
+                  (when-let [v (async/<! result)] ;; u/<?
                     (put!? (:infinite-channel cfg) [:save [id step-id params v]] 1000)
                     (recur))))
               (go
@@ -594,11 +594,10 @@
                        (set-infinite-step STEPS id actions)
 
                        (go-loop []
-                                (let [v (async/<! actions)]
-                                  (put!? (:infinite-channel cfg) [:expand [id step-id params v]] 1000))
-
-                                (recur)
-
+                                (when-let [v (async/<! actions)]
+                                  (put!? (:infinite-channel cfg) [:expand [id step-id params v]] 1000)
+                                  (recur)
+                                  )
                                 )
                        )
 
@@ -1579,7 +1578,13 @@
           (async/>! (get-in model [:cfg :process-channel]) [:stop this])
 
           (if-let [inf-process-chan (get-in model [:cfg :infinite-channel])]
-            (async/>! inf-process-chan [:stop this]))
+            (do
+
+              (async/>! inf-process-chan [:stop this])
+
+              )
+
+            )
 
           ))
 
@@ -1653,7 +1658,7 @@
 (defn process-wf-loop
   ([exec-chan op-handler]
    (go-loop []
-            (let [r (async/<! exec-chan)] ;; [status data] r
+            (if-let [r (async/<! exec-chan)] ;; [status data] r
               (if (op-handler r)
                 (recur)))))
 
@@ -1892,7 +1897,7 @@
                   result-chan (execute! executor)]
 
               (go-loop []
-                       (let [[status data] (async/<! result-chan)]
+                       (if-let [[status data] (async/<! result-chan)]
                          (condp = status
                            :error (do
                                     ;; TODO: error handling strategies
@@ -1964,7 +1969,7 @@
     :fn (fn [in>]
           (let [chan> (async/chan)]
             (go-loop []
-                     (let [new-steps (async/<! in>)]
+                     (when-let [new-steps (async/<! in>)]
 
                        (if-not (map? new-steps)
                          (u/throw! (str "invalid expand map passed to :in " (d/pretty new-steps))))
@@ -1974,8 +1979,9 @@
                        (async/put! chan> (step-fn new-steps))
                        ;; todo: use :expand-key instead of having intermediary steps
                        ;; #_(async/put! chan> (with-meta {sid v} {:expand-key sid}))
+                       (recur)
                        )
-                     (recur))
+                     )
             chan>))
     :infinite true
     :expands? true
@@ -1986,15 +1992,16 @@
 (defn send-value-handler
   "parametrizable function that generate send value handler"
   [out-chan<
-   & {:keys [v-fn out-fn]
+   & {:keys [v-fn out-fn return-fn]
       :or {v-fn identity
            out-fn identity
+           return-fn (fn[v vs]
+                       vs)
            }} ]
 
 
   (go-loop []
-           (if-let [v (async/<! out-chan<)]
-             ;; redirect the wf output onto wire
+           (if-let [v (async/<! out-chan<)] ;; redirect the wf output onto wire
              (do
                (inline--fn1 out-fn v)
                (recur))
@@ -2003,12 +2010,45 @@
 
 
   {:fn (fn [v]
-         (go
-           (async/>! out-chan< (v-fn v)))
-         )
+         ;; transform v into other value or steps
+         (let [vs (v-fn v)]
+           (go ;; send the new value to out-chan<
+             (async/>! out-chan< vs))
+           ;; return a result
+           (return-fn v vs)))
    :collect? true
    })
 
+
+(defn send-value-handler*
+  "parametrizable function that generate send value handler"
+  [out-chan<
+   & {:keys [v-fn out-fn return-fn]
+      :or {v-fn identity
+           out-fn identity
+           return-fn (fn[v vs]
+                       {})
+           }}]
+
+  (go-loop []
+           (if-let [v (async/<! out-chan<)]
+             (do
+               (inline--fn1 out-fn v)
+               (recur))))
+
+  { :fn (fn [v]
+         ;; transform v into other value or steps
+         (let [vs (v-fn v)]
+           (go ;; send the new steps to out-chan<
+             (async/>! out-chan< vs))
+           ;; return added steps
+           (return-fn v vs)))
+
+    :expands? true
+    }
+  )
+
+;; will there be a :collect? and :expands? case
 
 
 ;;

@@ -86,8 +86,9 @@
     (async/tap mult-c piped-c)
 
     (go-loop []
-             (wiretap-handler (async/<! dbg-chan))
-             (recur))
+             (when-let [v (async/<! dbg-chan)]
+               (wiretap-handler v)
+               (recur)))
 
     piped-c)
   )
