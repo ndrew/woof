@@ -403,7 +403,7 @@
 
 
 ;; state changing fns
-;; fixme:
+;; todo: rework the IWFUi
 (defprotocol IWFUi
   (get-status [this])
 
@@ -869,7 +869,7 @@
 
         (ui/menubar "" [(run-wf-mi model process-wf!)])
 
-        [:div.tip ""] ;; fixme:
+        [:div.tip ""] 
 
         [:div.hbox
          [:div.steps-ui

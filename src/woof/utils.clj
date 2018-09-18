@@ -5,8 +5,6 @@
     [clojure.core.async :as async :refer [go go-loop]]))
 
 
-;; fixme: migrate to woof.wf-core
-
 (defn sid
   "generates a particular id for a step — sid"
   ([id]

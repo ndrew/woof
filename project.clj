@@ -40,6 +40,7 @@
 
   :aot          [ woof.server ]
 
+  :main         woof.server
 
   :plugins [[lein-figwheel "0.5.15"]
             [lein-cljsbuild "1.1.7" :exclusions [[org.clojure/clojure]]]]

@@ -1,0 +1,186 @@
+WOOF:
+
+☐ go through all todos and fixmes @in-progress
+  ☐ project description and licence
+  ☐ rework the IWFUi, if it's needed
+  ☐ data editor for workflow UI
+    ☐ use fipp for d/pretty 
+    ☐ proper to-primitive function implementation
+    ☐ selectors, are they needed?
+  ☐ migrate old way of representing wfs into dsl 
+  ☐ wf
+    ☐ have expand key in meta data - to reduce amount of intermediary steps for expand-collect step 
+
+☐ maintain tests
+ ☐ js tests on circle-ci: https://circleci.com/blog/testing-clojurescript-code-with-clojurescript-test-and-karma/
+ ☐ test for infinite actions
+ ☐ test that emulates remote communication
+
+✔ write transducers for processing-chan result-chan @done (18-03-10 22:57)
+
+☐ separate backpressure code
+  ☐ write test for it
+☐ separate debugging code
+  ☐ incorporate into ui
+
+☐ some way of conforming actions / via spec? 
+
+
+:theory & architecture
+ ☐ review the names and types that are being used - for ubiquitous language @in-progress
+   ☐ create a dictionary/glossary 
+   ☐ emit or expand?
+ ☐ DEVS 
+ ☐ CSP @in-progress
+
+ 
+ ☐ flat workflows @in-progress
+   ✔ async implementation @done (17-11-21 10:22)
+   ✔ caching @done (17-11-27 19:45)
+     ✔ storing async channel does not work @done (17-11-27 19:45)
+   ✔ action specification - when expand when commit @done (18-09-18 18:49)
+   ✔ model for the result (with steps-left, etc.) @done (18-09-18 18:49)
+   ✔ transducers for providing the updates @in-progress @done (18-09-18 18:49)
+     ✔ currently WoofProcessor @done (18-09-18 18:49)
+   
+
+ ☐ async processes via core.async 
+   via 'flat' workflows
+    ✔ step-by-step execution - providing step-id as parameter to the action @done (17-11-21 10:21)
+    ✔ error propagation @done (18-03-10 22:57)
+    ✔ stoping execution @done (18-03-10 22:57)
+    ✔ debugger — via blocking the consumer/producer @done (17-11-21 10:21)
+ 
+ ☐ plugin architecture
+   ✔ executing handlers on the server side @done (18-09-18 18:50)
+   ☐ data providers from datascript or database — via workflows
+
+ ☐ dsl: do we need the parametrization of the plan via namespace-bind functions? 
+   ☐ will parameter merge be a sync process (I guess no)
+     ☐ resolving conflics of parameter merging
+
+ ☐ reusable data editors @in-progress
+ 
+ ☐ undo for edn-editor
+ 
+ ☐ embedding as library
+
+:core.async stuff
+  ☐ http://clojure.github.io/core.async/#clojure.core.async/pipeline
+  ☐ https://stuartsierra.com/2013/12/08/parallel-processing-with-core-async
+  ☐ buffers and channel types
+
+development:
+ 
+ ✔ id generation @done (18-09-18 18:41)
+
+ :data
+   ☐ more generic get-in function
+     ☐ should it work with short-hands (substitutions or placeholders)?
+   ☐ more generic update-in funcion
+
+ :worflows
+   ✔ launching workfow from ui @done (18-03-10 22:57)
+   ✔ encapsulate everyting in pipeline ns @done (17-09-13 23:08)
+   ☐ >! vs put! (https://github.com/clojure/core.async/wiki/Go-Block-Best-Practices)
+   ☐ how many channels needed / channel closing
+     ☐ publish subscriber https://github.com/clojure/core.async/wiki/Pub-Sub
+     ☐ transducer on the channels
+   ☐ is add-watch for remaining-idxs enough (a add-watch do not always guarantee order semantics)
+   ☐ closing workflow
+     ✔ do not stuck in go-loops @done (18-09-18 18:51)
+     ☐ closing intermediary and infinite channels
+
+ :ui
+
+   ☐ move all the UI into ui. ns @in-progress 
+
+   ☐ assign react ids
+     ☐ use performance mixin
+
+  :data-editor
+     ☐ impove data-ui (selector based editor)
+
+     ☐ focus and keyboard navigation
+     ☐ edit commit by enter
+       ☐ show menu items conditionally @in-progress
+       ☐ "modal" component in the menu @in-progress
+     ☐ placeholder ui
+     ☐ displaying metadata
+     ☐ support other data types (see fipp.visit-tagged)
+       ☐ regex
+       ☐ files
+       ☐ dates
+     ☐ handling large maps
+       ☐ use fipp print-level so there will be different separators
+     ☐ duplicating sub-data
+
+  :DSL
+    :pipeline
+      ☐ handle top-most action properly
+    :pipeline-editor
+      ☐ as Riven like graph?
+      ☐ brand-new action editor
+        ☐ define/modify pipeline via ui
+          ☐ choosing available action and conforming to the form of params
+      ☐ displaying action
+        ☐ displaying initial params and merged params
+        ☐ displaying results
+
+ :server-side
+   ✔ running the workflow on server @done (18-09-18 18:52)
+     ✔ open/close websocket @done (18-09-15 17:08)
+     ✔ refine idiomatic way of running distributed wf @done (18-09-18 18:52)
+       
+   ☐ https://github.com/ptaoussanis/sente
+
+ :tests
+   ☐ data tests
+   ☐ worflow tests
+     ✔ execute pipeline from clojure @done (17-11-21 10:24)
+     ✔ move generating test steps into a separate ns @done (18-03-10 22:58)
+
+ MVP:
+
+:stuff & open questions
+ ✔ find a better name @done (18-03-10 22:56)
+   woof!
+
+ ☐ test for woof/data
+ ☐ lein new woof-playground
+
+ ☐ examples of usage @in-progress
+   ☐ single page (landing) via data 
+   ☐ blog
+   ☐ data source (kamenarnia concerts)
+   ☐ wordpress integration
+   ☐ deploy to github pages / s3
+ ☐ essential plugins
+   ☐ file watchers (for external editors)
+   ☐ ...
+
+
+ ☐ write introductory posts
+   ☐ CMS rethinked — motivation
+   ☐ - data editing
+   ☐ - pipelines
+   ☐ — plugins
+
+ ☐ product hunt?
+ ☐ write readme
+ ☐ some kind of support — gitter?
+ ☐ collaboration via opening issues
+ ☐ hosted version
+  ☐ landing page
+    https://redkix.com/beta/
+  ☐ billing
+  ☐ onboarding
+    ☐ welcome email
+    ☐ terms and conditions
+    ☐ empty state
+  ☐ user management
+    ☐ lost password
+    ☐ avatar
+    ☐ delete my account
+  ☐ notifications
+
