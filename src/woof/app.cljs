@@ -23,6 +23,8 @@
 
     ; [woof.wf-tester-ui :as tester-ui]
     [woof.ui.wf-runner :as runner]
+
+    [woof.ui.results :as r]
     )
 
 
@@ -144,170 +146,7 @@
 
 
 
-(rum/defcs <wf-step-editor>     <      rum/reactive {:key-fn (fn [k _ _ _] k)}
-                                       (rum/local nil ::updated-v)
-                                       (rum/local false ::manually-entered)
-  [local header params editor-chan]
 
-  ;; todo: store both params and manually entered value if any
-
-  (if-let [local-params @(::updated-v local)]
-    (if-not (or (= local-params params) @(::manually-entered local))
-      (reset! (::updated-v local) params))
-    (reset! (::updated-v local) params))
-
-
-  (if-let [v @(::updated-v local)]
-    [:.editor
-     [:header header]
-     (ui/data-editor (fn[new-v]
-                       (reset! (::updated-v local) new-v)
-                       (reset! (::manually-entered local) true)
-                       (go
-                         (async/put! editor-chan new-v)))
-                     v)])
-  )
-
-
-
-(rum/defc <wf-step-ui> < rum/reactive {:key-fn (fn [k _ _ _] k)}
-
-  [k v result editor-fn preview-fn]
-
-  (let [[action params] v]
-  [:.step-ui {:class (str
-                       (if editor-fn "edit" "")
-                       (if preview-fn "prev" ""))}
-
-   [:span.dbg-k (d/pretty k)]
-
-   (if editor-fn
-     (editor-fn))
-
-   (if preview-fn
-     (preview-fn))
-
-   (wf-ui/<step-status> k v (u/nil-get result k))]
-  ))
-
-
-(defn- get-value [result k]
-  (let [get! (partial u/nil-get result)
-        raw-data (get! k)]
-    (if (wf/sid-list? raw-data)
-      (map get! raw-data)
-      raw-data)))
-
-
-
-(rum/defc <wf-full-step-ui>
-  < rum/reactive
-  { :key-fn (fn [_ _ [header _]] header)}
-  [result *editors [k v]]
-
-  (let [[action params] v
-
-        {param-editors :pre
-         previews :post} @*editors
-
-        editor-chan (get param-editors k)
-
-        ;; todo: take sid-list into account
-        show-param-editor? (and editor-chan
-                                (if (wf/sid? params) (not (u/channel? (get result params))) true))
-
-
-        editor-fn (if show-param-editor?
-                    (fn []
-                      (if (wf/sid? params)
-                        (if-let [nu-params (get result params)]
-                          (<wf-step-editor> (str (name k) action ": ") nu-params editor-chan))
-                        (<wf-step-editor> (str (name k) action ": ") params editor-chan))
-                      )
-                    nil)
-
-        preview-chan (get previews k)
-
-        preview-fn (if preview-chan
-                     (fn []
-                       [:.preview
-                        (ui/menubar "Preview"
-                                    [["ok" (fn[]
-                                             (go
-                                               (async/>! preview-chan :ok))
-                                             ;; TODO:
-                                             (swap! *editors update-in [:post] dissoc k)
-                                             )]])
-                        [:div.preview-content
-
-                         (let [get! (partial u/nil-get result)
-                               preview-data (get! (second v))]
-                           (if (wf/sid-list? preview-data)
-                             (map get! preview-data)
-                             preview-data))
-
-                         ]])
-                     nil)
-
-        ]
-
-    (<wf-step-ui> k v result editor-fn preview-fn)
-    )
-  )
-
-
-#_(let [gsteps (group-by
-                 (fn[[step-id sbody]]
-                   (let [v (get-value result step-id)]
-                     (cond
-                       (u/channel? v) :channel
-                       (wf/sid? v) :sid
-                       (wf/sid-list? v) :sid-list
-                       :else :v
-                       )
-                     )
-                   )
-                 actual-steps)]
-         [:pre (pr-str
-                 (keys gsteps) )]
-         )
-
-
-(rum/defcs <wf-results-ui>
-  < rum/reactive
-   (rum/local false ::pending-only?)
-  { :key-fn (fn [header _ _] header)}
-
-  [local header result actual-steps *editors]
-    ;; todo: store changed params
-    [:.results
-
-       (ui/menubar "" [["pending?" (fn []
-                                   (swap! (::pending-only? local) not)
-                                   )]])
-
-       (if @(::pending-only? local)
-          (do
-            (map (partial <wf-full-step-ui> result *editors)
-                 (filter (fn[[step-id sbody]]
-                      (let [v (get-value result step-id)]
-                        (or
-                         (u/channel? v)
-                         (wf/sid? v)
-                         (wf/sid-list? v)
-                         ))) actual-steps))
-            )
-         (into [:div.steps]
-          (map (partial <wf-full-step-ui> result *editors)
-                actual-steps))
-         )
-
-
-
-
-     ]
-
-  )
 
 
 
@@ -538,6 +377,7 @@
 
 (defn- run-wf [model callback]
   (app-model/start! model callback)
+
   )
 
 (defn- run-wf-mi [model callback]
@@ -689,89 +529,7 @@
      )]
   )
 
-(defonce GRID-SIZE 20)
 
-
-(rum/defc <node> [node]
-(comment
-;       <g class='node ${node.is_mesh ? 'mesh' : ''}' id='node_${node.id}'>
-;      <rect rx='2' ry='2' x=${rect.x} y=${rect.y-(GRID_SIZE/2)} width="${rect.w}" height="${rect.h}" class='${node.children.length == 0 ? "fill" : ""}'/>
-;      <text x="${rect.x+(rect.w/2)}" y="${rect.y+rect.h+(GRID_SIZE/2)}">${node.label}</text>
-;      ${draw_ports(node)}
-;      ${draw_glyph(node)}
-;    </g>
-
-  )
-  (let [{_x :x
-         _y :y
-         _h :h
-         _w :w } (:rect node)
-
-        hg (/ GRID-SIZE 2)
-        {x :x
-         y :y
-         h :h
-         w :w } {:x (* GRID-SIZE _x)
-              :y (* GRID-SIZE _y)
-              :h (* GRID-SIZE _h)
-              :w (* GRID-SIZE _w)
-              }
-
-        ]
-
-    [:g {:class "node"
-         :id (str "node_" (:id node))}
-
-     [:rect {:rx 2 :ry 2
-             :x x
-             :y (- y hg)
-             :width w
-             :height h
-
-             :class "fill" ;;
-             }
-
-      [:text {:x (+ x
-                    (/ w 2)) ; rect.x+(rect.w/2)
-              :y (- y hg)
-              } (:label node)]
-
-      ;; draw_ports
-      ;; draw_glyph
-      ]
-
-     ]
-
-    )
-
-  )
-
-(rum/defcs <graph> < rum/reactive
-  [local]
-
-  (let [
-        ;v 1234
-        network {:node {:id "node"
-                        :label "Node"
-                        :x 2 :y 2
-                        :rect {
-                                :x 2
-                                :y 4
-                                :h 2
-                                :w 2
-                                }
-                        }
-                  }
-        ]
-  [:svg
-   {:xmlns "http://www.w3.org/2000/svg" :baseProfile "full" :version="1.1"}
-     ;[:circle {:cx 10 :cy 10 :r 5 :fill "#ccc"}]
-     (<node> (:node network))
-
-   ]
-    )
-
-  )
 
 
 (rum/defcs <wf-ui>   <   rum/reactive
@@ -938,7 +696,11 @@
           (<wf-progress-ui> start (done-percentage result actual-steps))
           (ui/menubar header actions)
 
-          (<wf-results-ui> header result (sort-steps actual-steps) *editors )
+
+          [:pre
+           (d/pretty (sort-steps actual-steps))
+           ]
+          (r/<wf-results-ui> header result (sort-steps actual-steps) *editors )
 
           ]
 
@@ -975,20 +737,21 @@
 
 
 
-(comment
-  #_(let [model (:ui-model @*STATE)]
-    [:div#app
-     #_(<wf-ui>
-       (cursor [:context])
-       (cursor [:workflow])
-       model)
-     ])
-  )
 
 (rum/defcs <app-ui>
   < rum/reactive [local *STATE]
 
-   [:div#app (runner/<wf-runner-ui> *STATE)]
+  #_(let [model (:ui-model @*STATE)]
+    [:div#app
+     ; (r/<test>)
+
+     (<wf-ui>
+       (cursor [:context])
+       (cursor [:workflow])
+       model)
+     ])
+
+  [:div#app (runner/<wf-runner-ui> *STATE)]
 
 )
 

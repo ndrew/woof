@@ -20,9 +20,10 @@
 
     [woof.ui :as ui]
     [woof.wf-ui :as wf-ui]
+
     [woof.ui.context :as ctx-ui]
     [woof.ui.steps :as steps-ui]
-
+    [woof.ui.results :as r]
 
     [woof.utils :as u]
 
@@ -53,6 +54,9 @@
 
   :ui-chan nil
   :history []
+
+  :result {}
+  :steps {}
 }))
 
 
@@ -60,11 +64,15 @@
 
 (defn init! []
   (swap! *UI-STATE merge
-           {
-             :wf nil
+         {
+           :wf nil
 
-             :status :woof.app/not-started
-             :history []
+           :status :woof.app/not-started
+           :history []
+
+           :result {}
+           :steps {}
+
            })
   )
 
@@ -103,11 +111,19 @@
             ; :before-process before-processing!
             ;; :process-handler op-handler
             :op-handlers-map {
+
+                               :wf-update (fn[data]
+                                            ; (swap! *resulting-map assoc-in [::steps] (first data))
+                                            ; (swap! *resulting-map assoc-in [::result] (second data))
+                                            (swap! (cursor [:steps]) merge (first data))
+                                            (swap! (cursor [:result]) merge (second data))
+                                            )
+
                                :process (fn[data]
                                           (swap! (cursor [:history]) conj
-                                                 (wdata/inline-results data)
-                                                 )
-                                          ;(swap! *result merge data)
+                                                 (wdata/inline-results data))
+
+                                          (swap! (cursor [:result]) merge data)
                                           )
                                :done (fn [data]
                                        (swap! (cursor [:history]) conj
@@ -234,16 +250,26 @@
 
      (let [history (reverse @(cursor [:history]))]
        [:.log
-        [:h2 "result:"]
-        [:pre (d/pretty (first history))]
-        [:h4 "last added"]
-        [:pre
-         (let [[cur prev] (first (partition 2 history))
-               [added _ _] (cd/diff cur prev)
-               ]
-           (d/pretty added)
 
-           )
+        (r/<wf-results-ui> "result"
+                     @(cursor [:result])
+                     @(cursor [:steps])
+                     (atom {:pre   {}
+                             :post {}}) ;; *editors
+                     )
+
+        [:div
+          [:h2 "result:"]
+          [:pre (d/pretty (first history))]
+          [:h4 "last added"]
+          [:pre
+           (let [[cur prev] (first (partition 2 history))
+                 [added _ _] (cd/diff cur prev)
+                 ]
+             (d/pretty added)
+
+             )
+           ]
          ]
         ]
        )
@@ -253,7 +279,18 @@
   )
 
 
-;;
+;wf runner ui prototype:
+;* representing wf as:
+;    - params...
+;    - (context-fn params...) -> context map
+;    - (step-fn params...) -> initial steps
+;    - (actions-fn params...) -> actions map
+;where action map is
+;{ :start! (fn[]) -> channel/nil ;  if channel — wait for it before starting wf
+;  :stop! (fn[]) -> ; clean-up
+;  :reset! (fn[]) -> ; some global clean-up
+;  :actions <menu-actions> ; available actions during wf in format as for menus
+;}
 
 (defn ui-loop-wf [*STATE]
   (init-runner-wf *STATE
