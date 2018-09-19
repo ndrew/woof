@@ -28,6 +28,9 @@
 
     [woof.test-data :as test-data]
     ; [woof.wf-tester-ui :as tester-ui]
+
+    [woof.example.ui-loop :as ui-loop]
+    [woof.example.ws :as ws]
     )
 
 
@@ -36,153 +39,67 @@
     [woof.utils-macros :refer [put!?]]))
 
 
-(defn- DBG [a]
-  (.warn js/console (d/pretty a)))
+
 
 
 
 ;;
-;; initializers - context, steps
-
-
-(defn- get-steps [ui-loop-chan]
-    {
-    ;; todo: why wf is not updated on async expand
-    ;  ::t [:timeout 7000]
-    ;  ::end [:id ::t]
-;;    ::hello [:id "woof!"]
-    ::ui    [:ui-loop ui-loop-chan]
-
-;;;;;
-
-    ;;::addp [:+< [1 2 3]]
-    ;;::add [:+> ::addp]
-
-    ::1 [:v 1]
-    ::2 [:v 2]
-
-    ::add [:+> [::1 ::2]]
-
-    }
-  )
-
-
-
-
-(defn- get-math-context-map []
-
-  {
-    :+< {:fn (fn [xs]
-                   (into (array-map)
-                         (map-indexed (fn [i x]
-                                        [(wf/rand-sid) [:v x]]) xs)))
-             :expands? true
-             }
-
-    :v {:fn (fn [x] x)}
-
-    :+> {
-               :fn (fn[xs]
-
-                     (reduce + xs))
-               :collect? true
-               }
-
-
-
-}
-  )
-
-
-(defn- get-context-map []
-  (merge
-  {
-    :id (wf/step-handler (fn [a]
-                           (DBG a)
-                           a))
-
-    :exception (wf/step-handler (fn [a]
-                           (.warn js/console a)
-                           (throw (js/Error. (str "Error: " (d/pretty a))))
-                           a))
-
-    :timeout (wf/step-handler (fn [t]
-                                ; (str "Hello " s "!")
-                                (let [chan (async/chan)]
-                                  (go
-                                    (async/<! (u/timeout t))
-                                    (async/put! chan "timeout!")
-                                    )
-
-                                  chan)))
-
-
-
-    :ui-loop {:fn (fn [in-chan]
-                    (u/wiretap-chan in-chan (partial println "UI LOOP:")))
-
-              :infinite true
-              :expands? true
-              }
-
-    }
-    (get-math-context-map)
-    )
-  )
-
-
-
-;;
-;; state
-
+;; main state atom for workflow runner
 
 (defonce *UI-STATE (atom {
 
-  :steps {}
-  :context-map {}
-
   :status :woof.app/not-started
   :wf nil
-
 
   :ui-chan nil
   :history []
 }))
 
 
-(def cursor (partial rum/cursor-in *UI-STATE))
-
-(defn init-wf []
-
-  (let [context-map (get-context-map)]
-
-    (swap! *UI-STATE merge {
-                             :context-map context-map
-                             })
-    ;; todo: autostart
-))
 
 
+(defn init! []
+  (swap! *UI-STATE merge
+           {
+             :wf nil
 
-;;
-;;
-;; actions
-
-(defn send-ui-action [steps]
-  (go
-    (async/>! @(cursor [:ui-chan]) steps)))
-
-
-(defn- start-wf []
-
-  (let [ui-loop-chan (async/chan)
-        steps (get-steps ui-loop-chan)
+             :status :woof.app/not-started
+             :history []
+           })
+  )
 
 
-        context (wf/make-context @(cursor [:context-map]))
-        executor (wf/build-executor context steps)
 
-        p { ;:execute start-wf-with-transducers!
+
+;; what if pass a multi method
+
+(defn init-runner-wf [*STATE
+                    ;endpoint-url ;; "/api/websocket"
+                    ;responce-fn  ;; ws output to steps
+
+                    params
+
+                    context-fn
+                    steps-fn
+                    actions-fn
+                    ]
+
+  ;; todo have & params - for ui chan
+
+
+  (let [
+         {ui-chan :ui-chan} params ;; for now
+
+         args (apply concat params)
+
+        cursor (partial rum/cursor-in *STATE)
+
+        context-map (apply context-fn args)
+        steps (apply steps-fn args)
+
+        xtor (wf/build-executor (wf/make-context context-map) steps)
+
+        processing-opts { ;:execute start-wf-with-transducers!
             ; :before-process before-processing!
             ;; :process-handler op-handler
             :op-handlers-map {
@@ -208,73 +125,111 @@
             ;; :timeout 1000
             }
 
-        res-chan (wf/process-results! (wf/->ResultProcessor executor p))]
+         ;; how to return these
+         {
+           wf-stop-fn :stop!
+           wf-start-fn :start!
+           wf-reset-fn :reset!
 
-    (swap! *UI-STATE merge {
-                             :wf executor
-                             :status :woof.app/running
+           actions :actions
+           } (apply actions-fn args)
 
-                             :history []
+        start-fn (fn[]
+                   (let [f (fn []
+                             (let [proc (wf/->ResultProcessor xtor processing-opts)]
+                               (wf/process-results! proc))
 
-                             :ui-chan ui-loop-chan
-                             :steps steps
-                             })
-        )
+                             (reset! (cursor [:status]) :woof.app/running))]
+
+                   (let [v (if wf-start-fn (wf-start-fn))]
+                     (if (u/channel? v)
+                       (go
+                          (if-let [nu-v (async/<! v)]
+                            (f)))
+                       (f))))
+                   )
+
+        start-action ["start" start-fn]
+
+        stop-fn (fn[]
+                      (wf/end! xtor)
+
+                      (if wf-stop-fn
+                        (wf-stop-fn))
+
+                      ;(async/close! ui-chan)
+                      ;; (async/close! server-in)
+                      ;; (async/close! server-out)
+
+                      )
+
+        stop-action ["stop" stop-fn]
+
+
+        reset-fn (fn []
+                    (if wf-reset-fn
+                       (wf-reset-fn))
+
+                    (init!))
+
+
+        status-actions  {
+                        :woof.app/not-started [start-action]
+
+                        :woof.app/done        [["FINISH" reset-fn]]
+
+                        :woof.app/running     (into actions [ [] stop-action])
+                        ; :woof.app/stopped     "error"
+                        :woof.app/error       [start-action ["RESTART" reset-fn]]
+                        }
+
+        ]
+
+
+    (swap! *STATE merge
+           {
+             :wf {
+                   :status-actions status-actions
+
+                   :steps steps
+                   :context-map context-map
+
+                   ;; :xtor xtor
+
+                   :start! start-fn
+                   :stop! stop-fn
+
+                   }
+
+             :status :woof.app/not-started
+             :history []
+             })
   )
-
-
-(defn- stop-wf []
-  (wf/end! @(cursor [:wf])))
-
-
-(defn- click-action []
-  (send-ui-action
-    { (wf/rand-sid) [:id (str "click - " (.getTime (js/Date.)))] }))
+)
 
 
 
-
-(defonce menu4status
-  {
-    :woof.app/not-started [["start" start-wf]]
-
-    :woof.app/done        [["start" start-wf]]
-    :woof.app/running     [
-                            ["click" click-action]
-                            ["emit!" (fn[]
-
-                                       (let [step (d/to-primitive (js/prompt "provide step as [:handler-id <params>]"))]
-                                       (send-ui-action
-                                          { (wf/rand-sid)
-                                            step
-                                            }))
-                                       )]
-                            []
-                            ["stop" stop-wf]
-                           ]
-    ; :woof.app/stopped     "error"
-    :woof.app/error       [["start" start-wf]]
-    })
-
-
-
-(rum/defcs <wf-runner-ui> < rum/reactive
-  (rum/local nil  ::update)
+(rum/defcs <wf-ui> < rum/reactive
   [local *STATE]
 
-
-  (let [status @(cursor [:status])
-        menu-actions (get menu4status status [])]
+  (let [cursor (partial rum/cursor-in *STATE)
+        {status :status
+         wf :wf
+         full-history :history} @*STATE]
     [:div.wfui
      [:h5 "Example of using workflow with infinite expand handler as ui-loop."]
 
-     (ctx-ui/<context> (cursor [:context-map]))
+     (ctx-ui/<context> (cursor [:wf :context-map]))
+     (steps-ui/<steps> (cursor [:wf :steps]) @(cursor [:wf :context-map]))
 
-     (steps-ui/<steps> (cursor [:steps]) @(cursor [:context-map]))
+     [:div.main-menu
+      [:span "  " (wf-ui/<wf-status-ui> status)]
 
-    [:div.main-menu
-       [:span "  " (wf-ui/<wf-status-ui> status)]
-       (ui/menubar "wf:" menu-actions)]
+      (let [all-actions @(cursor [:wf :status-actions])
+            actions (get all-actions status [])
+            ]
+        (ui/menubar "wf:" actions))
+      ]
 
 
      (let [history (reverse @(cursor [:history]))]
@@ -293,5 +248,43 @@
         ]
        )
 
-    ]
+     ]
+    )
+  )
+
+
+;;
+
+(defn ui-loop-wf [*STATE]
+  (init-runner-wf *STATE
+    {:ui-chan (async/chan)}
+    ui-loop/context-map-fn
+    ui-loop/steps-fn
+    ui-loop/actions-fn)
+  )
+
+(defn ws-wf [*STATE]
+  (init-runner-wf *STATE
+    (ws/prepare-params! "/api/websocket")
+    ws/context-map-fn
+    ws/steps-fn
+    ws/actions-fn)
+
+  )
+
+(rum/defcs <wf-runner-ui> < rum/reactive
+
+  [local *STATE]
+
+  (let [{wf :wf} @*STATE]
+
+    (if wf
+      (<wf-ui> *STATE)
+      [:div
+       (ui/menubar "WF:" [
+                           ["UI loop" (partial ui-loop-wf *STATE)]
+                           ["WS" (partial ws-wf *STATE)]
+                           ])]
+      )
+
 ))

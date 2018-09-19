@@ -21,8 +21,6 @@
 
     [woof.test-data :as test-data]
 
-    [woof.server-ui :as ws-ui]
-
     ; [woof.wf-tester-ui :as tester-ui]
     [woof.ui.wf-runner :as runner]
     )
@@ -79,7 +77,7 @@
                 )]
     {:ui-model model
 
-     :server (ws/ws-server "/api/websocket")
+     ;; :server (ws/ws-server "/api/websocket")
      }
     )
 )
@@ -869,7 +867,7 @@
 
         (ui/menubar "" [(run-wf-mi model process-wf!)])
 
-        [:div.tip ""] 
+        [:div.tip ""]
 
         [:div.hbox
          [:div.steps-ui
@@ -960,8 +958,8 @@
   []
 
   ;; *APP-STATE
-  ;; runner/*UI-STATE
-  ws-ui/*UI-STATE
+
+  runner/*UI-STATE
 )
 
 (defn init-state!
@@ -971,29 +969,28 @@
   #_(when-not (::initialized @*APP-STATE)
       (swap! *APP-STATE merge (first-init-state) {::initialized true}))
 
-  ; (runner/init-wf)
-  (ws-ui/init-wf)
+
+  (runner/init!)
   )
 
 
-(rum/defcs <app-ui>
-  < rum/reactive [local *STATE]
 
-  (let [model (:ui-model @*STATE)]
+(comment
+  #_(let [model (:ui-model @*STATE)]
     [:div#app
-       ;; WIP: running workflow via on server
-       ;;   (ws-ui/<server-ui> model (:server @*STATE))
-
      #_(<wf-ui>
        (cursor [:context])
        (cursor [:workflow])
        model)
+     ])
+  )
 
-     ;; (runner/<wf-runner-ui> *STATE)
+(rum/defcs <app-ui>
+  < rum/reactive [local *STATE]
 
-      (ws-ui/<ws-tester> *STATE)
+   [:div#app (runner/<wf-runner-ui> *STATE)]
 
-     ]))
+)
 
 
 

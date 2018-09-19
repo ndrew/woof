@@ -1,7 +1,6 @@
-(ns woof.server-ui
+(ns woof.example.ws
   (:require
     [cljs.core.async :as async]
-    [rum.core :as rum]
 
     [woof.app-data :as app-model]
 
@@ -20,25 +19,11 @@
   )
 
 
-
-;;
-;; state
-
-(defonce *UI-STATE (atom {
-  :server nil
-
-  ;; save communication history
-  :log []
-}))
-
-
-(def cursor (partial rum/cursor-in *UI-STATE))
-
-(def *LOG (cursor [:log]))
+(def *LOG (atom []))
 
 
 
-(defn- client-context-map []
+(defn client-context-map []
   {
     ;; identity function
     :v  {:fn (fn[a] (identity a))}
@@ -81,33 +66,7 @@
   )
 
 
-
-;; todo: pass transform fn for ws
-;; todo: pass send value handlers
-
-
-;; ws-url
-
-;; context fn
-
-;; steps fn
-
-(defn init-wf []
-  ;; needed to update state map
-
-  (swap! *UI-STATE merge {
-                           :log []
-
-                           :server nil
-
-                           :ctx {}
-                           })
-)
-
-;; menu buttons
-
-
-(defn prepare-context-map [endpoint server-in server-out & {:keys [ui-chan]}] ;;
+(defn context-map-fn [& {:keys [ui-chan server-in server-out endpoint ]}] ;;
   (merge (client-context-map)
   {
     ;; main ui loop
@@ -185,15 +144,10 @@
   )
 
 
-(defn responce-fn [msg]
-  (println "got response" (d/pretty msg))
-  {(wf/rand-sid) [:input msg]}
-  )
 
 
-(defn steps-fn [server-in server-out & {:keys [ui-chan]}]
+(defn steps-fn [& {:keys [ui-chan server-in server-out]}]
     {
-
       ::ui  [:ui-loop ui-chan]
 
       ::server-loop [:server< server-out]
@@ -211,80 +165,50 @@
   )
 
 
-(defn init-test-wf [*STATE
-                    endpoint-url ;; "/api/websocket"
-                    responce-fn  ;; ws output to steps
-                    context-fn
-                    steps-fn
-                    ]
+;; todo
+(defn responce-fn [msg]
+  (println "got response" (d/pretty msg))
+  {(wf/rand-sid) [:input msg]}
+  )
+
+
+
+(defn prepare-params! [endpoint-url]
   (let [server-in (async/chan)
         server-out (async/chan)
-
-        ui-chan (async/chan)
-
         endpoint (ws/ws-server endpoint-url
                                   :on-message (fn [msg]
                                     (if-let [steps (responce-fn msg)]
                                       (go
-                                        (async/put! server-out steps)))))
+                                        (async/put! server-out steps)))))]
 
-        ctx-map (context-fn endpoint server-in server-out :ui-chan ui-chan)
-        steps (steps-fn server-in server-out :ui-chan ui-chan)
+  {:server-in server-in
+   :server-out server-out
 
-        xtor (wf/build-executor (wf/make-context ctx-map) steps)
-
-        processing-opts {
-            :op-handlers-map {
-                               :done (fn [data]
-                                       (println "DONE!")
-                                       )
-                               :error (fn [data]
-                                        (.error js/console "ERROR" data)
-                                        ;(reset! (cursor [:status]) :woof.app/error)
-                                        )
-
-                               }
-            }
-
-        ]
-
-  {
-    :xtor xtor
-    :endpoint endpoint
+   :ui-chan (async/chan)
+   :endpoint endpoint
+   })
+  )
 
 
-    :start! (fn[]
-      (let[ch (ws/start endpoint)]
-        (go
-          (if-let [socket (async/<! ch)]
-            (do
-              ; (reset! *socket socket)
-              (let [proc (wf/->ResultProcessor xtor processing-opts)]
-                ;;(reset! *processor proc)
-                (wf/process-results! proc)
-                )
-              )))
-        )
+(defn actions-fn [& {:keys [ui-chan server-in server-out endpoint]}]
+  {:start! (fn []
+             ;; may return channel
+             (ws/start endpoint))
+   :stop!  (fn []
+             (ws/close! endpoint)
 
-              )
+             (async/close! ui-chan)
 
-    :stop! (fn[]
-      (ws/close! endpoint)
-      ; (reset! *socket nil)
+             (async/close! server-in)
+             (async/close! server-out)
+             )
+   :reset! (fn[]
+             ; (println "reset!")
+             )
 
-      (wf/end! xtor)
-
-      (async/close! ui-chan)
-
-      (async/close! server-in)
-      (async/close! server-out)
-
-
-      (init-wf)
-    )
-
-    :actions [
-               ["send!" (fn[]
+   :actions [
+              ["send!" (fn[]
                          (go ;; add new :server> step via :ui-chan
                            (async/>! ui-chan
                                      {(wf/rand-sid) [:server> (str "click - " (.getTime (js/Date.)))]}
@@ -299,59 +223,5 @@
                       (async/>! ui-chan
                                 steps))))
                 ]
-
-               ]
-
-
-    }
-
-  )
-)
-
-
-
-
-
-(rum/defcs <ws-tester> < rum/reactive
-
-  (rum/local nil  ::wf)
-
-  [local *STATE]
-
-  (let [actions
-        (if-let [wf @(::wf local)]
-          (into
-            [["connect to WS:" (:start! wf)]
-             ["stop WS:" (fn[]
-                           ((:stop! wf))
-                           (reset! (::wf local) nil)
-                           )]
-             []
-             ]
-            (:actions wf)
-            )
-          ;; contexts
-          [ ["test context" (fn []
-                              (reset! (::wf local)
-                                      (init-test-wf *STATE
-                                                    "/api/websocket"
-                                                    responce-fn
-                                                    prepare-context-map
-                                                    steps-fn
-                                                    ))
-                              )]]
-          )
-
-
-
-        ]
-    [:div
-     (ui/menubar "Server:" actions)
-
-
-      [:pre (d/pretty @(::wf local))]
-      [:h4 "Log:"]
-      [:pre (d/pretty @*LOG)]
-     ]
-    )
-  )
+              ]
+   })
