@@ -18,6 +18,14 @@
 
                  [compact-uuids "0.2.0"]
 
+
+
+                 ;; examples
+
+                 [markdown-clj "1.0.2"]
+
+
+
                  ;; benchmarking stuff
                  [criterium "0.4.4"]
 

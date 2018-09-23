@@ -309,7 +309,9 @@
 
 (defn popup-wf [*STATE]
   (init-runner-wf *STATE
-    {:ui-chan (async/chan)
+    {
+       :ui-chan (async/chan)
+       :editor-chan (async/chan)
      ; :state *STATE
      }
     popup/context-map-fn
