@@ -1,8 +1,6 @@
-(ns woof.example.ws
+(ns woof.example.files-ws
   (:require
     [cljs.core.async :as async]
-
-    [woof.app-data :as app-model]
 
     [woof.data :as d]
     [woof.wf :as wf]
@@ -12,21 +10,18 @@
     [woof.ui :as ui]
     [woof.wf-ui :as wf-ui]
 
-    [clojure.data :as cd])
-    (:require-macros
-      [cljs.core.async.macros :refer [go go-loop]]
-      [woof.utils-macros :refer [inline--fn inline--fn1]])
-  )
+    )
+
+  (:require-macros
+    [cljs.core.async.macros :refer [go go-loop]]))
 
 
-(def *LOG (atom []))
+  ;; example of client server communication
+
+  ;; list files from folder
 
 
-;; todo
-(defn responce-fn [msg]
-  (println "got response" (d/pretty msg))
-  {(wf/rand-sid) [:input msg]}
-  )
+(declare responce-fn)
 
 
 
@@ -42,78 +37,41 @@
   {:server-in server-in
    :server-out server-out
 
-   :ui-chan (async/chan)
    :endpoint endpoint
+
+   :ui-chan (async/chan)
+
    })
   )
 
 
-(defn client-context-map []
-  {
-    ;; identity function
-    :v  {:fn (fn[a] (identity a))}
+(defn responce-fn [msg]
+  (println "got response" (d/pretty msg))
 
-    ;; debug
-    :log  {:fn (fn[a]
-                 (swap! *LOG conj ["DBG" a])
-                 (identity a))}
-
-    :input  {:fn (fn[a]
-
-                 (swap! *LOG conj ["INPUT" a])
-                 ; (locking *out* (println "INPUT:" (d/pretty a)))
-                 (identity a))}
-
-
-    ;; reference
-    :&v {:fn (fn[a]
-               {(wf/rand-sid) [:v a]})
-         :expands? true}
-
-    ;; collect
-    :v* {:fn identity :collect? true}
-
-    ;; zipper
-    :zip {:fn (fn [vs]
-                (partition (count vs) (apply interleave vs)))
-          :collect? true}
-
-    :tick {:fn (fn [t]
-                 (let [chan (async/chan)]
-                   (go-loop []
-                            (async/<! (u/timeout t))
-                            (async/>! chan (.getTime (js/Date.)))
-                            (recur))
-                   chan))
-           :infinite true
-           }
-  }
+  ;; todo
+  {(wf/rand-sid) [:log msg]}
   )
 
 
 (defn context-map-fn [& {:keys [ui-chan server-in server-out endpoint ]}] ;;
-  (merge (client-context-map)
   {
-    ;; main ui loop
     :ui-loop {:fn (fn [in-chan]
-                    (u/wiretap-chan in-chan (partial println "UI LOOP:"))
-                    )
-
+                    (u/wiretap-chan in-chan (partial println "FILES UI LOOP:")))
               :infinite true
               :expands? true
               }
+
 
     ; waits for server responses from channel passed as parameter
     :server< (wf/receive-steps-handler
                :step-fn
                (fn [steps]
-                 (swap! *LOG conj ["server->client:" steps] )
+                 (println ["server->client:" steps])
                  steps))
 
 
     ;; sends steps to be executed by server
-    :server> ;; {:fn (partial client-send! server-in) :expands? true }
-    (wf/send-value-handler* server-in
+    :server> (wf/send-value-handler* server-in
                             :v-fn (fn[v]
                                     (let [v-sid (wf/rand-sid)
                                           v-ref (wf/rand-sid "&")
@@ -165,10 +123,13 @@
                                             (wf/rand-sid) [:log ["client-server:" v "->" vs]]})
                                          )
                             )
+
+
+    :log {:fn (fn[v]
+                (println v)
+                v
+                ) }
     })
-  )
-
-
 
 
 (defn steps-fn [& {:keys [ui-chan server-in server-out]}]
@@ -190,8 +151,6 @@
   )
 
 
-
-
 (defn actions-fn [& {:keys [ui-chan server-in server-out endpoint]}]
   {:start! (fn []
              ;; may return channel
@@ -200,7 +159,6 @@
              (ws/close! endpoint)
 
              (async/close! ui-chan)
-
              (async/close! server-in)
              (async/close! server-out)
              )
@@ -215,14 +173,14 @@
                                      {(wf/rand-sid) [:server> (str "click - " (.getTime (js/Date.)))]}
                                      )))]
 
-               ["expand"
-                (fn []
+             ;  ["expand"
+             ;   (fn []
 
-                  (let [steps (d/to-primitive
-                                (js/prompt "provide step as map, like {:a/a [:server! {:a/a [:log \"hello\"]}]}"))]
-                    (go ;; add new :server> step via :ui-chan
-                      (async/>! ui-chan
-                                steps))))
-                ]
+              ;    (let [steps (d/to-primitive
+              ;                  (js/prompt "provide step as map, like {:a/a [:server! {:a/a [:log \"hello\"]}]}"))]
+              ;      (go ;; add new :server> step via :ui-chan
+               ;       (async/>! ui-chan
+               ;                 steps))))
+               ; ]
               ]
    })

@@ -17,6 +17,10 @@
     [woof.utils :as u]
     [woof.test-data :as test-data]
 
+
+    [woof.server.utils :refer [read-transit-str write-transit-str]]
+    [woof.example.files :as files-wf]
+
     )
   (:gen-class))
 
@@ -85,21 +89,6 @@
 
 
 
-(defn read-transit-str [s]
-  (-> s
-      (.getBytes "UTF-8")
-      (java.io.ByteArrayInputStream.)
-      (t/reader :json)
-      (t/read)))
-
-
-
-(defn write-transit-str [o]
-  (let [os (java.io.ByteArrayOutputStream.)]
-    (t/write (t/writer os :json) o)
-    (String. (.toByteArray os) "UTF-8")))
-
-
 
 
 ;; todo: add optional named arguments to ws f
@@ -133,7 +122,7 @@
           ))
 
       ;; run the workflow
-      (wf/process-results! (wf/->ResultProcessor xtor {}))
+      (wf/process-results! (wf/->ResultProcessor xtor {})) ;; todo: processing opts
       )
     )
   )
@@ -189,6 +178,11 @@
                  (httpkit/with-channel req chan
                    (ws-wf! chan ws-prepare-content-map
                                  ws-prepare-steps)))
+
+  (compojure/GET "/api/files" [:as req]
+                 (httpkit/with-channel req chan
+                   (ws-wf! chan files-wf/prepare-content-map
+                                 files-wf/prepare-steps)))
 
 
 

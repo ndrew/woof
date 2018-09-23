@@ -33,6 +33,7 @@
     [woof.example.ui-loop :as ui-loop]
     [woof.example.ws :as ws]
     [woof.example.popup :as popup]
+    [woof.example.files-ws :as files-ws]
     )
 
 
@@ -334,6 +335,19 @@
   )
 )
 
+(defn files-ws-wf [*STATE]
+  (init-runner-wf *STATE
+    (files-ws/prepare-params! "/api/files")
+    files-ws/context-map-fn
+    files-ws/steps-fn
+    files-ws/actions-fn
+    default-ui-fn
+  )
+)
+
+
+
+
 
 
 ;; wf can provide its own ui
@@ -354,6 +368,7 @@
                            ["popup" (partial popup-wf *STATE)]
                            ["UI loop" (partial ui-loop-wf *STATE)]
                            ["WS" (partial ws-wf *STATE)]
+                           ["FILES" (partial files-ws-wf *STATE)]
                            ])]
       )
 
