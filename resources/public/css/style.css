@@ -247,3 +247,49 @@ body { padding: 1rem;
   min-width: 7rem;
   outline: 1px solid rgba(133,127,127,.1333);
 }
+
+
+.flex {
+
+  margin-top: 1rem;
+
+  display: flex;
+
+  justify-content: flex-start;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: center;
+
+
+
+}
+
+.flex > div {
+/*   outline: 1px solid crimson; */
+
+  width: auto;
+  flex: 1;
+
+  margin-right: 1.5rem;
+
+  min-height: 30vh;
+}
+
+.flex > div > header {
+
+  width: 100%;
+  font-weight: bolder;
+  margin-bottom: 1rem;
+
+
+}
+
+
+.popup textarea {
+  display: flex;
+  width: 100%;
+  font-size: .8rem;
+  line-height: 1rem;
+
+  min-height: 50vh;
+}
