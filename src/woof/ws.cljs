@@ -73,8 +73,8 @@
     (when on-message
       (set! (.-onmessage socket)
         (fn [event]
-          (let [[status msg] (read-transit (.-data event))]
-            (on-message status msg)))))
+          (let [msg (read-transit (.-data event))]
+            (on-message msg)))))
 
 
     (when on-close
