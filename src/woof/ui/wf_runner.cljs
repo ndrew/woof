@@ -32,6 +32,7 @@
 
     [woof.example.ui-loop :as ui-loop]
     [woof.example.ws :as ws]
+    [woof.example.popup :as popup]
     )
 
 
@@ -50,6 +51,7 @@
 (defonce *UI-STATE (atom {
 
   :status :woof.app/not-started
+
   :wf nil
 
   :ui-chan nil
@@ -57,6 +59,8 @@
 
   :result {}
   :steps {}
+
+  :rum-ui nil
 }))
 
 
@@ -90,15 +94,15 @@
                     context-fn
                     steps-fn
                     actions-fn
+
+                    ui-fn
                     ]
 
   ;; todo have & params - for ui chan
 
 
   (let [
-         {ui-chan :ui-chan} params ;; for now
-
-         args (apply concat params)
+        args (apply concat params)
 
         cursor (partial rum/cursor-in *STATE)
 
@@ -172,11 +176,6 @@
 
                       (if wf-stop-fn
                         (wf-stop-fn))
-
-                      ;(async/close! ui-chan)
-                      ;; (async/close! server-in)
-                      ;; (async/close! server-out)
-
                       )
 
         stop-action ["stop" stop-fn]
@@ -219,6 +218,8 @@
 
              :status :woof.app/not-started
              :history []
+
+             :rum-ui (apply ui-fn args)
              })
   )
 )
@@ -235,18 +236,12 @@
     [:div.wfui
      [:h5 "Example of using workflow with infinite expand handler as ui-loop."]
 
+
+
      (ctx-ui/<context> (cursor [:wf :context-map]))
      (steps-ui/<steps> (cursor [:wf :steps]) @(cursor [:wf :context-map]))
 
-     [:div.main-menu
-      [:span "  " (wf-ui/<wf-status-ui> status)]
-
-      (let [all-actions @(cursor [:wf :status-actions])
-            actions (get all-actions status [])
-            ]
-        (ui/menubar "wf:" actions))
-      ]
-
+     (wf-ui/<wf-menu-ui> "wf:" status @(cursor [:wf :status-actions]))
 
      (let [history (reverse @(cursor [:history]))]
        [:.log
@@ -279,6 +274,11 @@
   )
 
 
+
+
+
+
+
 ;wf runner ui prototype:
 ;* representing wf as:
 ;    - params...
@@ -292,33 +292,62 @@
 ;  :actions <menu-actions> ; available actions during wf in format as for menus
 ;}
 
+
+(defn default-ui-fn []
+  (fn [*STATE]
+    (<wf-ui> *STATE)))
+
 (defn ui-loop-wf [*STATE]
   (init-runner-wf *STATE
     {:ui-chan (async/chan)}
     ui-loop/context-map-fn
     ui-loop/steps-fn
-    ui-loop/actions-fn)
+    ui-loop/actions-fn
+    default-ui-fn)
   )
+
+
+(defn popup-wf [*STATE]
+  (init-runner-wf *STATE
+    {:ui-chan (async/chan)
+     ; :state *STATE
+     }
+    popup/context-map-fn
+    popup/steps-fn
+    popup/actions-fn
+    popup/ui-fn)
+  )
+
+
 
 (defn ws-wf [*STATE]
   (init-runner-wf *STATE
     (ws/prepare-params! "/api/websocket")
     ws/context-map-fn
     ws/steps-fn
-    ws/actions-fn)
-
+    ws/actions-fn
+    default-ui-fn
   )
+)
+
+
+
+;; wf can provide its own ui
 
 (rum/defcs <wf-runner-ui> < rum/reactive
 
   [local *STATE]
 
-  (let [{wf :wf} @*STATE]
+  (let [{wf :wf
+         ui  :rum-ui} @*STATE]
 
     (if wf
-      (<wf-ui> *STATE)
+      (if ui
+        (ui *STATE)
+        (<wf-ui> *STATE))
       [:div
        (ui/menubar "WF:" [
+                           ["popup" (partial popup-wf *STATE)]
                            ["UI loop" (partial ui-loop-wf *STATE)]
                            ["WS" (partial ws-wf *STATE)]
                            ])]

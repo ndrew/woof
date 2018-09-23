@@ -1,12 +1,13 @@
 (ns woof.wf-ui
   (:require
     [cljs.core.async :as async]
-    [rum.core :as rum]
 
+    [rum.core :as rum]
 
     [woof.data :as d]
     [woof.wf :as wf]
     [woof.utils :as u]
+    [woof.ui :as ui]
 
     [clojure.data :as cd])
 )
@@ -59,4 +60,15 @@
       [:span.action (d/pretty step)]
 
      (<wf-status-ui> status)]]))
+
+
+
+(rum/defc <wf-menu-ui> < rum/reactive
+  [header status all-actions]
+  [:div.main-menu
+   [:span "  " (<wf-status-ui> status)]
+   (let [actions (get all-actions status [])]
+     (ui/menubar header actions))
+   ])
+
 
