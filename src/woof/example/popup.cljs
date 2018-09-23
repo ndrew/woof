@@ -32,6 +32,17 @@
 ;; initializers - context, steps
 
 
+(defn prepare-params
+  ""
+  []
+  {
+       :ui-chan (async/chan)
+       :editor-chan (async/chan)
+       :confirm-chan (async/chan)
+     }
+  )
+
+
 (defn- get-test-context-map
   ""
   []
@@ -68,29 +79,55 @@
     c))
 
 
-(defn context-map-fn [& {:keys [ui-chan editor-chan]}] ;;
+(defn gen-passthrough-fn [confirm-chan]
+  (let [acc (volatile! nil)
+        c (async/chan)]
+
+    (go-loop []
+               (when-let [v (async/<! confirm-chan)] ; read from preview chan
+                 (async/put! c @acc)
+                 (recur)))
+
+    (fn[v]
+      (vreset! acc v)
+      c
+      )
+    )
+
+  )
+
+
+
+
+(defn context-map-fn [& {:keys [ui-chan editor-chan confirm-chan]}] ;;
   (merge
     {
     :id (wf/step-handler (fn [a] a))
 
+
+    ;; infinite expander - for adding new steps to workflow, usually from UI
     :ui-loop {:fn (fn [in-chan]
                     (u/wiretap-chan in-chan (partial println "UI:")))
               :infinite true
               :expands? true
               }
 
-;    :identity-async {:fn (fn [a]
-;                           (let [c (async/chan)]
-;                             (go
-;                               (async/put! c a))
-;                             c))}
 
+    ;; infinite editor from channel
     :editor {:fn (partial pipe-fn editor-chan)
                                    :infinite true}
 
 
+    ;; ininite collector that take last value from chann
+    :result {:fn (gen-passthrough-fn confirm-chan)
+                                                 :infinite true
+                                                 :collect? true
+                                                 }
+
+
     :save {:fn (fn [v]
                  (println "SAVING: " (d/pretty v))
+                 v
                  )}
     }
     (get-test-context-map)
@@ -113,13 +150,18 @@
 
       ::md [:md ::text]
 
+      ;; wait for result
+      ::preview [:result ::md]
+
+      ; ::save [:save ::preview]
+
     }
   )
 
 
 
 
-(defn actions-fn [& {:keys [ui-chan editor-chan]}]
+(defn actions-fn [& {:keys [ui-chan editor-chan confirm-chan]}]
   (let [send-ui-action (fn [steps]
                           (go
                             (async/>! ui-chan steps)))]
@@ -128,6 +170,7 @@
                ; (println "close")
                (async/close! ui-chan)
                (async/close! editor-chan)
+               (async/close! confirm-chan)
                )
      :reset! (fn[]
                ; (println "reset!")
@@ -136,11 +179,13 @@
      :actions [
 
       ["save!" (fn []
-                 (send-ui-action {
-                                   ;;
-                                   (wf/rand-sid) [:save ::md]
+                 ;; ; (send-ui-action { (wf/rand-sid) [:save ::md] })
 
-                                   }))]
+                 (go (async/>! confirm-chan :ok))
+
+                 (send-ui-action { (wf/rand-sid) [:save ::preview] })
+                 )
+       ]
 
 
       ]
@@ -206,13 +251,14 @@
 
 
 
+        ;; todo: move this to upper level - ui-fn
         [action params] (get steps ::text)
 
         ;; todo: take sid-list into account
         ;show-param-editor? (and editor-chan
         ;                        (if (wf/sid? params) (not (u/channel? (get result params))) true))
 
-        editor-fn ;(if show-param-editor?
+        editor-fn (if editor-chan;; show-param-editor?
                     (fn []
                       (if (wf/sid? params)
 
@@ -221,7 +267,8 @@
                                        (if-let [nu-params (get result params)] nu-params params)
                                        editor-chan))
                       )
-        ;            nil)
+                    nil)
+
         ]
 
     [:div.popup
@@ -236,7 +283,6 @@
      [:div.flex {:style {:width "60%"}}
        [:div
         ;; [:div @(cursor [:result ::text])]
-
         (editor-fn)
         ]
        ;[:div @(cursor [:result ::md])]
@@ -259,10 +305,10 @@
 
 
 
-(defn ui-fn [& {:keys [ui-chan editor-chan]}]
+(defn ui-fn [& {:keys [ui-chan editor-chan confirm-chan]}]
 
   (fn [*STATE]
-    (<popup-ui> *STATE editor-chan)
+    (<popup-ui> *STATE editor-chan confirm-chan)
     )
 
   )

@@ -201,28 +201,34 @@
         ]
 
 
-    (swap! *STATE merge
-           {
-             :wf {
-                   :status-actions status-actions
+      (swap! *STATE merge
+             {
+               :wf {
+                     :status-actions status-actions
 
-                   :steps steps
-                   :context-map context-map
+                     :steps steps
+                     :context-map context-map
 
-                   ;; :xtor xtor
+                     ;; :xtor xtor
 
-                   :start! start-fn
-                   :stop! stop-fn
+                     :start! start-fn
+                     :stop! stop-fn
 
-                   }
+                     }
 
-             :status :woof.app/not-started
-             :history []
+               :status :woof.app/not-started
+               :history []
 
-             :rum-ui (apply ui-fn args)
-             })
+               :rum-ui (apply ui-fn args)
+               })
+
+      (if true
+        (start-fn))
+
+
+
+    )
   )
-)
 
 
 
@@ -309,11 +315,7 @@
 
 (defn popup-wf [*STATE]
   (init-runner-wf *STATE
-    {
-       :ui-chan (async/chan)
-       :editor-chan (async/chan)
-     ; :state *STATE
-     }
+    (popup/prepare-params)
     popup/context-map-fn
     popup/steps-fn
     popup/actions-fn
