@@ -90,3 +90,15 @@
              menu-items)))
 
 ;; todo: customizible menu input (next to a menu button)
+
+
+;;;
+;;
+
+(rum/defc <text-area> < rum/reactive
+  [value change-fn]
+  [:textarea { :type "text"
+                :value value
+                :on-change (fn [e]
+                             (change-fn (.. e -currentTarget -value))
+                             ) }])

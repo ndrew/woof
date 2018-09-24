@@ -531,181 +531,21 @@
 
 
 
+(comment
+  [:div.graph
+   {:dangerouslySetInnerHTML
+    {:__html (g/graph-to-svg steps (fn [gviz [k [action param]]]
+                                     (if (wf/sid? param)
+                                       (str gviz " "
+                                            (clojure.string/replace (name param) #"-" "_")
+                                            " -> "
+                                            (clojure.string/replace (name k) #"-" "_")
+                                            ";\n")
+                                       gviz
+                                       )
+                                     ))}}]
+  )
 
-(rum/defcs <wf-ui>   <   rum/reactive
-                          {:key-fn (fn [_ *workflow] (get @*workflow :name))}
-
-                          (rum/local ::steps-ui  ::status)
-
-                          (rum/local {:pre   {}
-                                      :post {}} ::editors)
-
-                          (rum/local {::wf-status ::not-started
-                                      ::steps      {}
-                                      ::history    []
-                                      ::result     {}
-                                      ::header     ""
-                                      ::start      0
-                                      } ::result)
-
-  [local _*context _*workflow model]
-
-
-  (let [UI-STATE (make-ui-state local)
-
-        *context   (app-model/get-context* model)
-        *workflow (app-model/get-workflow-cfg* model)
-        *editors   (::editors local)
-
-        status    (get-status UI-STATE)
-        executor  (app-model/get-xctor model)
-        exec-chan (app-model/get-xctor-chan model)
-
-        {steps :steps
-         header :name
-         } @*workflow
-
-
-        ;; processing handler : todo: extract from rum component
-        process-wf! (fn [model]
-
-                     (merge-result UI-STATE {
-                                              ::header header
-                                              ::wf-status ::running
-                                              ::steps steps
-                                              ::start (u/now)
-                                              })
-
-
-                     (set-status UI-STATE ::results-ui)
-
-                      ;; TODO: fix names
-                     (let [opts {:execute (fn [executor]
-                                            ;; use save
-                                             (app-model/get-xctor-chan model)
-                                             )
-                                  :process-handler (partial workflow-handler (get-result* UI-STATE))
-                                  }
-                           worker (wf/->ResultProcessor executor opts)]
-
-                       (wf/process-results! worker)
-                       )
-                     )
-
-        ]
-
-
-    [:div
-     ;; (<graph>)
-
-     [:header header]
-
-
-     (when (#{::steps-ui} status)
-       [:div
-        [:div.tip "Choose your workflow:"]
-
-        (ui/menubar "" [["reset" (fn []
-                                   ;; todo:
-                                   )]
-                         []
-
-                         (ajax-step-mi model UI-STATE)
-                         (generate-wf-mi UI-STATE)
-                         (expand-test-mi model)
-                         (uroboros-test-mi model)
-
-                         (editor-mi model UI-STATE)
-                         (preview-mi model UI-STATE)
-                         (infinity-mi model)
-
-                         ])
-
-        [:div.tip "—"]
-
-        (ui/menubar "" [(run-wf-mi model process-wf!)])
-
-        [:div.tip ""]
-
-        [:div.hbox
-         [:div.steps-ui
-          (ui/menubar "steps" [])
-
-          [:pre (d/pretty steps)]]
-         [:div.context-ui
-          (ui/menubar "context" [])
-          [:pre (d/pretty (keys @*context))]]
-         ]
-
-        #_(comment ;; todo: show via settings
-        [:div.graph
-         {:dangerouslySetInnerHTML
-          {:__html (g/graph-to-svg steps (fn [gviz [k [action param]]]
-                                           (if (wf/sid? param)
-                                             (str gviz " "
-                                                  (clojure.string/replace (name param) #"-" "_")
-                                                  " -> "
-                                                  (clojure.string/replace (name k) #"-" "_")
-                                                  ";\n")
-                                             gviz
-                                             )
-                                           ))}}])
-     ]) ;; end STEPS-UI
-
-
-
-     (when (#{::workflow-ui} status)
-       [:div
-        ;; todo:
-        (ui/menubar header [["run (normal)" (fn[] (run-wf model process-wf!))]
-                         ["run (timeout)" (fn[])]
-                         ["run (with cache)" (fn[])]
-                         ["debug" (fn[])]
-                         ])
-        [:div.tip "Configure workflow execution options."]])
-
-
-
-     (when (#{::results-ui} status)
-
-
-       (let [{status  ::wf-status
-              history ::history
-              header  ::header
-              result  ::result
-              actual-steps ::steps
-              start   ::start
-              } @(::result local)
-
-
-             actions (if (= status ::done)
-                       [
-                         (re-run-mi UI-STATE)
-                         (generate-wf-mi UI-STATE)
-                        ]
-                       [(stop-wf-mi (app-model/get-xctor model))])
-
-             sort-steps (fn [steps]
-                          ;; todo:
-                          ;(into (sorted-map-by <) steps)
-                          steps
-                          )]
-         [:div
-          (wf-ui/<wf-status-ui> status)
-
-          (<wf-progress-ui> start (done-percentage result actual-steps))
-          (ui/menubar header actions)
-
-
-          [:pre
-           (d/pretty (sort-steps actual-steps))
-           ]
-          (r/<wf-results-ui> header result (sort-steps actual-steps) *editors )
-
-          ]
-
-         ))
-]))
 
 
 
@@ -728,31 +568,20 @@
   "initializes first ui update, if needed"
   []
 
-  #_(when-not (::initialized @*APP-STATE)
-      (swap! *APP-STATE merge (first-init-state) {::initialized true}))
+  (when-not (::initialized @*APP-STATE)
+    (swap! *APP-STATE merge (first-init-state) {::initialized true})
+    (runner/init!))
 
-
-  (runner/init!)
   )
 
 
 
 
+;; root ui component
 (rum/defcs <app-ui>
   < rum/reactive [local *STATE]
 
-  #_(let [model (:ui-model @*STATE)]
-    [:div#app
-     ; (r/<test>)
-
-     (<wf-ui>
-       (cursor [:context])
-       (cursor [:workflow])
-       model)
-     ])
-
   [:div#app (runner/<wf-runner-ui> *STATE)]
-
 )
 
 

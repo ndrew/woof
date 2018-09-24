@@ -12,7 +12,6 @@
 
     [woof.data :as d]
     [woof.wf :as wf]
-   ; [woof.wf-data :as wdata]
 
     [woof.utils :as u]
     [woof.test-data :as test-data]
@@ -20,7 +19,6 @@
     [woof.server.utils :refer [read-transit-str write-transit-str]]
 
     [me.raynes.fs :as fs]
-
     )
 )
 
@@ -29,7 +27,8 @@
   "returns the context config for the ws workflow"
   [socket-chan in out-chan<]  ;; context-map
 
-  (merge {  ;; use context 'shared' between client and server
+  (merge
+    {  ;; todo: refine the generic actions needed for RPC
 
       ;; identity function
       :v  {:fn (fn[a] (identity a))}
@@ -58,33 +57,52 @@
                                 (println "DBG: " (d/pretty x))
                                 x))
 
-      :server-time (wf/step-handler (fn[x]
-                                [:server-time (u/now)]))
-
       }
 
-        {
+    {
 
-           ;; expand step that adds steps to the current ws
-           :client<  (wf/receive-steps-handler
-                       :step-fn (fn [steps]
-                                  (println "FILES RECEIVE: " (d/pretty steps))
-                                  steps))
+      ;; expand step that adds steps to the current ws
+      :client<  (wf/receive-steps-handler
+                  :step-fn (fn [steps]
+                             (println "SERVER: expand steps (via :client<)\n" (d/pretty steps))
+                             steps))
 
 
-           ;; step that sends the value back to client
-           :client> (wf/send-value-handler out-chan<
-                                           :v-fn (fn[v]
-                                                   (println "SERVER SEND: " (d/pretty v))
-                                                   v)
-                                           :out-fn (fn [z]
-                                                     (println "SEND TO SOCKET:" z)
-                                                     (httpkit/send! socket-chan (write-transit-str z))
-                                            ))
 
-           ;; todo :client>*
+      ;; fixme: find way of having several actions wiht :out-fn
 
-           }))
+      ;; step that sends the value back to client
+      :client> (wf/send-value-handler out-chan<
+                                      :out-fn (fn [z]
+                                                (println "SERVER: response (via :client>)\n" (d/pretty z))
+                                                (httpkit/send! socket-chan (write-transit-str z))
+                                                ))
+
+      ;; 'cd'
+      :cd {:fn (fn [v]
+                 (let [file (fs/normalized (apply fs/file v))]
+                   (println "SERVER: `cd " (.getAbsolutePath file) "`")
+                   (.getAbsolutePath file))
+
+                 )}
+
+      ;; 'ls'
+      :dir {:fn (fn[f]
+                  (println "SERVER: `dir " f "`")
+                  (let [base (fs/normalized (fs/file f))]
+                    (map (fn [f]
+                           (str
+                             (if (fs/directory? f) "/" "")
+                             (fs/base-name f))
+
+                           ) (fs/list-dir base))))
+
+            }
+
+      :cwd-response {:fn (fn[x] [:cwd x])}
+      :dir-response {:fn (fn[x] [:dir x])}
+
+}))
 
 
 (defn prepare-steps
@@ -92,12 +110,21 @@
   [in-chan> out]
 
   {
-    ;; optional initialization can be done here
+    ;; ws
     ::receive-loop [:client< in-chan>]
 
-    ::initial-cwd [:v [:cwd (.getAbsolutePath (fs/home))]]
+    ;; send initial cwd to the client
+    ::initial-cwd [:v (.getAbsolutePath (fs/file "/Users/ndrw/m/woof"))]
 
-    ::client-init [:client> ::initial-cwd]
+    ::cwd-response [:cwd-response ::initial-cwd]
+    ::client-init [:client> ::cwd-response]
+
+
 
     }
   )
+
+
+
+
+

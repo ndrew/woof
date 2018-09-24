@@ -1989,14 +1989,16 @@
   )
 
 
+;; fixme: refine the api for 'send-value' handlers
+;;
+
 (defn send-value-handler
   "parametrizable function that generate send value handler"
   [out-chan<
    & {:keys [v-fn out-fn return-fn]
       :or {v-fn identity
            out-fn identity
-           return-fn (fn[v vs]
-                       vs)
+           return-fn (fn[v vs] vs)
            }} ]
 
 
@@ -2026,8 +2028,7 @@
    & {:keys [v-fn out-fn return-fn]
       :or {v-fn identity
            out-fn identity
-           return-fn (fn[v vs]
-                       {})
+           return-fn (fn[v vs] {})
            }}]
 
   (go-loop []

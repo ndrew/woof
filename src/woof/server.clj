@@ -97,6 +97,8 @@
   "compojure handler for httpkit/with-channel"
   [socket-chan context-fn steps-fn]
 
+  (println "SERVER: start wf")
+
   (let [in-chan> (async/chan)
         out-chan< (async/chan)
 
@@ -109,11 +111,13 @@
       (httpkit/on-receive socket-chan
         (fn [payload]
           (let [msg (read-transit-str payload)]
+            (println "SERVER: got " (d/pretty msg))
             (go
               (async/put! in-chan> msg)))))
 
       (httpkit/on-close socket-chan
         (fn [status]
+          (println "SERVER: end wf")
           (wf/end! xtor)
           ;; maybe, get the wf results some how
 
