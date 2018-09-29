@@ -56,15 +56,41 @@
   )
 
 
+(defn- default-state[]
+  {
+    :cwd nil
+    :files []
+
+
+    ;; communication
+
+    :comm {
+            :client []
+            :server []
+            }
+
+    }
+  )
+
 
 ;; internal state
-(defonce *state (atom {
-                        :cwd nil
-                        :files []
-                        }))
+(defonce *state (atom (default-state)))
 
 (def cursor (partial rum/cursor-in *state))
 
+
+;; track calls to ws and from ws for visualization
+
+(def *comm (cursor [:comm]))
+
+(defn server-comm! [e]
+  (swap! *comm update-in [:server] conj e)
+  (swap! *comm update-in [:client] conj [])
+)
+
+(defn client-comm! [e]
+  (swap! *comm update-in [:client] conj e)
+  (swap! *comm update-in [:server] conj []))
 
 
 ;; init and return parameters needed for
@@ -73,14 +99,23 @@
 ;;  * wf internal state
 (defn prepare-params! [endpoint-url]
 
+
+
   (let [server-in (async/chan)
         server-out (async/chan)
         endpoint (ws/ws-server endpoint-url
                                   :on-message (fn [msg]
-                                    (if-let [steps (response-fn msg)]
+                                    ; (.warn js/console (d/pretty msg))
+
+
+                                    (when-let [steps (response-fn msg)]
+                                      ;;
+                                      (server-comm! [msg steps])
+
                                       (go
                                         (async/put! server-out steps)))))]
 
+  (reset! *state (default-state))
   {
     ;; ws endpoint
     :endpoint endpoint
@@ -111,6 +146,8 @@
 
 ;;
 ;; context function
+
+
 
 (defn context-map-fn [& {:keys [ui-chan server-in server-out endpoint ]}] ;;
   {
@@ -151,14 +188,15 @@
                :v-fn (fn[v]
                        (let [sid (wf/rand-sid)
                              sid1 (wf/rand-sid)
-                             ]
-                         {
-                           sid [:cd v]
-                           sid1 [:cwd-response sid]
-                           (wf/rand-sid) [:client> sid1]
-                           }
-                         )
+                             steps {
+                                     sid [:cd v]
+                                     sid1 [:cwd-response sid]
+                                     (wf/rand-sid) [:client> sid1]
+                                     }]
 
+                         (client-comm! [[:set-cwd v] steps])
+                         steps
+                         )
                        )
                :out-fn (fn [z]
                          (ws/send! endpoint z)))
@@ -170,18 +208,26 @@
     :get-files (wf/send-value-handler*                ;; todo: find better name
                  server-in
                  :v-fn (fn[v]
+
+
                          (let [sid (wf/rand-sid)
                                sid1 (wf/rand-sid)
+
+                               steps {
+                                       sid [:dir v]
+                                       sid1 [:dir-response sid]
+                                       (wf/rand-sid) [:client> sid1]
+                                       }
                                ]
-                           {
-                             sid [:dir v]
-                             sid1 [:dir-response sid]
-                             (wf/rand-sid) [:client> sid1]
-                             }
+
+                             (client-comm! [[:get-files v] steps])
+                             steps
                            )
 
                          )
                  :out-fn (fn [z]
+
+
                            (ws/send! endpoint z))
 
                  )
@@ -254,6 +300,40 @@
 
 
 
+(rum/defc <action> < rum/reactive[v]
+
+  (let [[action params] v]
+    [:div
+     (d/pretty action)
+       (if (string? params)
+         (d/pretty params)
+         (ui/menu-item "..." (fn [] (println (d/pretty params)))))
+
+     ]
+
+    )
+  )
+
+(rum/defc <log> < rum/reactive
+  [[client server]]
+
+  (let [server? (= client [])]
+    (if server?
+      [:div.hbox
+       [:div (ui/menu-item "..." (fn [] (println (d/pretty (last server)))))]
+       [:div "⇦"]
+       (<action> (first server))
+       ;[:div (d/pretty (first server))]
+      ]
+      [:div.hbox
+       ; [:div (d/pretty (first client))]
+       (<action> (first client))
+       [:div "⇨"]
+       [:div (ui/menu-item "..." (fn [] (println (d/pretty (last client)))))]
+      ]
+      )
+    )
+)
 
 (rum/defcs <mc> < rum/reactive
   (rum/local "" ::pattern)
@@ -278,6 +358,29 @@
 
 
        [:div ;; .hbox
+
+        ;[:pre (d/pretty @*STATE)]
+
+        (let [comm @*comm
+              client-comm (:client comm)
+              server-comm  (:server comm)
+
+
+              ]
+
+          (into
+          [:div.communication
+           [:div.hbox
+            [:header "Server"]
+            [:header "-"]
+            [:header "Client"]
+            ]
+           ]
+          (map <log> (map vector client-comm server-comm)))
+
+          )
+
+
         [:div.files
          [:header cwd
           [:a {:href "#"
@@ -312,6 +415,8 @@
 (defn ui-fn [& {:keys [ui-chan server-in server-out endpoint local-state]}]
 
   (fn [*STATE]
-    (<mc> *STATE local-state ui-chan))
+    [:div
+      (<mc> *STATE local-state ui-chan)
+     ])
 
 )

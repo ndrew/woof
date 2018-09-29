@@ -29,7 +29,13 @@
 
     [woof.example.files-ui :as files-ws]
 
-    [woof.example.ws :as ws])
+    [woof.example.ws :as ws]
+
+    [woof.example.ouroboros :as ouroboros]
+    [woof.example.infinite :as infinite]
+    [woof.example.big-wf :as big-wf]
+
+    )
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -65,8 +71,117 @@
 ;;
 ;; main state atom for workflow runner
 
+(declare default-ui-fn)
+(declare init-runner-wf!)
+
+;; basic uis
+
+(defn ouroboros-wf [*STATE]
+  (init-runner-wf! *STATE
+    (ouroboros/prepare-params!)
+    ouroboros/context-map-fn
+    ouroboros/steps-fn
+    ouroboros/actions-fn
+    (partial default-ui-fn "infinite clock")
+    :auto-start true
+  )
+)
+
+(defn infinite-wf [*STATE]
+  (init-runner-wf! *STATE
+    (infinite/prepare-params!)
+    infinite/context-map-fn
+    infinite/steps-fn
+    infinite/actions-fn
+    (partial default-ui-fn "infinite workflow")
+    :auto-start true
+  )
+)
+
+(defn expand-wf [*STATE]
+  (init-runner-wf! *STATE
+    (big-wf/prepare-params!)
+    big-wf/context-map-fn
+    big-wf/steps-fn
+    big-wf/actions-fn
+    (partial default-ui-fn "expand")
+    ; :auto-start true
+  )
+)
+
+
+
+;; complex uis
+
+(defn ui-loop-wf [*STATE]
+  (init-runner-wf! *STATE
+    {:ui-chan (async/chan)}
+    ui-loop/context-map-fn
+    ui-loop/steps-fn
+    ui-loop/actions-fn
+    (partial default-ui-fn "Example of using workflow with infinite expand handler as ui-loop."))
+  )
+
+
+(defn popup-wf [*STATE]
+  (init-runner-wf! *STATE
+    (popup/prepare-params)
+    popup/context-map-fn
+    popup/steps-fn
+    popup/actions-fn
+    popup/ui-fn)
+  )
+
+
+
+(defn ws-wf [*STATE]
+  (init-runner-wf! *STATE
+    (ws/prepare-params! "/api/websocket")
+    ws/context-map-fn
+    ws/steps-fn
+    ws/actions-fn
+    (partial default-ui-fn "websocket RPC")
+  )
+)
+
+
+(defn files-ws-wf [*STATE]
+  (init-runner-wf! *STATE
+    (files-ws/prepare-params! "/api/files")
+    files-ws/context-map-fn
+    files-ws/steps-fn
+    files-ws/actions-fn
+    files-ws/ui-fn
+    :auto-start true
+  )
+)
+
+
+
+
+
+
+
 (defonce *UI-STATE (atom
     {
+
+
+      :basic-worflows [
+                        ["ouroboros" ouroboros-wf]
+                        ["infinite" infinite-wf]
+                        ["expand" expand-wf]
+                        ]
+      :complex-workflows [
+                            ["UI loop" ui-loop-wf]
+                            []
+                            ["file browser" files-ws-wf]
+                            []
+                            ["popup"   popup-wf ]
+                            []
+                            ["rpc via webservice" ws-wf]
+                            ]
+
+
       ;; status of current workflow
       :status :woof.app/not-started
 
@@ -290,7 +405,7 @@
 
 ;; default wf runner ui
 (rum/defcs <wf-ui> < rum/reactive
-  [local *STATE]
+  [local header *STATE]
 
   (let [cursor (partial rum/cursor-in *STATE)
 
@@ -299,7 +414,7 @@
          full-history :history} @*STATE]
 
     [:div.wfui
-     [:h5 "Example of using workflow with infinite expand handler as ui-loop."]
+     [:h5 header]
 
      ;; pre-wf stuff: steps
 
@@ -347,87 +462,40 @@
   )
 
 
-
-
-
-
-
-
-
-(defn default-ui-fn []
+(defn default-ui-fn [header]
   (fn [*STATE]
-    (<wf-ui> *STATE)))
+    (<wf-ui> header *STATE)))
 
-(defn ui-loop-wf [*STATE]
-  (init-runner-wf! *STATE
-    {:ui-chan (async/chan)}
-    ui-loop/context-map-fn
-    ui-loop/steps-fn
-    ui-loop/actions-fn
-    default-ui-fn)
+
+
+(rum/defc <wf-list> < rum/reactive [*STATE]
+  (let [inject-state (fn[item]
+                        (if-let [[h action] item]
+                          (if action
+                            [h (partial action *STATE)]
+                            item)))
+
+         { basic-items :basic-worflows
+           complex-items :complex-workflows} @*STATE]
+
+
+    [:div
+     [:div (ui/menubar "Simple workflows:" (map inject-state basic-items))]
+     [:hr]
+     [:div (ui/menubar "Complex workflows:" (map inject-state complex-items))]]
+    )
   )
 
 
-(defn popup-wf [*STATE]
-  (init-runner-wf! *STATE
-    (popup/prepare-params)
-    popup/context-map-fn
-    popup/steps-fn
-    popup/actions-fn
-    popup/ui-fn)
-  )
-
-
-
-(defn ws-wf [*STATE]
-  (init-runner-wf! *STATE
-    (ws/prepare-params! "/api/websocket")
-    ws/context-map-fn
-    ws/steps-fn
-    ws/actions-fn
-    default-ui-fn
-  )
-)
-
-(defn files-ws-wf [*STATE]
-  (init-runner-wf! *STATE
-    (files-ws/prepare-params! "/api/files")
-    files-ws/context-map-fn
-    files-ws/steps-fn
-    files-ws/actions-fn
-    files-ws/ui-fn
-    :auto-start true
-  )
-)
-
-
-
-
-
-;; wf can provide its own ui
-
-(rum/defcs <wf-runner-ui> < rum/reactive
-
-  [local *STATE]
+(rum/defc <wf-runner-ui> < rum/reactive [*STATE]
 
   (let [{wf :wf
-         ui  :rum-ui} @*STATE]
+         ui  :rum-ui} @*STATE
 
-    (if wf
-      (if ui
-        (ui *STATE)
-        (<wf-ui> *STATE))
-      [:div
-       (ui/menubar "WF:" [
-                           ["UI loop" (partial ui-loop-wf *STATE)]
-                           []
-                           ["file browser" (partial files-ws-wf *STATE)]
-                           []
-                           ["popup"   (partial popup-wf *STATE)]
-                           []
-                           ["rpc via webservice"      (partial ws-wf *STATE)]
+        <ui> (if-not wf
+               <wf-list>
+               (if ui ui <wf-ui>))
+        ]
 
-                           ])]
-      )
-
+    (<ui> *STATE)
 ))
