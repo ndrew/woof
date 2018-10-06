@@ -2,36 +2,24 @@
   "helper and utils."
   (:require
     [woof.data :as d]
+    [woof.u :as base]
     [clojure.core.async :as async :refer [go go-loop]]))
 
 
-(defn sid
-  "generates a particular id for a step — sid"
-  ([id]
-   (keyword (str *ns*
-                 "/"
-                 (if (keyword? id) (name id) id))))
-  ([prefix id]
-   (sid (str prefix
-             (if (keyword? id) (name id) id)))))
+(def sid base/sid)
 
-;; predicates that check parameter in workflow is a link to other action
-(defn sid?
-  "checks if id is sid: it should be qualified keyword. So we can distinguish it as parameter"
-  [id]
-  (qualified-keyword? id))
+(def sid? base/sid?)
+
+(def sid-list? base/sid-list?)
+
+(def sid-map base/sid-map )
+
+(def rand-sid base/rand-sid)
+
+(def subsitute-with-rand-sids base/subsitute-with-rand-sids)
 
 
-(defn sid-list?
-  "checkis if sids is a collection where all items are sid"
-  [sids]
-  (and (coll? sids) (every? sid? sids)))
-
-
-(defn sid-map [pairs] ;; or use (assoc (array-map) k1 v1 k2 v2)
-  (into (array-map) (map identity pairs)))
-
-
+(def nil-get base/nil-get)
 
 (defn timeout
   "returns timeout channel"
@@ -87,33 +75,9 @@
     (if (exception? s) s (Exception. s))))
 
 
-(defn nil-get [rr id]
-  (let [r (get rr id)]
-    (if (nil? r)
-      (if (contains? rr id) :nil nil)
-      r)))
 
 
-
-
-(defn wiretap-chan
-  "splits in-chan into internal channel and resulting channel"
-  [in-chan wiretap-handler]
-  (let [mult-c (async/mult in-chan)
-
-        dbg-chan (async/chan)
-        piped-c  (async/chan)]
-
-    (async/tap mult-c dbg-chan)
-    (async/tap mult-c piped-c)
-
-    (go-loop []
-             (wiretap-handler (async/<! dbg-chan))
-             (recur))
-
-    piped-c)
-  )
-
+(def wiretap-chan base/wiretap-chan)
 
 
 ;; transducers
@@ -192,4 +156,16 @@
 
 (defmacro inline--fn1 [the-fn v]
   `(~the-fn ~v))
+
+;;
+(defn close-channels!
+  "closes channels in arguments array"
+  [r]
+  (doall
+    (doseq [c r]
+      (when (channel? c)
+        (async/close! c)
+        )
+    ))
+  )
 

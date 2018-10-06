@@ -4,8 +4,6 @@
             [woof.cache :as cache]
             [woof.graph :as g]
 
-            [compact-uuids.core :as uuid]
-
             #?(:clj [woof.utils :as u :refer [put!? debug! inline--fn inline--fn1]])
             #?(:cljs [woof.utils :as u])
 
@@ -48,17 +46,7 @@
 (def sid-list? u/sid-list?)
 
 
-(defn- gen-uuid []
-  #?(:clj  (java.util.UUID/randomUUID)
-     :cljs (random-uuid)))
-
-
-(defn rand-sid
-  "generates random sid"
-  ([]
-    (sid (uuid/str (gen-uuid))))
-  ([prefix]
-    (sid prefix (uuid/str (gen-uuid)))))
+(def rand-sid u/rand-sid)
 
 
 
@@ -105,6 +93,12 @@
 ;; right now the step handler behaviour is determined at 'compile' time
 ;    TODO: dynamic expands? collects? etc.
 
+
+;;
+;; step handler constructors
+
+
+;; generic cosntructor
 (defn step-handler
   "step hander constructor function"
 
@@ -120,7 +114,7 @@
    })
 
 
-
+;; expand
 
 (defn- steps-from-sids
   [sid-fn step-body-fn ids]
@@ -128,10 +122,6 @@
              (fn [x]
                [(sid-fn x) (step-body-fn x)])
              ids)))
-
-
-
-
 
 
 (defn expand-handler
@@ -150,9 +140,33 @@
                         (if (sid? ids)
                           (steps-from-sids sid-fn step-body-fn [ids])
                           (step-handler-fn ids))))
-                    :expands? true))
-  )
+                    :expands? true)))
 
+;; infinite expand
+
+
+;; todo: add transducer
+(defn infinite-expand-handler
+  "generates infinite expand handler that waits for the steps from the channel param"
+  []
+  {
+    :fn (fn[in>]
+          (let [chan> (async/chan)]
+            (go-loop []
+                     (when-let [v (async/<! in>)]
+                       (if-not (map? v)
+                         (u/throw! (str "invalid expand map passed to :in " (d/pretty v))))
+
+                       ;; (locking *out* (println "PUB: IN" (d/pretty v)))
+                       (async/put! chan> v)
+                       (recur))
+                     )
+            chan>))
+    :infinite true
+    :expands? true
+    }
+
+  )
 
 
 
