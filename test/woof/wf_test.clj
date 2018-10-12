@@ -340,7 +340,7 @@
                                        ;; (async/chan 1 (wf/chunk-update-xf 20))
                                        exec-chann))
 
-        before-processing! (fn [exec-chann]
+        before-processing! (fn [exec-chann executor]
                              (go
                                (async/<! (u/timeout 3500))
                                ;;(println "timeout" (d/pretty @*result))

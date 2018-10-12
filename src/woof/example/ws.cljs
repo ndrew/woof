@@ -12,6 +12,8 @@
     [woof.ui :as ui]
     [woof.wf-ui :as wf-ui]
 
+    [woof.xform :as x]
+
     [clojure.data :as cd])
     (:require-macros
       [cljs.core.async.macros :refer [go go-loop]]
@@ -46,6 +48,12 @@
    :endpoint endpoint
    })
   )
+
+
+
+
+
+
 
 
 (defn client-context-map []
@@ -92,6 +100,7 @@
 
 
 (defn context-map-fn [& {:keys [ui-chan server-in server-out endpoint ]}] ;;
+
   (merge (client-context-map)
   {
     ;; main ui loop
@@ -103,17 +112,227 @@
               :expands? true
               }
 
+
+    ;; receive from server
+
     ; waits for server responses from channel passed as parameter
-    :server< (wf/receive-steps-handler
-               :step-fn
-               (fn [steps]
-                 (swap! *LOG conj ["server->client:" steps] )
-                 steps))
+    :server< {
+               :fn (x/global-shandler
+                     (x/infinite-expand-rf (fn
+                                             ([] server-out) ;; return channel
+
+                                             ([steps]
+                                              (if-not (nil? steps)
+                                                (do
+                                                  (if-not (map? steps)
+                                                    (u/throw! (str "invalid expand map passed to :in " (d/pretty steps))))
+                                                  (locking *out* (println "WF RECEIVE: " (d/pretty steps)))
+                                                  (swap! *LOG conj ["server->client:" steps])
+                                                  steps
+                                                  )
+                                                )
+                                              )
+
+                                             ([in-chan out-chan]
+                                              (locking *out* (println "closing :client< handler" in-chan out-chan))
+                                              ;; when this is called?
+                                              )
+                                             )))
+               :infinite true
+               :expands? true
+               }
+
+
+
+    :server> {:fn (x/global-shandler
+                    (x/channel-collect-rf
+                      (fn
+                        ([]
+                         server-in)
+                        ([v]
+                         ; (locking *out* [:to-client v])
+
+                         (println "SEND TO SERVER" (d/pretty v))
+
+                         (let [v-sid (wf/rand-sid)
+                                          v-ref (wf/rand-sid "&")
+                                          v*    (wf/rand-sid "*")
+                                          zip   (wf/rand-sid "zip-")
+
+                                          out   (wf/rand-sid ">")
+
+                                          ]
+                                      ;; emits the following steps
+
+                                      (ws/send! endpoint  {
+                                        ;; add a value (optional if edn)
+                                        v-sid [:v v]
+                                        v-ref [:&v v-sid] ;; get a reference to it
+                                        v*    [:v* [v-sid]] ;; get a value list
+                                        zip   [:zip [v-ref v*]] ;; interleave them
+
+                                        ;; specify what to return to client
+                                        out   [:client> zip]
+
+                                        })
+                           )
+                         )
+                        ([v vs]
+
+                         (let [sid (wf/rand-sid "out-")]
+                                           {sid [:&v vs]
+                                            (wf/rand-sid) [:log ["client-server:" v "->" vs]]})
+                         ;(locking *out* (println "end!" a b))
+                         )
+                        )
+                      ))
+              :expands? true
+              }
+
+
+    })
+  )
+
+
+
+
+(defn steps-fn [& {:keys [ui-chan server-in server-out]}]
+    {
+      ::ui  [:ui-loop ui-chan]
+
+      ::server-loop [:server< nil]
+
+      ;; ::hello [:log "Hello!"]
+      ;; ::payload [:server> "HELLO"]
+
+      ;; uncomment this for infinite send
+      ; ::tick [:tick 3000]
+      ; ::payload [:server> ::tick]
+      }
+  )
+
+
+
+
+(defn actions-fn [& {:keys [ui-chan server-in server-out endpoint]}]
+  {:start! (fn []
+             ;; may return channel
+             (ws/start endpoint))
+   :stop!  (fn []
+             (ws/close! endpoint)
+
+             (async/close! server-in)
+             (async/close! server-out)
+
+             (async/close! ui-chan)
+
+             )
+   :reset! (fn[]
+             ;; todo:
+             ; (println "reset!")
+             )
+
+   :actions [
+              ["ping" (fn[]
+                        (ws/send! endpoint (u/subsitute-with-rand-sids
+                                             {:ping {}}
+                                             {::ping [:debug (str "ping - " (.getTime (js/Date.)))]}))
+                        )]
+              ["send!" (fn[]
+                         (go ;; add new :server> step via :ui-chan
+                           (async/>! ui-chan
+                                     {(wf/rand-sid) [:server> (str "click - " (.getTime (js/Date.)))]}
+                                     )))]
+
+               ["expand"
+                (fn []
+
+                  (let [steps (d/to-primitive
+                                (js/prompt "provide step as map, like {:a/a [:server! {:a/a [:log \"hello\"]}]}"))]
+                    (go ;; add new :server> step via :ui-chan
+                      (async/>! ui-chan
+                                steps))))
+                ]
+              ]
+   })
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+  (comment
+
+
+;; fixme: refine the api for 'send-value' handlers
+;;
+
+;; fixme: wrong abstraction remove from here
+
+(defn send-value-handler
+  "parametrizable function that generate send value handler"
+  [out-chan<
+   & {:keys [v-fn out-fn return-fn]
+      :or {v-fn identity
+           out-fn identity
+           return-fn (fn[v vs] vs)
+           }} ]
+
+
+  (go-loop []
+           (if-let [v (async/<! out-chan<)] ;; redirect the wf output onto wire
+             (do
+               (inline--fn1 out-fn v)
+               (recur))
+             )
+           )
+
+
+  {:fn (fn [v]
+         ;; transform v into other value or steps
+         (let [vs (v-fn v)]
+           (go ;; send the new value to out-chan<
+             (async/>! out-chan< vs))
+           ;; return a result
+           (return-fn v vs)))
+   :collect? true
+   })
+
+
+
+(defn send-value-handler*
+  "parametrizable function that generate send value handler"
+  [out-chan<
+   & {:keys [v-fn out-fn return-fn]
+      :or {v-fn identity
+           out-fn identity
+           return-fn (fn[v vs] {})
+           }}]
+
+  (go-loop []
+           (if-let [v (async/<! out-chan<)]
+             (do
+               (inline--fn1 out-fn v)
+               (recur))))
+
+  { :fn (fn [v]
+         ;; transform v into other value or steps
+         (let [vs (v-fn v)]
+           (go ;; send the new steps to out-chan<
+             (async/>! out-chan< vs))
+           ;; return added steps
+           (return-fn v vs)))
+
+    :expands? true
+    }
+  )
+
+
+
+    {
 
 
     ;; sends steps to be executed by server
-    :server> ;; {:fn (partial client-send! server-in) :expands? true }
-    (wf/send-value-handler* server-in
+    :server>1 ;; {:fn (partial client-send! server-in) :expands? true }
+    (send-value-handler* server-in
                             :v-fn (fn[v]
                                     (let [v-sid (wf/rand-sid)
                                           v-ref (wf/rand-sid "&")
@@ -151,7 +370,7 @@
 
 
     :server! ;; {:fn (partial client-send! server-in) :expands? true }
-    (wf/send-value-handler* server-in
+      (send-value-handler* server-in
                             :v-fn (fn[v]
                                     v
                                     )
@@ -165,64 +384,29 @@
                                             (wf/rand-sid) [:log ["client-server:" v "->" vs]]})
                                          )
                             )
-    })
-  )
-
-
-
-
-(defn steps-fn [& {:keys [ui-chan server-in server-out]}]
-    {
-      ::ui  [:ui-loop ui-chan]
-
-      ::server-loop [:server< server-out]
-
-      ::hello [:log "Hello!"]
-
-      ;; ::payload [:server> "HELLO"]
-
-
-      ;; uncomment this for infinite send
-      ; ::tick [:tick 3000]
-      ; ::payload [:server> ::tick]
-
       }
-  )
+
+        :s! {:fn (x/global-shandler
+                    (x/channel-collect-rf
+                      (fn
+                        ([]
+                         server-in)
+                        ([v]
+                         ; (locking *out* [:to-client v])
+
+                         (ws/send! endpoint v)
+                         v)
+                        ([v vs]
+                         (let [sid (wf/rand-sid "out-")]
+                                           {sid [:&v vs]
+                                            (wf/rand-sid) [:log ["client-server:" v "->" vs]]})
+                         ;(locking *out* (println "end!" a b))
+                         )
+                        )
+                      ))
+              :collect? true
+              }
 
 
+    )
 
-
-(defn actions-fn [& {:keys [ui-chan server-in server-out endpoint]}]
-  {:start! (fn []
-             ;; may return channel
-             (ws/start endpoint))
-   :stop!  (fn []
-             (ws/close! endpoint)
-
-             (async/close! ui-chan)
-
-             (async/close! server-in)
-             (async/close! server-out)
-             )
-   :reset! (fn[]
-             ; (println "reset!")
-             )
-
-   :actions [
-              ["send!" (fn[]
-                         (go ;; add new :server> step via :ui-chan
-                           (async/>! ui-chan
-                                     {(wf/rand-sid) [:server> (str "click - " (.getTime (js/Date.)))]}
-                                     )))]
-
-               ["expand"
-                (fn []
-
-                  (let [steps (d/to-primitive
-                                (js/prompt "provide step as map, like {:a/a [:server! {:a/a [:log \"hello\"]}]}"))]
-                    (go ;; add new :server> step via :ui-chan
-                      (async/>! ui-chan
-                                steps))))
-                ]
-              ]
-   })

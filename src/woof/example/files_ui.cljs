@@ -18,13 +18,110 @@
     )
 
   (:require-macros
-    [cljs.core.async.macros :refer [go go-loop]]))
+    [cljs.core.async.macros :refer [go go-loop]]
+    [woof.utils-macros :refer [inline--fn1]]
+    ))
 
 
 ;; woof commander
 
 ;; real world example of client server communication
 
+
+
+
+(defn receive-steps-handler
+  "creates a step handler config [:your-handler-name <in-channel>] that will wait for the steps from <in-channel>.
+  Parametrizeble by optional :step-fn param "
+  [& {:keys [step-fn]
+      :or {step-fn identity}}]
+  {
+    :fn (fn [in>]
+          (let [chan> (async/chan)]
+            (go-loop []
+                     (when-let [new-steps (async/<! in>)]
+
+                       (if-not (map? new-steps)
+                         (u/throw! (str "invalid expand map passed to :in " (d/pretty new-steps))))
+
+                       ; (locking *out* (println "server: IN" (d/pretty new-steps)))
+
+                       (async/put! chan> (step-fn new-steps))
+                       ;; todo: use :expand-key instead of having intermediary steps
+                       ;; #_(async/put! chan> (with-meta {sid v} {:expand-key sid}))
+                       (recur)
+                       )
+                     )
+            chan>))
+    :infinite true
+    :expands? true
+    }
+  )
+
+
+
+
+;; fixme: refine the api for 'send-value' handlers
+;;
+
+;; fixme: wrong abstraction remove from here
+
+(defn send-value-handler
+  "parametrizable function that generate send value handler"
+  [out-chan<
+   & {:keys [v-fn out-fn return-fn]
+      :or {v-fn identity
+           out-fn identity
+           return-fn (fn[v vs] vs)
+           }} ]
+
+
+  (go-loop []
+           (if-let [v (async/<! out-chan<)] ;; redirect the wf output onto wire
+             (do
+               (inline--fn1 out-fn v)
+               (recur))
+             )
+           )
+
+
+  {:fn (fn [v]
+         ;; transform v into other value or steps
+         (let [vs (v-fn v)]
+           (go ;; send the new value to out-chan<
+             (async/>! out-chan< vs))
+           ;; return a result
+           (return-fn v vs)))
+   :collect? true
+   })
+
+
+(defn send-value-handler*
+  "parametrizable function that generate send value handler"
+  [out-chan<
+   & {:keys [v-fn out-fn return-fn]
+      :or {v-fn identity
+           out-fn identity
+           return-fn (fn[v vs] {})
+           }}]
+
+  (go-loop []
+           (if-let [v (async/<! out-chan<)]
+             (do
+               (inline--fn1 out-fn v)
+               (recur))))
+
+  { :fn (fn [v]
+         ;; transform v into other value or steps
+         (let [vs (v-fn v)]
+           (go ;; send the new steps to out-chan<
+             (async/>! out-chan< vs))
+           ;; return added steps
+           (return-fn v vs)))
+
+    :expands? true
+    }
+  )
 
 
 ;; ws communication
@@ -174,7 +271,7 @@
     ;; ws
 
     ; waits for server responses from channel passed as parameter
-    :server< (wf/receive-steps-handler
+    :server< (receive-steps-handler
                :step-fn
                (fn [steps]
                  (println (d/pretty ["adding new steps from server:" steps]))
@@ -183,7 +280,7 @@
 
 
     ;; sends steps to server to set the cwd
-    :set-cwd (wf/send-value-handler*              ;; todo: find better name
+    :set-cwd (send-value-handler*              ;; todo: find better name
                server-in
                :v-fn (fn[v]
                        (let [sid (wf/rand-sid)
@@ -205,7 +302,7 @@
 
 
     ;; sends steps to server worflow to file names for director
-    :get-files (wf/send-value-handler*                ;; todo: find better name
+    :get-files (send-value-handler*                ;; todo: find better name
                  server-in
                  :v-fn (fn[v]
 
@@ -334,6 +431,8 @@
       )
     )
 )
+
+;; how to make this as a component
 
 (rum/defcs <mc> < rum/reactive
   (rum/local "" ::pattern)

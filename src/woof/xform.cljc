@@ -92,3 +92,78 @@
     (rf input (rf input))))
 
 
+
+
+;; xform that waits for values via channel
+;;
+;; transuder
+;; init [] - return a channel
+;; step [v] -
+;; completion [] - not used
+(defn infinite-expand-rf [rf]
+  (let [chan> (async/chan)]
+    (fn
+      ([]
+       (let [in-chan (rf)]
+         (locking *out* (println "STARTED infinite loop:"))
+         (go-loop []
+                  (if-let [v (async/<! in-chan)]
+                    (do
+                      (locking *out* (println "GOT:" v))
+                      (if-let [z (rf v)]
+                        (async/put! chan> z))
+                      (recur)
+                      )
+                    )
+                  ))
+       )
+      ([v]
+       chan>)
+      ([initial out-chan]
+       (if-let [v (rf initial)]
+         (go
+            (locking *out* (println "SEND from infinite loop:" v))
+
+           (async/put! out-chan v)))
+       out-chan
+      ))
+  ))
+
+
+;; todo:
+
+(defn channel-collect-rf [rf]
+  (let []
+    (fn
+      ([]
+       (let [out-chan< (rf)]
+         (go-loop []
+             (if-let [v (async/<! out-chan<)] ;; redirect the wf output onto wire
+               (do
+                 (inline--fn1 rf v)
+                 (recur))
+               (do
+                 (rf out-chan< nil)
+                 )
+               )
+             ))
+
+       )
+      ([v]
+       (if-let [vs v]
+         (do
+           (go ;; send the new value to out-chan<
+             (async/>! (rf) vs))
+           vs
+           )
+         v
+         )
+       )
+      ([a b]
+       (rf a b)
+       )
+      )
+    )
+  )
+
+

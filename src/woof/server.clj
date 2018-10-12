@@ -12,15 +12,17 @@
 
     [woof.data :as d]
     [woof.wf :as wf]
+    [woof.wfc :as wfc]
    ; [woof.wf-data :as wdata]
 
-    [woof.utils :as u]
+    [woof.utils :as u :refer [inline--fn1]]
     [woof.test-data :as test-data]
 
-
-    [woof.server.utils :refer [read-transit-str write-transit-str]]
+    [woof.server.utils :refer [read-transit-str write-transit-str httpkit-opts]]
     [woof.example.files :as files-wf]
 
+
+    [woof.example.ws :as ws]
     )
   (:gen-class))
 
@@ -28,81 +30,45 @@
 ;;
 ;; websocket workflow
 
-;; (compojure/GET "/your/websocket/url" [:as req]
-;;  (httpkit/with-channel
-;;    req chan
-;;    ;; chan — socket channel
-;;
-;;    (ws-wf! chan  ;; will run the workflow
-;;      (fn[socket in out] {}) ;; -> context map,
-;;      (fn[in out] {})        ;; -> steps
 
-      ;; messages from socket channel are put to in channel is linked to a ws
-
-      ;; message from workflow should be put to out channel,
-      ;;   which later should be written to socket via
-      ;;
-      ;;  (httpkit/send! socket-chan (write-transit-str value))
-
-;;  )))
-;;
-
-
-
-(def *ws-context
-  (atom
-    {
-
-      ;; identity function
-      :v  {:fn (fn[a] (identity a))}
-
-      ;; debug
-      :log  {:fn (fn[a]
-                   (locking *out* (println "DBG:" a))
-                   (identity a))}
-
-      ;; reference
-      :&v {:fn (fn[a]
-                 {(wf/rand-sid) [:v a]})
-           :expands? true}
-
-      ;; collect
-      :v* {:fn identity :collect? true}
-
-      ;; zipper
-      :zip {:fn (fn [vs]
-                  (partition (count vs) (apply interleave vs)))
-            :collect? true}
-
-
-      ;; older steps
-      :debug (wf/step-handler (fn[x]
-                                (println "DBG: " (d/pretty x))
-                                x))
-
-      :server-time (wf/step-handler (fn[x]
-                                [:server-time (u/now)]))
-
-      }
-))
+;; workflow can be used for RPC via websocket
 
 
 
 
 
 
-;; todo: add optional named arguments to ws f
 
+(defn ws-endpoint
+  "websocket compojure handler
+  * listens to the messages received via socket-receive-fn
+  * injects the ws specific funcs/data into params and creates a workflow via wwf-fn
+  * runs wf
+  "
+  [path wwf-fn socket-receive-fn socket-close-fn & [opts]]
+  (compojure/GET path [:as req]
+                 (httpkit/with-channel req socket-chan
+                   (ws-workflow wwf-fn
+                                 socket-chan
+                                 socket-receive-fn socket-close-fn opts))))
+
+
+
+
+;; deprecated
 (defn ws-wf!
   "compojure handler for httpkit/with-channel"
   [socket-chan context-fn steps-fn]
 
-  (println "SERVER: start wf")
+  ; (println "SERVER: start wf")
 
   (let [in-chan> (async/chan)
         out-chan< (async/chan)
 
+        ;; & {:keys [ui-chan server-in server-out endpoint ]}
         context-map (context-fn socket-chan in-chan> out-chan<)
+        ;; [& {:keys [ui-chan server-in server-out]}]
+
         steps        (steps-fn in-chan> out-chan<)]
 
     (let [xtor (wf/build-executor (wf/make-context context-map)
@@ -111,13 +77,13 @@
       (httpkit/on-receive socket-chan
         (fn [payload]
           (let [msg (read-transit-str payload)]
-            (println "SERVER: got " (d/pretty msg))
+            ; (println "SERVER: got " (d/pretty msg))
             (go
               (async/put! in-chan> msg)))))
 
       (httpkit/on-close socket-chan
         (fn [status]
-          (println "SERVER: end wf")
+          ; (println "SERVER: end wf")
           (wf/end! xtor)
           ;; maybe, get the wf results some how
 
@@ -132,43 +98,8 @@
   )
 
 
-(defn ws-prepare-content-map
-  "returns the context config for the ws workflow"
-  [socket-chan in out-chan<]  ;; context-map
-
-  (merge @*ws-context         ;; use context 'shared' between client and server
-         {
-
-           ;; expand step that adds steps to the current ws
-           :client<  (wf/receive-steps-handler
-                       :step-fn (fn [steps]
-                                  (println "SERVER RECEIVE: " (d/pretty steps))
-                                  steps))
 
 
-           ;; step that sends the value back to client
-           :client> (wf/send-value-handler out-chan<
-                                           :v-fn (fn[v]
-                                                   (println "SERVER SEND: " (d/pretty v))
-                                                   v)
-                                           :out-fn (fn [z]
-                                                     (println "SEND TO SOCKET:" z)
-                                                     (httpkit/send! socket-chan (write-transit-str z))
-                                            ))
-
-           ;; todo :client>*
-
-           }))
-
-(defn ws-prepare-steps
-  "returns initial steps for the ws workflow"
-  [in-chan> out]
-
-  {
-    ;; optional initialization can be done here
-    ::receive-loop [:client< in-chan>]
-    }
-  )
 
 ;;
 ;; server
@@ -177,12 +108,23 @@
   ;; serve the application
   (compojure/GET    "/" [] (response/resource-response "public/index.html"))
   (route/resources   "/" {:root "public"})
-  ;; websocket
-  (compojure/GET "/api/websocket" [:as req]
-                 (httpkit/with-channel req chan
-                   (ws-wf! chan ws-prepare-content-map
-                                 ws-prepare-steps)))
 
+
+  (compojure/GET "/api/test" [:as req]
+                 (httpkit/with-channel req socket-chan
+                   (let [{wwf :wf
+                          receive-fn :receive-fn
+                          close-fn :close-fn
+                          } (ws/prepare-wf)]
+
+                     (let [{
+                             params :params
+                             opts :opts
+                             } (httpkit-opts socket-chan receive-fn close-fn)]
+
+                     (wfc/wf-async-process! (wwf params) opts)))
+                   ))
+  ;;
   (compojure/GET "/api/files" [:as req]
                  (httpkit/with-channel req chan
                    (ws-wf! chan files-wf/prepare-content-map

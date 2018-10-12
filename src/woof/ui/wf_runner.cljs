@@ -136,11 +136,12 @@
 
 (defn ws-wf [*STATE]
   (init-runner-wf! *STATE
-    (ws/prepare-params! "/api/websocket")
+    (ws/prepare-params! "/api/test") ;; "/api/websocket"
     ws/context-map-fn
     ws/steps-fn
     ws/actions-fn
     (partial default-ui-fn "websocket RPC")
+    :auto-start true
   )
 )
 
@@ -315,7 +316,7 @@
                                                            )]
                                                ; todo: restart workflow?
                                                 ["restart" (fn[]
-                                                            (reset-fn)
+                                                            ;; todo: we need a new xtor for these
                                                             )]
                                                ]
 
@@ -368,6 +369,7 @@
 
   (let [args (apply concat params) ;; maybe add here some other params
 
+        ;; todo: migrate to use WoofWorkflow
         context-map (apply context-fn args)
         steps (apply steps-fn args)
 
