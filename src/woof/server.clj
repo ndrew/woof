@@ -39,20 +39,6 @@
 
 
 
-(defn ws-endpoint
-  "websocket compojure handler
-  * listens to the messages received via socket-receive-fn
-  * injects the ws specific funcs/data into params and creates a workflow via wwf-fn
-  * runs wf
-  "
-  [path wwf-fn socket-receive-fn socket-close-fn & [opts]]
-  (compojure/GET path [:as req]
-                 (httpkit/with-channel req socket-chan
-                   (ws-workflow wwf-fn
-                                 socket-chan
-                                 socket-receive-fn socket-close-fn opts))))
-
-
 
 
 ;; deprecated
