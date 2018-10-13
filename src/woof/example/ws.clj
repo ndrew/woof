@@ -142,42 +142,6 @@
 
 
 
-(defn wf-opts []
-    (let [in-chan> (async/chan)
-        out-chan< (async/chan)
-
-        receive-fn (fn [payload]
-                     (let [msg (read-transit-str payload)]
-                       (locking *out*  (println "SERVER RECEIVE:\n" (pr-str msg) "\n"))
-                       (go
-                         (async/put! in-chan> msg)))
-                     )
-        close-fn (fn [status]
-                   ; :server-close   : Channel closed by sever
-                   ; :client-close   : HTTP channel closed by client
-                   ; :normal         : WebSocket closed by client (CLOSE_NORMAL)
-                   ; :going-away     : WebSocket closed by client (CLOSE_GOING_AWAY)
-                   ; :protocol-error : WebSocket closed by client (CLOSE_PROTOCOL_ERROR)
-                   ; :unsupported    : WebSocket closed by client (CLOSE_UNSUPPORTED)
-                   ; :unknown        : WebSocket closed by client (unknown reason)
-
-                   (locking *out* (println "STOP WS WF:"))
-
-                   (async/close! in-chan>)
-                   (async/close! out-chan<)
-                   )
-        ]
-
-    ;(endpoint-fn (partial wwf in-chan> out-chan<) receive-fn close-fn)
-    {
-      :wf (partial wwf in-chan> out-chan<)
-      :receive-fn receive-fn
-      :close-fn close-fn
-      }
-    )
-  )
-
-
 
 
 (defn prepare-wf []
@@ -215,77 +179,6 @@
     )
   )
 
-
-
-
-
-(defn wf-tester
-  "assigns workflow to httpkit websocket route"
-  [in-chan
-   out-chan
-   wwf-fn
-   socket-receive-fn
-   socket-close-fn & [opts]]
-
-
-  (let [socket-send (fn [v]
-                      ;; (httpkit/send! socket-chan v)
-                      ;(println "SOCKET SEND: " v)
-                      (go
-                        (async/put! out-chan v))
-                      )
-        socket-send-transit (fn [v]
-                              ;; (httpkit/send! socket-chan (write-transit-str v))
-                              (go
-                                (async/put! out-chan (write-transit-str v)))
-                              )
-        ;; add the helper funcs
-        params {
-                 :send! socket-send
-                 :send-transit! socket-send-transit
-                 }
-
-
-        init-fn (fn[wf-chan xtor]
-                  (go-loop []
-                           (if-let [payload (async/<! in-chan)]
-                             (do
-                               (socket-receive-fn payload)
-                               (recur)
-                               )
-                             (do
-                               (locking *out* (println "WF END !!!"))
-
-                               (wf/end! xtor)
-                               (socket-close-fn :normal)
-                               (async/close! in-chan)
-                               (async/close! out-chan)
-                               )
-                             )))
-
-
-        ws-opts (if (nil? opts) {} opts)
-
-        done-fn  (get ws-opts :done (fn [data]
-                                      (locking *out* (println "DONE!\n" (d/pretty data)))
-                                      ))
-
-        error-fn (get ws-opts :error (fn [data]
-                                       (locking *out* (println "ERROR!\n" (d/pretty data)))))
-
-        ]
-
-    ;; todo: use the wf result processing options and merge them
-    (wfc/wf-async-process! (wwf-fn params)
-                           {
-                             :before-process init-fn
-                             :op-handlers-map {
-                                                :done done-fn
-                                                :error error-fn
-                                                }
-                             })
-    )
-  )
 
 
 

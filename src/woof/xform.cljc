@@ -105,11 +105,11 @@
     (fn
       ([]
        (let [in-chan (rf)]
-         (locking *out* (println "STARTED infinite loop:"))
+         ;; (locking *out* (println "STARTED infinite loop:"))
          (go-loop []
                   (if-let [v (async/<! in-chan)]
                     (do
-                      (locking *out* (println "GOT:" v))
+                      ;; (locking *out* (println "GOT:" v))
                       (if-let [z (rf v)]
                         (async/put! chan> z))
                       (recur)
@@ -122,8 +122,7 @@
       ([initial out-chan]
        (if-let [v (rf initial)]
          (go
-            (locking *out* (println "SEND from infinite loop:" v))
-
+            ;; (locking *out* (println "SEND from infinite loop:" v))
            (async/put! out-chan v)))
        out-chan
       ))
