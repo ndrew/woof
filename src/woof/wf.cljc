@@ -419,8 +419,6 @@
                     infinite? (and
                                 (:infinite step-cfg)
                                 (not (nil? (get @(get this :INF) id))))
-
-
                     ]
 
 
@@ -589,11 +587,12 @@
 
 
   (expand! [this id step-id params actions]
-
+          (let [step-cfg (get-step-config (get this :CTX) step-id)]
            (if (u/channel? actions)
              (let [*steps-left (get-steps-left this)
-                   step-cfg (get-step-config (get this :CTX) step-id)
-                   infinite? (:infinite step-cfg)]
+
+                   infinite? (:infinite step-cfg)
+                   ]
 
                (when-not (is-step-working? STEPS id)
 
@@ -626,9 +625,11 @@
                        (put!? (:process-channel cfg) [:expand [id step-id params v]] 1000)))
                    ))
                )
-             (do
-               (do-expand! this id actions)
-               )))
+             (let [collect? (:collect? step-cfg)]
+               (if (and collect? (not (map? actions)))
+                 (do-commit! this id step-id actions)
+                 (do-expand! this id actions)
+               )))))
 
     (do-expand! [this id actions]
                 ;; FIXME: do we have to add this to linked infinite actions?
@@ -1730,14 +1731,22 @@
 
            } options ]
 
-      (let [exec-chan (execute-fn! executor)]
-        (before-processing! exec-chan executor)
+      (let [exec-chan (execute-fn! executor)
+            do-process! (fn[]
+                      (if timeout ;; todo: handle stoping via timeout
+                        (process-wf-loop exec-chan process-loop-handler timeout (partial end! executor))
+                        (process-wf-loop exec-chan process-loop-handler))
+                      (after-processing! exec-chan))
 
-        (if timeout ;; todo: handle stoping via timeout
-          (process-wf-loop exec-chan process-loop-handler timeout (partial end! executor))
-          (process-wf-loop exec-chan process-loop-handler))
+            init-chan (before-processing! exec-chan executor)]
 
-        (after-processing! exec-chan)
+        (if-not (u/channel? init-chan)
+          (do-process!)
+          (do
+            (go
+              (async/<! init-chan)
+              (do-process!))
+            exec-chan))
         )
       )
     )
