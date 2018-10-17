@@ -24,6 +24,7 @@
 (defprotocol WoofWorkflow
 
   (get-params [this])
+;; get args?
 
   (get-context-map [this])
 
@@ -64,7 +65,7 @@
     (wf/make-context (get-context-map wwf))
                       (get-steps wwf)))
 
-;;
+;; FIXME: deprecated, use ResultProcessor directly - as we need the xtor e.g. for ending the wf
 (defn wf-async-process! [wwf & [opts]]
   (let [xtor (wf-xtor wwf)
         processing-opts (if (nil? opts) {} opts)

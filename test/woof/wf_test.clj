@@ -345,7 +345,9 @@
                                (async/<! (u/timeout 3500))
                                ;;(println "timeout" (d/pretty @*result))
                                (if-not (nil? @*done)
-                                 (async/put! exec-chann [:error :timeout]))))
+                                 (async/put! exec-chann [:error :timeout])))
+                             :ok
+                             )
 
         after-processing! (fn [exec-chann]
                             (let [v (async/<!! c)]

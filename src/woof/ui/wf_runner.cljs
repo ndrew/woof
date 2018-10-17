@@ -8,8 +8,13 @@
     [woof.data :as d]
 
     [woof.wf :as wf]
+    [woof.wfc :as wfc]
+
     [woof.wf-data :as wdata]
     [woof.wf-ui :as wf-ui]
+
+    [woof.ws :as webservice]
+
 
     [woof.ui :as ui]
 
@@ -29,11 +34,14 @@
 
     [woof.example.files-ui :as files-ws]
 
-    [woof.example.ws :as ws]
+    [woof.example.ws :as ws] ;; todo: rename
 
     [woof.example.ouroboros :as ouroboros]
     [woof.example.infinite :as infinite]
     [woof.example.big-wf :as big-wf]
+
+
+    [woof.example.edn-editor.config-editor :as cfg-wf]
 
     )
 
@@ -68,11 +76,273 @@
 
 
 
+
+
+;;
+
+
+;; test
+(defn config-ws-1 []
+  (let [in (async/chan)
+        out (async/chan)
+
+          ;; substitute with cursor
+        *local (atom {:current {:path "Users/ndrw/m/woof/example.edn"}})
+
+          ]
+
+
+    (let [end-chan (async/chan)
+          ;; opts
+          init-fn (fn [wf-chan xtor]
+
+                    (go
+                      (when-let [v (async/<! end-chan)]
+                        (locking *out* (println "stopping wf"))
+                        (wf/end! xtor)
+                        )
+                      )
+
+                    ;; simulate receiving from socket
+                    (go-loop []
+                             (if-let [v (async/<! out)]
+                               (do
+                                 ;; ws
+                                 (locking *out* (println "RECEIVED" v))
+                                 (recur))
+                               (do
+                                 (locking *out* (println "STOPPED WF"))
+
+                                 (async/close! in)
+                                 (async/close! out)
+                                 )
+                               ))
+                    :ok
+                    )
+
+          opts {
+                 :before-process init-fn
+                 :op-handlers-map {
+                                    :done (fn [data]
+                                            (locking *out* (println "DONE!\n" (d/pretty data))))
+                                    :error (fn [data]
+                                             (locking *out* (println "ERROR!\n" (d/pretty data))))
+                                    }
+                 }
+
+          ; wf constructor
+          wwf (partial cfg-wf/wwf in out *local)
+          ; wf params
+
+          ; simulate putting data on the wire
+          socket-send (fn [v]
+                        (go
+                          (async/put! out v)))
+
+          socket-send-transit (fn [v]
+                                (go ; or use (write-transit-str v)
+                                  (async/put! out v)))
+
+          params {
+                   :send! socket-send
+                   :send-transit! socket-send-transit
+
+                   :initial-steps {
+                                    ;; these are sync by value
+                                        ;::test-file [:write-file {
+                                        ;                                :path "/Users/ndrw/m/woof/example1.edn"
+                                        ;                                :contents "Aloha Woof!"
+                                        ;                                }]
+                                        ;::set-current-1 [:set-current ::test-file]
+
+                                    ;;::init-read [:read-current ::init-path]
+
+                                    ;; instant set
+                                    ;;::init-path [:state! [(d/selector [:current])
+                                     ;;                     {:path "/Users/ndrw/m/woof/example.edn"}]]
+
+                                      ::log [:log "I'm alive!"]
+
+                                        }
+                   }
+
+          ]
+
+    (wfc/wf-async-process! (wwf params) opts)))
+  )
+
+
+
+(defn ui-opts [endpoint-url receive-fn close-fn]
+  (let [*endpoint (atom nil)
+
+        socket-send         (fn [v]
+                              (println "sending" v @*endpoint)
+                              ;(js/setTimeout (fn[]
+                                (webservice/send! @*endpoint
+                                        {(wf/rand-sid) [:debug v]})
+                              ;                 ) 4000)
+
+                              )
+        socket-send-transit (fn [v]
+                              ;(httpkit/send! socket-chan (write-transit-str v))
+                              )
+
+
+        ;; add the helper funcs
+        params {
+                 :send! socket-send
+                 :send-transit! socket-send-transit
+                 }
+
+        init-fn (fn[wf-chan xtor]
+
+                  (let [endpoint (webservice/ws-server endpoint-url
+                                                       :on-message (fn [msg]
+                                                                     (receive-fn msg))
+
+                                                       ;; how to init both on-close and socket-send
+
+                                                       :on-close (fn [] ;; arguments
+                                                                   (wf/end! xtor)
+                                                                   (close-fn :status!)
+                                                                   )
+                                                       )]
+                    (reset! *endpoint endpoint)
+
+                    (let [chan (webservice/start endpoint)]
+                      ;; return the signaling channel, so the wf will wait for the ws to be initialized
+                      chan)
+                    )
+                  )
+        ]
+    {
+      :params params
+      :opts {
+              :before-process init-fn
+              }
+      })
+  )
+
+
+
+
+
 ;;
 ;; main state atom for workflow runner
 
 (declare default-ui-fn)
 (declare init-runner-wf!)
+(declare init-ui!)
+(declare runner-processing-opts)
+
+;; wf constructor ui
+
+;; creating wf via wf constructor
+(defn config-ws [*STATE]
+
+  ;;
+
+  (let [;; call wf constructor
+        {
+          wwf :wf                 ;; workflow function
+          receive-fn :receive-fn    ;;
+          close-fn :close-fn        ;;
+          actions :actions
+          ;; todo: return default params?
+          } (cfg-wf/wf! *STATE) ;; for now pass the whole state
+
+        {
+            params :params
+            opts :opts
+            } (ui-opts "/api/config" receive-fn close-fn)
+
+        ]
+
+    ;; uncomment for auto-start
+    ;; (wfc/wf-async-process! (wwf params) opts)
+
+
+
+    ;; prepare wf for ui
+
+    (let [ui-fn (partial default-ui-fn "client-server edn editor")
+
+          args (apply concat params) ;; todo: get from WF
+
+          WF (wwf params)
+          xtor (wfc/wf-xtor WF)
+
+          opts (merge opts
+                      (runner-processing-opts *STATE))
+
+          steps (wfc/get-steps WF)
+          context-map (wfc/get-context-map WF)
+
+
+          cursor (partial rum/cursor-in *STATE)
+          start-fn (fn []
+
+                     (reset! (cursor [:status]) :woof.app/running)
+
+                     ; (reset! (cursor [:status]) :woof.app/running)
+                     (wf/process-results! (wf/->ResultProcessor xtor
+                                                                opts
+
+                                                                ))
+
+                     )
+          stop-fn  (fn [] (wf/end! xtor))
+          ]
+
+      (init-ui! *STATE
+                {
+                     :steps steps
+                     :context-map context-map
+                     :args args
+
+                  :status-actions {
+                                       :woof.app/not-started [
+                                                               ["start" start-fn]
+                                                               ]
+
+                                       :woof.app/done        [
+                                                               ["finish" (fn[]
+
+                                                                          ;;(reset-fn)
+                                                                          ; (init!)
+                                                                          )]
+                                                              ; todo: restart workflow?
+                                                              ["restart" (fn[]
+                                                                           ;; todo: we need a new xtor for these
+                                                                           )]
+                                                              ]
+
+                                       :woof.app/running     (into actions
+                                                                   [[]
+                                                                    ["stop" stop-fn]
+                                                                    ]
+                                                                   )
+                                       :woof.app/error       [
+                                                                ["start" start-fn]
+                                                               ; ["restart" reset-fn]
+                                                               ]
+                                       ; :woof.app/stopped     "error"
+                                       }
+
+
+                     :start! start-fn
+                     :stop! stop-fn
+
+                     } (apply ui-fn args))
+
+      )
+
+    )
+  )
+
+
+
 
 ;; basic uis
 
@@ -163,16 +433,22 @@
 
 
 
+
 (defonce *UI-STATE (atom
     {
 
 
       :basic-worflows [
+                        ["config" config-ws]
+
+
                         ["ouroboros" ouroboros-wf]
                         ["infinite" infinite-wf]
                         ["expand" expand-wf]
                         ]
       :complex-workflows [
+
+
                             ["UI loop" ui-loop-wf]
                             []
                             ["file browser" files-ws-wf]
@@ -180,6 +456,7 @@
                             ["popup"   popup-wf ]
                             []
                             ["rpc via webservice" ws-wf]
+                            []
                             ]
 
 
@@ -207,9 +484,7 @@
       }))
 
 
-
-
-(defn init!
+(defn init!                      ;; actually it's reset
   "init ui state"
   []
   (swap! *UI-STATE merge
@@ -226,6 +501,20 @@
            })
   )
 
+
+
+(defn init-ui! [*STATE ui-wf ui-fn]
+  (swap! *STATE merge
+           {
+             :wf ui-wf
+
+             :status :woof.app/not-started
+             :history []
+
+             :rum-ui ui-fn
+             })
+
+  )
 
 
 (defn- runner-processing-opts [*STATE]
@@ -256,6 +545,13 @@
       }))
 
 
+
+
+
+
+
+
+
 (defn- runner-actions
   "prepares ui wf start/stop functions and available wf actions groupped by status"
   [*STATE actions-map xtor]
@@ -281,6 +577,7 @@
                              (let [proc (wf/->ResultProcessor xtor processing-opts)]
                                (wf/process-results! proc))
 
+                 ;; todo: replace these wai opts
                              (reset! (cursor [:status]) :woof.app/running))]
 
                    (let [v (if wf-start-fn (wf-start-fn))]
@@ -339,6 +636,8 @@
   )
 
 
+
+
 (defn init-runner-wf!
   "initializes ui with specific ui workflow
    *STATE     - map in atom, ui state, for rum updates
@@ -378,7 +677,7 @@
         wf-actions (runner-actions *STATE (apply actions-fn args) xtor)]
 
 
-    (swap! *STATE merge
+    #_(swap! *STATE merge
            {
              :wf (merge
                    {
@@ -394,11 +693,23 @@
              :wf-args args
              })
 
+    (init-ui! *STATE (merge
+                   {
+                     :steps steps
+                     :context-map context-map
+                     :args args
+                     }
+                   wf-actions)
+              (apply ui-fn args))
+
     (if auto-start
       ((:start! wf-actions)))
 
     )
   )
+
+
+
 
 
 ;;
@@ -501,3 +812,33 @@
 
     (<ui> *STATE)
 ))
+
+
+
+
+
+
+
+
+
+(comment
+
+  [woof.blog.frontend :as blog]
+
+
+
+
+(defn blog-wf [*STATE]
+  (init-runner-wf! *STATE
+    (blog/prepare-params! "/api/blog")
+    blog/context-map-fn
+    blog/steps-fn
+    blog/actions-fn
+    blog/ui-fn
+    :auto-start true
+  )
+)
+
+ ["blog" blog-wf]
+
+)

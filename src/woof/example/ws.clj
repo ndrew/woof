@@ -215,7 +215,9 @@
                                (async/close! in)
                                (async/close! out)
                                )
-                             )))
+                             ))
+                  :ok
+                  )
 
         done-fn  (fn [data]
                    (locking *out* (println "DONE!\n" (d/pretty data))))

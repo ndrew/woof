@@ -21,8 +21,8 @@
     [woof.server.utils :refer [read-transit-str write-transit-str httpkit-opts]]
     [woof.example.files :as files-wf]
 
-
     [woof.example.ws :as ws]
+    [woof.example.edn-editor.fs :as fs]
     )
   (:gen-class))
 
@@ -96,6 +96,26 @@
   (route/resources   "/" {:root "public"})
 
 
+
+  (compojure/GET "/api/config" [:as req]
+                 (httpkit/with-channel req socket-chan
+                   (let [{wwf :wf
+                          receive-fn :receive-fn
+                          close-fn :close-fn
+                          } (fs/wf!)]
+
+                     (let [{
+                             params :params
+                             opts :opts
+                             } (httpkit-opts socket-chan receive-fn close-fn)]
+
+                     (wfc/wf-async-process!
+
+                       (wwf (merge params {:initial-steps {::init [:client> "YO"]}}))
+                       opts)))
+                   ))
+
+
   (compojure/GET "/api/test" [:as req]
                  (httpkit/with-channel req socket-chan
                    (let [{wwf :wf
@@ -115,7 +135,6 @@
                  (httpkit/with-channel req chan
                    (ws-wf! chan files-wf/prepare-content-map
                                  files-wf/prepare-steps)))
-
 
 
   ;; testing ajax calls
