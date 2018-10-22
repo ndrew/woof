@@ -16,6 +16,8 @@
 
 (def rand-sid base/rand-sid)
 
+(def seq-sid (base/gen-seq-sid-fn))
+
 (def subsitute-with-rand-sids base/subsitute-with-rand-sids)
 
 

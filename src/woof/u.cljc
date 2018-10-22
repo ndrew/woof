@@ -95,6 +95,7 @@
   )
 
 
+
 (defn subsitute-with-rand-sids
   "substitutes the sids with a rand-sid "
   [context-map expand-map]
@@ -140,3 +141,14 @@
       )
     )
   )
+
+
+
+(defn gen-seq-sid-fn []
+  (let [counters (atom {})]
+    (fn sss
+      ([]
+       (sss :i))
+       ([prefix]
+        (sid (str prefix (get (swap! counters update-in [prefix] (fnil inc -1)) prefix)))))))
+
