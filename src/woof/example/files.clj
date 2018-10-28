@@ -12,6 +12,9 @@
 
     [woof.data :as d]
     [woof.wf :as wf]
+    [woof.wfc :as wfc]
+    [woof.xform :as x]
+
 
     [woof.utils :as u :refer [inline--fn1]]
     [woof.test-data :as test-data]
@@ -23,104 +26,12 @@
 )
 
 
-;;
-;;
-
-(defn receive-steps-handler
-  "creates a step handler config [:your-handler-name <in-channel>] that will wait for the steps from <in-channel>.
-  Parametrizeble by optional :step-fn param "
-  [& {:keys [step-fn]
-      :or {step-fn identity}}]
-  {
-    :fn (fn [in>]
-          (let [chan> (async/chan)]
-            (go-loop []
-                     (when-let [new-steps (async/<! in>)]
-
-                       (if-not (map? new-steps)
-                         (u/throw! (str "invalid expand map passed to :in " (d/pretty new-steps))))
-
-                       ; (locking *out* (println "server: IN" (d/pretty new-steps)))
-
-                       (async/put! chan> (step-fn new-steps))
-                       ;; todo: use :expand-key instead of having intermediary steps
-                       ;; #_(async/put! chan> (with-meta {sid v} {:expand-key sid}))
-                       (recur)
-                       )
-                     )
-            chan>))
-    :infinite true
-    :expands? true
-    }
-  )
-
-
-
-
-;; stateful step handlers
-
-
-;; step handler can be described as 'reducing function'
-
-
-
-;; params for initialization
-
-;; out-chan
-
-
-
-
-;; (step-handler start-fn stop-fn)
-
-
-
-;; some initialization after
-
-
-
-;; fixme: refine the api for 'send-value' handlers
-;;
-
-;; fixme: wrong abstraction remove from here
-
-(defn send-value-handler
-  "parametrizable function that generate send value handler"
-  [out-chan<
-   & {:keys [v-fn out-fn return-fn]
-      :or {v-fn identity
-           out-fn identity
-           return-fn (fn[v vs] vs)
-           }} ]
-
-
-  ;; (sh)
-  (go-loop []
-           (if-let [v (async/<! out-chan<)] ;; redirect the wf output onto wire
-             (do
-               (inline--fn1 out-fn v)
-               (recur))
-             )
-           )
-
-
-  {:fn (fn [v]
-         ;; transform v into other value or steps
-         (let [vs (v-fn v)]
-           (go ;; send the new value to out-chan<
-             (async/>! out-chan< vs))
-           ;; return a result
-           (return-fn v vs)))
-   :collect? true
-   })
-
-
-
-
 
 (defn prepare-content-map
   "returns the context config for the ws workflow"
-  [socket-chan in out-chan<]  ;; context-map
+  [& {:keys [in-chan> out-chan< send-transit!]}]  ;; context-map
+
+  (println "prepare-content-map" in-chan> out-chan< send-transit!)
 
   (merge
     {  ;; todo: refine the generic actions needed for RPC
@@ -156,22 +67,53 @@
 
     {
 
+      :client<  {
+                      :fn (x/global-shandler
+                            (x/infinite-expand-rf (fn
+                                                    ([] in-chan>)
+                                                    ([steps]
+                                                     (println "SERVER: expand steps (via :client<)\n" (d/pretty steps))
+                                                     (if (nil? steps)
+                                                       {}
+                                                       steps
+                                                       )
+                                                     )
+                                                    ([in-chan out-chan]))))
+                      :infinite true
+                      :expands? true
+                      }
+
+
       ;; expand step that adds steps to the current ws
-      :client<  (receive-steps-handler
-                  :step-fn (fn [steps]
-                             (println "SERVER: expand steps (via :client<)\n" (d/pretty steps))
-                             steps))
+;;      :client<  (receive-steps-handler
+;;                  :step-fn (fn [steps]
+;;                             (println "SERVER: expand steps (via :client<)\n" (d/pretty steps))
+;;                             steps))
 
 
 
       ;; fixme: find way of having several actions wiht :out-fn
 
       ;; step that sends the value back to client
-      :client> (send-value-handler out-chan<
-                                      :out-fn (fn [z]
-                                                (println "SERVER: response (via :client>)\n" (d/pretty z))
-                                                (httpkit/send! socket-chan (write-transit-str z))
-                                                ))
+  ;    :client> (send-value-handler out-chan<
+  ;                                    :out-fn (fn [z]
+  ;                                              (println "SERVER: response (via :client>)\n" (d/pretty z))
+  ;                                              (send-transit! z)
+                                                ; (httpkit/send! socket-chan (write-transit-str z))
+  ;                                              ))
+
+          :client> {:fn (x/global-shandler
+                    (x/channel-collect-rf
+                      (fn
+                        ([]    out-chan<)
+                        ([v]
+                           (println "SERVER: response (via :client>)\n" (d/pretty v))
+                           (send-transit! v)
+                         v)
+                        ([a b]))))
+              :collect? true
+              }
+
 
       ;; 'cd'
       :cd {:fn (fn [v]
@@ -202,11 +144,11 @@
 
 (defn prepare-steps
   "returns initial steps for the ws workflow"
-  [in-chan> out]
+  [& {:keys [in-chan> out]}]
 
   {
     ;; ws
-    ::receive-loop [:client< in-chan>]
+    ::receive-loop [:client< nil]
 
     ;; send initial cwd to the client
     ::initial-cwd [:v (.getAbsolutePath (fs/file "/Users/ndrw/m/woof"))]
@@ -220,6 +162,56 @@
   )
 
 
+
+(defn wwf [in-chan> out-chan<
+            params]
+
+  ;; todo: add state
+
+  (wfc/params-wf (merge params ;; pass the in/out channel in case they'll be needed in context or steps constructors
+                        {
+                          :in-chan> in-chan>
+                          :out-chan< out-chan<
+                          }
+                        )
+                 prepare-content-map
+                 prepare-steps))
+
+
+
+;; api for webserivce
+(defn wf! []
+  ;; pass here the default path
+
+  (let [in-chan> (async/chan)
+        out-chan< (async/chan)
+
+        receive-fn (fn [payload]
+                     (let [msg (read-transit-str payload)]
+                       ;; (locking *out*  (println "SERVER RECEIVE:\n" (pr-str msg) "\n"))
+                       (go
+                         ;; call cmd-> steps inside wf
+                         (async/put! in-chan> msg))) ;; (cmd->steps ) ;;
+                     )
+        close-fn (fn [status] ; :server-close/:client-close/:normal/:going-away/:protocol-error/:unsupported/:unknown
+
+                   ; (locking *out* (println "STOP WS WF:" status))
+
+                   (async/close! in-chan>)
+                   (async/close! out-chan<)
+                   )
+        ]
+
+    {
+      :wf (partial wwf in-chan> out-chan<)
+
+      :params {
+                :receive-fn receive-fn
+                :close-fn close-fn
+                }
+    }
+    )
+  )
 
 
 

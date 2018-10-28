@@ -18,7 +18,8 @@
     [woof.utils :as u :refer [inline--fn1]]
     [woof.test-data :as test-data]
 
-    [woof.server.utils :refer [read-transit-str write-transit-str httpkit-opts httpkit-opts-impl]]
+    [woof.server.utils :refer [read-transit-str write-transit-str websocket-ws httpkit-opts httpkit-opts-impl]]
+
     [woof.example.files :as files-wf]
 
     [woof.example.ws :as ws]
@@ -26,97 +27,6 @@
     [woof.wf.edn-editor.backend :as fs]
     )
   (:gen-class))
-
-
-;;
-;; websocket workflow
-
-
-;; workflow can be used for RPC via websocket
-
-
-
-
-
-
-
-
-
-;; deprecated
-(defn ws-wf!
-  "compojure handler for httpkit/with-channel"
-  [socket-chan context-fn steps-fn]
-
-  ; (println "SERVER: start wf")
-
-  (let [in-chan> (async/chan)
-        out-chan< (async/chan)
-
-        ;; & {:keys [ui-chan server-in server-out endpoint ]}
-        context-map (context-fn socket-chan in-chan> out-chan<)
-        ;; [& {:keys [ui-chan server-in server-out]}]
-
-        steps        (steps-fn in-chan> out-chan<)]
-
-    (let [xtor (wf/build-executor (wf/make-context context-map)
-                                   steps)]
-
-      (httpkit/on-receive socket-chan
-        (fn [payload]
-          (let [msg (read-transit-str payload)]
-            ; (println "SERVER: got " (d/pretty msg))
-            (go
-              (async/put! in-chan> msg)))))
-
-      (httpkit/on-close socket-chan
-        (fn [status]
-          ; (println "SERVER: end wf")
-          (wf/end! xtor)
-          ;; maybe, get the wf results some how
-
-          (async/close! in-chan>)
-          (async/close! out-chan<)
-          ))
-
-      ;; run the workflow
-      (wf/process-results! (wf/->ResultProcessor xtor {})) ;; todo: processing opts
-      )
-    )
-  )
-
-
-
-
-
-(defn websocket-ws
-  ([wf! opts-fn]
-   (websocket-ws wf! opts-fn {}))
-
-  ([wf! opts-fn initial-params]
-  (let [;; init wf constructor + wf defaults
-        {
-          wf-fn :wf
-          wf-default-params :params
-         } (wf!)
-
-        ;;
-         params (merge wf-default-params initial-params)
-
-        ;; prepare params for specific runner
-        {
-          opts-params :params
-          opts :opts
-          } (opts-fn params)
-
-         xtor (wfc/wf-xtor (wf-fn opts-params))
-        ]
-
-    ;; workflow default params + user provided params => wf params
-    (wf/process-results! (wf/->ResultProcessor xtor opts))
-
-    ))
-  )
-
 
 ;;
 ;; server
@@ -128,24 +38,27 @@
 
 
 
+  ;; file text editor backend
   (compojure/GET "/api/config" [:as req]
-
                  (httpkit/with-channel req socket-chan
                    (websocket-ws fs/wf!
                                  (partial httpkit-opts socket-chan)
                                  {:initial-command [:file "/Users/ndrw/m/woof/test/data/config.edn"]})))
 
 
-
+  ;; test workflow
   (compojure/GET "/api/test" [:as req]
                  (httpkit/with-channel req socket-chan
                    (websocket-ws ws/prepare-wf (partial httpkit-opts socket-chan))
                    ))
-  ;;
+
+  ;; file selector wf
   (compojure/GET "/api/files" [:as req]
                  (httpkit/with-channel req chan
-                   (ws-wf! chan files-wf/prepare-content-map
-                                 files-wf/prepare-steps)))
+                   (websocket-ws
+                                 files-wf/wf!
+                                 (partial httpkit-opts chan)
+                     )))
 
 
   ;; testing ajax calls

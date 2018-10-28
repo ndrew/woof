@@ -173,8 +173,10 @@
     ;(endpoint-fn (partial wwf in-chan> out-chan<) receive-fn close-fn)
     {
       :wf (partial wwf in-chan> out-chan<)
-      :receive-fn receive-fn
-      :close-fn close-fn
+      :params {
+        :receive-fn receive-fn
+        :close-fn close-fn
+      }
     }
     )
   )

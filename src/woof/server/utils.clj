@@ -63,7 +63,7 @@
                   (httpkit/on-receive socket-chan socket-receive-fn)
                   (httpkit/on-close   socket-chan
                                       (fn [status]
-                                        (println "WF ended!")
+                                        ;; (println "WF ended!")
                                         (wf/end! xtor)
                                         (socket-close-fn status)
                                         )
@@ -89,4 +89,34 @@
   (httpkit-opts-impl socket-chan
                      receive-fn close-fn))
 
+
+
+(defn websocket-ws
+  ([wf! opts-fn]
+   (websocket-ws wf! opts-fn {}))
+
+  ([wf! opts-fn initial-params]
+  (let [;; init wf constructor + wf defaults
+        {
+          wf-fn :wf
+          wf-default-params :params
+         } (wf!)
+
+        ;;
+         params (merge wf-default-params initial-params)
+
+        ;; prepare params for specific runner
+        {
+          opts-params :params
+          opts :opts
+          } (opts-fn params)
+
+         xtor (wfc/wf-xtor (wf-fn opts-params))
+        ]
+
+    ;; workflow default params + user provided params => wf params
+    (wf/process-results! (wf/->ResultProcessor xtor opts))
+
+    ))
+  )
 
