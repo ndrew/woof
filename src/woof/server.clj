@@ -18,11 +18,12 @@
     [woof.utils :as u :refer [inline--fn1]]
     [woof.test-data :as test-data]
 
-    [woof.server.utils :refer [read-transit-str write-transit-str httpkit-opts]]
+    [woof.server.utils :refer [read-transit-str write-transit-str httpkit-opts httpkit-opts-impl]]
     [woof.example.files :as files-wf]
 
     [woof.example.ws :as ws]
-    [woof.example.edn-editor.fs :as fs]
+
+    [woof.wf.edn-editor.backend :as fs]
     )
   (:gen-class))
 
@@ -87,6 +88,36 @@
 
 
 
+(defn websocket-ws
+  ([wf! opts-fn]
+   (websocket-ws wf! opts-fn {}))
+
+  ([wf! opts-fn initial-params]
+  (let [;; init wf constructor + wf defaults
+        {
+          wf-fn :wf
+          wf-default-params :params
+         } (wf!)
+
+        ;;
+         params (merge wf-default-params initial-params)
+
+        ;; prepare params for specific runner
+        {
+          opts-params :params
+          opts :opts
+          } (opts-fn params)
+
+         xtor (wfc/wf-xtor (wf-fn opts-params))
+        ]
+
+    ;; workflow default params + user provided params => wf params
+    (wf/process-results! (wf/->ResultProcessor xtor opts))
+
+    ))
+  )
+
+
 ;;
 ;; server
 
@@ -98,37 +129,17 @@
 
 
   (compojure/GET "/api/config" [:as req]
+
                  (httpkit/with-channel req socket-chan
-                   (let [{wwf :wf
-                          receive-fn :receive-fn
-                          close-fn :close-fn
-                          } (fs/wf!)]
+                   (websocket-ws fs/wf!
+                                 (partial httpkit-opts socket-chan)
+                                 {:initial-command [:file "/Users/ndrw/m/woof/test/data/config.edn"]})))
 
-                     (let [{
-                             params :params
-                             opts :opts
-                             } (httpkit-opts socket-chan receive-fn close-fn)]
-
-                     (wfc/wf-async-process!
-
-                       (wwf (merge params {:initial-steps {::init [:client> "YO"]}}))
-                       opts)))
-                   ))
 
 
   (compojure/GET "/api/test" [:as req]
                  (httpkit/with-channel req socket-chan
-                   (let [{wwf :wf
-                          receive-fn :receive-fn
-                          close-fn :close-fn
-                          } (ws/prepare-wf)]
-
-                     (let [{
-                             params :params
-                             opts :opts
-                             } (httpkit-opts socket-chan receive-fn close-fn)]
-
-                     (wfc/wf-async-process! (wwf params) opts)))
+                   (websocket-ws ws/prepare-wf (partial httpkit-opts socket-chan))
                    ))
   ;;
   (compojure/GET "/api/files" [:as req]
@@ -158,3 +169,26 @@
 
 ; (stop-server)
 ;(-main)
+
+
+
+
+(comment
+  [woof.blog.backend :as blog]
+
+
+  #_(compojure/GET "/api/blog" [:as req]
+                   (httpkit/with-channel req socket-chan
+
+                     (server-wf!
+                       (blog/prepare-params socket-chan)
+                       blog/prepare-content-map
+                       blog/prepare-steps
+                       ;;
+                       blog/msg-fn
+                       blog/close-fn
+                       )
+
+                     )
+                   )
+  )

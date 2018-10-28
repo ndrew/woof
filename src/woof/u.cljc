@@ -144,11 +144,13 @@
 
 
 
-(defn gen-seq-sid-fn []
+(defn gen-seq-sid-fn
+  "generates a sid function generator that produces sequential sids"
+  []
   (let [counters (atom {})]
-    (fn sss
+    (fn sid-fn
       ([]
-       (sss :i))
-       ([prefix]
-        (sid (str prefix (get (swap! counters update-in [prefix] (fnil inc -1)) prefix)))))))
+       (sid-fn :i))
+      ([prefix]
+       (sid (str prefix (get (swap! counters update-in [prefix] (fnil inc -1)) prefix)))))))
 

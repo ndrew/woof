@@ -39,9 +39,16 @@
 ;                     :done done-fn
 ;                     :error error-fn
 ;                     }
+;  :params {
+;             :send!
+;             :send-transit!
+;    }
 ;  }
 
-(defn httpkit-opts [socket-chan
+
+
+
+(defn httpkit-opts-impl [socket-chan
                     socket-receive-fn
                     socket-close-fn]
   (let [socket-send         (fn [v] (httpkit/send! socket-chan v))
@@ -71,4 +78,15 @@
               }
       })
   )
+
+
+;; pass http-kit on-receive and on-close handlers as parameters map
+(defn httpkit-opts [socket-chan {
+                                  receive-fn :receive-fn
+                                  close-fn :close-fn
+                                  }]
+
+  (httpkit-opts-impl socket-chan
+                     receive-fn close-fn))
+
 
