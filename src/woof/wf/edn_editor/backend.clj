@@ -59,6 +59,25 @@
 ;; context
 
 
+(defn- current [_]
+
+
+
+  (let [sid1 (u/seq-sid "state-")
+        sid2 (u/seq-sid "read-current-")]
+
+      (locking *out* (println "CURRENT:"))
+    {
+      ;sid1 [:state [[:current]]]
+      ;sid2 [:read-current sid1]
+      (u/seq-sid "client>-") [:client> "gavno"] ;;sid2
+      }
+
+    )
+
+  )
+
+
 (defn- cd [f]
   (let [sid1 (u/seq-sid "state!-")
         sid2 (u/seq-sid "read-current-")]
@@ -102,6 +121,8 @@
 
   (if-let [[op params] msg]
     (condp = op
+      ;; todo: get current
+      :current   (current params)
       :file      (cd params)
       :contents! (contents! params))
     {(wf/rand-sid) [:log (str "unknown message " (d/pretty msg))]}
@@ -162,8 +183,8 @@
                          (let [current (get-in @*local [:current])
                                {path :path} current]
 
-                           (d/update-value *local [:current]
-                                           (merge current {:contents (safe-slurp path)}))))
+                           (:current (d/update-value *local [:current]
+                                           (merge current {:contents (safe-slurp path)})))))
                    }
 
 ;;
@@ -171,7 +192,7 @@
                                    (let [current (get-in @*local [:current])]
                                      (do
                                        (spit (:path current) (:contents current))
-                                       current))))
+                                       (:current current)))))
 
 ;;
     :client> {:fn (x/global-shandler
@@ -363,10 +384,12 @@
       (go
         (async/<! (u/timeout 100))
 
-        (async/put! in [:file "/Users/ndrw/m/woof/test/data/config1.edn"])
+        ;(async/put! in [:file "/Users/ndrw/m/woof/test/data/config1.edn"])
 
-        (async/<! (u/timeout 100))
-        (async/put! in [:contents! "new content"])
+        (async/put! in [:current])
+
+        ;(async/<! (u/timeout 100))
+        ;(async/put! in [:contents! "new content"])
         )
 
 
@@ -381,4 +404,4 @@
 
 
 
-;; (wf-tester)
+(wf-tester)

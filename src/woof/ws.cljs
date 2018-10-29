@@ -114,6 +114,91 @@
 
 
 ;;
+;; processing options for a ws based workflow
+
+
+(defn ws-opts-impl [*STATE endpoint-url receive-fn close-fn]
+  (let [*endpoint (atom nil)
+        socket-send         (fn [v]
+                                ;(println "sending" v @*endpoint)
+                                (send! @*endpoint v)
+
+                              )
+        socket-send-transit (fn [v]
+                              (send! @*endpoint v) ;; for now send value as is
+                              )
+
+
+        ;; add the helper funcs
+        params {
+                 :send! socket-send
+                 :send-transit! socket-send-transit
+                 }
+
+        init-fn (fn[wf-chan xtor]
+
+                  (let [endpoint (ws-server endpoint-url
+                                                       :on-message (fn [msg]
+                                                                     (receive-fn msg))
+
+                                                       ;; how to init both on-close and socket-send
+                                                       :on-close (fn [] ;; arguments
+                                                                   (wf/end! xtor)
+                                                                   (close-fn :status!))
+                                                       )]
+                    (reset! *endpoint endpoint)
+
+                    (let [chan (start endpoint)]
+                      ;; return the signaling channel, so the wf will wait for the ws to be initialized
+                      chan)
+                    )
+                  )
+        ]
+    {
+      :params params
+      :opts {
+              :before-process init-fn
+              }
+      })
+  )
+
+
+
+(defn ws-opts [endpoint *STATE params]
+  (let [{close-fn :close-fn
+                                 receive-fn :receive-fn
+                                :or {
+                                      close-fn (fn [status]
+                                                 (u/throw! "no close-fn function provided")
+                                                 )
+                                      receive-fn (fn [msg]
+                                                   (u/throw! "no receive-fn function provided")
+                                                   )
+                                      }
+                                } params
+
+
+        {ws-params :params
+         opts :opts
+         } (ws-opts-impl *STATE endpoint receive-fn close-fn)
+        ]
+
+    {
+      :params (merge ws-params params)
+      :opts opts
+    }
+
+    )
+  ;; pass wf map
+
+  )
+
+
+
+
+
+
+;;
 ;; ajax requests
 
 
