@@ -66,11 +66,11 @@
   (let [sid1 (u/seq-sid "state-")
         sid2 (u/seq-sid "read-current-")]
 
-      (locking *out* (println "CURRENT:"))
+      ;(locking *out* (println "CURRENT:"))
     {
-      ;sid1 [:state [[:current]]]
-      ;sid2 [:read-current sid1]
-      (u/seq-sid "client>-") [:client> "gavno"] ;;sid2
+      sid1 [:state [:current]]
+      sid2 [:read-current sid1]
+      (u/seq-sid "client>-") [:client> sid2] ;;sid2
       }
 
     )
@@ -167,6 +167,10 @@
             }
 
 
+    :full-state {:fn (fn[_]
+                  @*local)
+            }
+
 ;; state step handler
     :state {:fn (fn[selector]
                   (get-in @*local selector))
@@ -246,7 +250,7 @@
 
 (defn default-state []
   {
-    :current nil
+    :current {:path "/Users/ndrw/m/woof/test/data/config.edn"}
   })
 
 
@@ -404,4 +408,4 @@
 
 
 
-(wf-tester)
+;; (wf-tester)

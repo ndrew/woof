@@ -44,7 +44,7 @@
     [woof.wf.edn-editor.frontend :as cfg-wf]
 
     [woof.ui.wf :as default-ui]
-
+    [woof.ui.state :as ui-state]
 
     )
 
@@ -106,124 +106,6 @@
 ;; creating wf via wf constructor
 
 
-(defn status-actions [start-fn stop-fn actions]
-  {
-    :woof.app/not-started [
-                            ["start" start-fn]
-                            ]
-
-    :woof.app/done        [
-                            ["finish" (fn[]
-                                        (stop-fn)
-                                        ;; reset ui
-                                        (init!)
-                                        )]
-                            ; todo: restart workflow?
-                            ["restart" (fn[]
-                                         (start-fn)
-                                         ;; todo: we need a new xtor for these
-                                         )]
-                            ]
-
-    :woof.app/running     (into actions
-                                [[]
-                                 ["stop" stop-fn]
-                                 ]
-                                )
-    :woof.app/error       [
-                            ["start" start-fn]
-                            ; ["restart" reset-fn]
-                            ]
-    ; :woof.app/stopped     "error"
-    })
-
-
-
-
-
-
-
-
-
-
-;; (partial ws-opts "/api/config")
-;; ui-fn (partial default-ui-fn "client-server edn editor")
-
-;; joining wf constructors
-;;   wf + opt1 + opt2
-
-
-(defn merge-opts [opt1 opt2]
-  (let [{bp1 :before-process} opt1
-        {bp2 :before-process} opt2
-
-        opts (merge opt1 opt2
-         {
-           :before-process (fn[wf-chan xtor]
-                             (if (fn? bp1)
-                               (bp1 wf-chan xtor))
-                             (if (fn? bp2)
-                               (bp2 wf-chan xtor))
-                             )})
-        ]
-
-    opts
-    ))
-
-
-(defn ui-wf [wf! opts-fn init-fn]
-
-  (fn [*STATE]  ;; pass *STATE via params
-
-    (let [
-           initial-params {} ;; todo:
-
-           ;; inits wf
-           {
-             actions :actions
-
-             wf-fn :wf                 ;; workflow function
-             wf-default-params :params
-             } (wf! *STATE) ;; pass cursored value?
-
-           ;; inits ws opts fn
-
-           {
-             params1 :params
-             opts1 :opts
-            } (opts-fn *STATE (merge wf-default-params initial-params))
-
-           ;; todo: extract into ui-opts fn
-
-          ;; emulate other opts fn for ui
-           cursor (partial rum/cursor-in *STATE)
-
-           params (merge params1
-                            {
-                              :*state *STATE
-                              ;;
-                              })
-
-           ;;
-           ;;
-
-           opts (merge-opts opts1
-                               (merge
-                                 (runner-processing-opts *STATE) ;; todo: move this merge into
-                                 {:before-process (fn [wf-chan xtor]
-                                                    (reset! (cursor [:wf :status]) :woof.app/running)
-                                                    )}
-                                 ) )
-
-
-
-           ]
-
-        (init-fn (wf-fn params) opts)
-      )
-    )
-  )
-
 
 
 
@@ -251,107 +133,24 @@
 
 
 
-(rum/defc <file-editor> < rum/reactive [*STATE]
-  #_(let [cursor (partial rum/cursor-in *STATE)]
-      [:div
-       [:pre
-        (d/pretty @*STATE)]
-
-       ]
-      )
-  (let [cursor (partial rum/cursor-in *STATE)
-        *wf (cursor [:wf])
-        ]
-    [:div
-     (wf-ui/<wf-menu-ui>
-           "config editor:"
-           @(cursor [:wf :status])
-           @(cursor [:wf :status-actions]))
-
-
-     [:pre (pr-str (keys @*wf))]
-     ;[:pre (pr-str (:steps @*wf))]
-
-     ]
-    )
-
-  )
 
 
 
+;; wf! opts-fn init-fn
 
-(def config-ws (ui-wf
+(def config-ws (ui-state/ui-wf
                  cfg-wf/wf!
-                 (partial webservice/ws-opts "/api/config") ; fake-ws-opts ;
+
+                 cfg-wf/wf-fn
+
                  ; ui + fn
-                 (fn [WF opts]
-                   ;; how to access the wf inner state?
-                    (let [params (wfc/get-params WF)
-                          context-map (wfc/get-context-map WF)
-                          steps (wfc/get-steps WF)
-
-                          {
-                            *STATE :*state
-                            actions :actions
-                           } params
-
-                          xtor (wfc/wf-xtor WF)
-
-                           ;;opts (merge opts (runner-processing-opts *STATE))
-
-
-                           start-fn (fn []
-                                      ;;(js-debugger)
-
-                                      (wf/process-results! (wf/->ResultProcessor xtor opts))
-                                      ;; default processing
-                                      )
-
-                           stop-fn  (fn []
-                                      (wf/end! xtor))
-
-
-                          ]
-
-
-                      (init-ui! *STATE
-                             {
-
-
-                               :steps steps
-                               :context-map context-map
-
-                               :opts params  ;; rename
-
-                               ; :args args
-                               :status :woof.app/not-started
-                               :status-actions (status-actions start-fn stop-fn actions)
-
-
-                               :start! start-fn
-                               :stop! stop-fn
-
-                               }
-
-                             (fn [*STATE]
-                               (<file-editor> *STATE))
-                             )
-
-
-
-                      )
-
-
-
-
-
-
-                   )
-
-
-                 ; (partial default-ui/default-ui-fn "client-server edn editor")
-
-                 ))
+                 (fn
+                   ([]
+                    (cfg-wf/ui-fn) ;; get the defaults
+                    )
+                   ([WF opts]
+                    (cfg-wf/ui-fn WF opts init-ui!))
+                 )))
 
 
 
@@ -490,12 +289,19 @@
 
 
 
-(defn init-ui! [*STATE wf-map ui-fn]
+(defn init-ui!
+  ([*STATE]
+   ;; reset function
+   (init!)
+   )
+  ([*STATE wf-map ui-fn]
   (swap! *STATE merge
            {
              :wf wf-map
              :rum-ui ui-fn
              })
+
+   )
 
   )
 

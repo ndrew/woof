@@ -6,7 +6,15 @@
     [woof.wf :as wf]
     [woof.wfc :as wfc]
     [woof.xform :as x]
-    [woof.utils :as u])
+    [woof.utils :as u]
+
+    [rum.core :as rum]
+    [woof.ws :as webservice]
+    [woof.ui.state :as ui-state]
+    [woof.wf-ui :as wf-ui]
+
+
+    )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -201,9 +209,138 @@
 
 
 
+
+
+(defn wf-fn
+  "default wf-fn for the config workflow
+
+  * registers a ws endpoint /api/config
+  * uses default ui-opts handler
+  "
+  [*STATE params]
+
+  (ui-state/merge-full-opts
+    (webservice/ws-opts "/api/config" *STATE params)
+    (ui-state/ui-opts *STATE params)))
+
+
+
+(rum/defc <file-editor> < rum/reactive [*STATE]
+  (let [cursor (partial rum/cursor-in *STATE)
+        *wf (cursor [:wf])
+        *ui (cursor [:wf :config-editor])
+        ]
+    [:div
+     (wf-ui/<wf-menu-ui>
+           "config editor:"
+           @(cursor [:wf :status])
+           @(cursor [:wf :status-actions]))
+
+     (if-let [ui @*ui]
+       (do
+        [:div "working"]
+         )
+       (do
+        [:div
+
+         ]
+         )
+
+       )
+
+
+     ]
+    )
+
+  )
+
+
+(defn ui-fn
+  ([]
+   {} ;; default params
+   )
+  ([WF opts woof-ui-fn]
+   ;; how to access the wf inner state?
+   (let [params (wfc/get-params WF)
+         context-map (wfc/get-context-map WF)
+         steps (wfc/get-steps WF)
+
+         {
+           *STATE :*state
+           actions :actions
+           } params
+
+         xtor (wfc/wf-xtor WF)
+
+
+         start-fn (fn []
+                    ;;(js-debugger)
+
+                    (wf/process-results! (wf/->ResultProcessor xtor opts))
+                    ;; default processing
+                    )
+
+         stop-fn  (fn []
+                    (wf/end! xtor))
+
+         reset-fn (fn []
+                   (woof-ui-fn *STATE) ;;
+                   )
+
+         ]
+
+     ;; pass here initial ui state
+     (woof-ui-fn *STATE
+       {
+         :steps steps
+         :context-map context-map
+
+         :opts params  ;; rename
+
+         ; :args args
+         :status :woof.app/not-started
+         :status-actions (ui-state/status-actions start-fn stop-fn reset-fn actions)
+
+         :start! start-fn
+         :stop! stop-fn
+         :reset! reset-fn
+
+         :config-editor nil
+
+         :api {
+
+                }
+
+         }
+
+       (fn [*STATE]
+         (<file-editor> *STATE))
+       )
+     )
+   )
+  )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; test
+
+
 
 ;; server-wf emulator
 
