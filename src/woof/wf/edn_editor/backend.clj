@@ -140,6 +140,13 @@
 
 
 
+; in-chan>  - wf that can be expanded via new events through in-chan>
+; out-chan< - callback channel, for returning data out of the workflow
+
+; :send-transit!
+
+; *local
+
 (defn context-fn [& {:keys [*local in-chan> out-chan< send-transit!]}]
   {
     ;; loop that waits for steps from the in> channel
@@ -258,13 +265,14 @@
 
 
 
-;; api for webserivce
-(defn wf! []
-  ;; pass here the default path
+;; workflow function
+(defn wf-fn [initial-params]
 
   (let [*local (atom (default-state))
+
         in-chan> (async/chan)
         out-chan< (async/chan)
+
 
         receive-fn (fn [payload]
                      (let [msg (read-transit-str payload)]
@@ -273,6 +281,11 @@
                          ;; call cmd-> steps inside wf
                          (async/put! in-chan> msg))) ;; (cmd->steps ) ;;
                      )
+
+        send-fn (fn []
+                  ;; should send be symetrical to receive?
+                  )
+
         close-fn (fn [status] ; :server-close/:client-close/:normal/:going-away/:protocol-error/:unsupported/:unknown
 
                    (locking *out* (println "STOP WS WF:" status))
@@ -282,15 +295,17 @@
                    )
         ]
 
-    ;(endpoint-fn (partial wwf in-chan> out-chan<) receive-fn close-fn)
     {
-      :wf (partial wwf in-chan> out-chan< *local)
+      :wf (partial wwf in-chan> out-chan< *local) ;; wf constructor
 
-      :params {
-                :receive-fn receive-fn
-                :close-fn close-fn
-                }
-    }
+      :params (merge initial-params {
+                                      :receive-fn receive-fn
+
+                                      :close-fn close-fn
+
+                                      ; todo: return back state
+                                      })
+      }
     )
   )
 

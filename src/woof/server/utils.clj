@@ -53,6 +53,10 @@
                     socket-close-fn]
   (let [socket-send         (fn [v] (httpkit/send! socket-chan v))
         socket-send-transit (fn [v] (httpkit/send! socket-chan (write-transit-str v)))
+
+
+        ;; <?> return helper funcs with params or init a channel though which data will go out
+
         ;; add the helper funcs
         params {
                  :send! socket-send
@@ -63,11 +67,14 @@
                   (httpkit/on-receive socket-chan socket-receive-fn)
                   (httpkit/on-close   socket-chan
                                       (fn [status]
+
                                         ;; (println "WF ended!")
                                         (wf/end! xtor)
                                         (socket-close-fn status)
                                         )
                                       )
+
+
                   :ok
                   )
         ]
@@ -90,33 +97,4 @@
                      receive-fn close-fn))
 
 
-
-(defn websocket-ws
-  ([wf! opts-fn]
-   (websocket-ws wf! opts-fn {}))
-
-  ([wf! opts-fn initial-params]
-  (let [;; init wf constructor + wf defaults
-        {
-          wf-fn :wf
-          wf-default-params :params
-         } (wf!)
-
-        ;;
-         params (merge wf-default-params initial-params)
-
-        ;; prepare params for specific runner
-        {
-          opts-params :params
-          opts :opts
-          } (opts-fn params)
-
-         xtor (wfc/wf-xtor (wf-fn opts-params))
-        ]
-
-    ;; workflow default params + user provided params => wf params
-    (wf/process-results! (wf/->ResultProcessor xtor opts))
-
-    ))
-  )
 

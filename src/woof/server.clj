@@ -25,11 +25,26 @@
     [woof.example.ws :as ws]
 
     [woof.wf.edn-editor.backend :as fs]
+
+    ;;;
+
+    [woof.core.runner :as runner]
     )
   (:gen-class))
 
 ;;
 ;; server
+
+
+(defn run-ws-wf [socket-chan
+                  init-fn
+                  wf-fn]
+  (runner/run-wf
+      init-fn
+      wf-fn
+      (partial httpkit-opts socket-chan)
+      runner/default-run-fn))
+
 
 (compojure/defroutes app
   ;; serve the application
@@ -39,11 +54,17 @@
 
 
   ;; file text editor backend
+;  (compojure/GET "/api/config" [:as req]
+;                 (httpkit/with-channel req socket-chan
+;                   (websocket-ws fs/wf!
+;                                 (partial httpkit-opts socket-chan)
+;                                 {:initial-command [:file "/Users/ndrw/m/woof/test/data/config.edn"]})))
+
   (compojure/GET "/api/config" [:as req]
                  (httpkit/with-channel req socket-chan
-                   (websocket-ws fs/wf!
-                                 (partial httpkit-opts socket-chan)
-                                 {:initial-command [:file "/Users/ndrw/m/woof/test/data/config.edn"]})))
+                   (run-ws-wf socket-chan
+                                (fn []   {:initial-command [:file "/Users/ndrw/m/woof/test/data/config.edn"]})
+                                 fs/wf-fn)))
 
 
   ;; test workflow
