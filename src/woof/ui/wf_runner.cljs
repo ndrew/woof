@@ -44,8 +44,8 @@
     [woof.wf.edn-editor.frontend :as cfg-wf]
 
     [woof.ui.wf :as default-ui]
-    [woof.ui.state :as ui-state]
 
+    [woof.core.runner :as runner]
     )
 
   (:require-macros
@@ -103,54 +103,33 @@
 
 ;; wf constructor ui
 
-;; creating wf via wf constructor
-
-
-
-
-
-;; for tests
-(defn fake-ws-opts [*STATE wf-map]
-  {
-    :params {
-              :send! (fn [v]
-                        (println "SEND" v)
-                            )
-
-              :send-transit! (fn [v]
-                                (println "SEND TRANSIT " v)
-
-                                    ;(httpkit/send! socket-chan (write-transit-str v))
-                                    )
-
-              }
-    :opts {
-
-            }
-    }
-  )
-
-
-
-
-
-
 
 ;; wf! opts-fn init-fn
 
-(def config-ws (ui-state/ui-wf
-                 cfg-wf/wf!
 
-                 cfg-wf/wf-fn
 
-                 ; ui + fn
-                 (fn
-                   ([]
-                    (cfg-wf/ui-fn) ;; get the defaults
-                    )
-                   ([WF opts]
-                    (cfg-wf/ui-fn WF opts init-ui!))
-                 )))
+;; create ui only wf - for testing runner
+
+
+(defn config-ws [*STATE]
+    ;; init-fn ; (fn [] => defaults )
+
+  ;; wf-fn   ; (fn [params] -> {:wf <wf>, :params {}})
+  ;; opts-fn ; (fn [params] -> {:opts <>, :params {}}
+
+  ;; run-fn ; (fn [wf-impl opts])
+
+  (runner/run-wf
+      (fn []
+        {}) ;; defaults
+      (partial cfg-wf/wf! *STATE)  ;; (fn [params] -> {:wf <wf>, :params {}})
+      (partial cfg-wf/opts-fn *STATE)
+
+      (fn [WF opts]  ; WF is wf-impl
+        (cfg-wf/ui-fn WF opts init-ui!))
+
+    )
+)
 
 
 

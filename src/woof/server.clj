@@ -18,7 +18,7 @@
     [woof.utils :as u :refer [inline--fn1]]
     [woof.test-data :as test-data]
 
-    [woof.server.utils :refer [read-transit-str write-transit-str websocket-ws httpkit-opts httpkit-opts-impl]]
+    [woof.server.utils :refer [read-transit-str write-transit-str httpkit-opts httpkit-opts-impl]]
 
     [woof.example.files :as files-wf]
 
@@ -36,6 +36,7 @@
 ;; server
 
 
+;; shorthand for running the ws wf
 (defn run-ws-wf [socket-chan
                   init-fn
                   wf-fn]
@@ -52,35 +53,27 @@
   (route/resources   "/" {:root "public"})
 
 
-
   ;; file text editor backend
-;  (compojure/GET "/api/config" [:as req]
-;                 (httpkit/with-channel req socket-chan
-;                   (websocket-ws fs/wf!
-;                                 (partial httpkit-opts socket-chan)
-;                                 {:initial-command [:file "/Users/ndrw/m/woof/test/data/config.edn"]})))
-
   (compojure/GET "/api/config" [:as req]
                  (httpkit/with-channel req socket-chan
                    (run-ws-wf socket-chan
-                                (fn []   {:initial-command [:file "/Users/ndrw/m/woof/test/data/config.edn"]})
+                                (fn [] {:initial-command [:file "/Users/ndrw/m/woof/test/data/config.edn"]})
                                  fs/wf-fn)))
 
 
   ;; test workflow
-  (compojure/GET "/api/test" [:as req]
-                 (httpkit/with-channel req socket-chan
-                   (websocket-ws ws/prepare-wf (partial httpkit-opts socket-chan))
-                   ))
+  ;(compojure/GET "/api/test" [:as req]
+  ;               (httpkit/with-channel req socket-chan
+  ;                 (websocket-ws ws/prepare-wf (partial httpkit-opts socket-chan))
+  ;                 ))
 
   ;; file selector wf
-  (compojure/GET "/api/files" [:as req]
-                 (httpkit/with-channel req chan
-                   (websocket-ws
-                                 files-wf/wf!
-                                 (partial httpkit-opts chan)
-                     )))
-
+  ;(compojure/GET "/api/files" [:as req]
+  ;               (httpkit/with-channel req chan
+  ;                 (websocket-ws
+  ;                               files-wf/wf!
+  ;                               (partial httpkit-opts chan)
+  ;                   )))
 
   ;; testing ajax calls
   (compojure/GET "/ajax" [] (write-transit-str "Hello from AJAX")))

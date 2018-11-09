@@ -93,12 +93,14 @@
 
 
 (defn- contents! [data]
-  (let [sid (u/seq-sid "content-")]
+  (let [sid (u/seq-sid "content-")
+        sid2 (u/seq-sid "write-")
+        ]
     {
       sid [:state! [[:current :contents] data]]
-      (u/seq-sid "write-") [:write-current sid]
+      sid2 [:write-current sid]
 
-      (u/seq-sid "client>-") [:client> sid] ;[:client> sid]
+      (u/seq-sid "client>-") [:client> sid2] ;[:client> sid]
       }))
 
 
@@ -203,7 +205,8 @@
                                    (let [current (get-in @*local [:current])]
                                      (do
                                        (spit (:path current) (:contents current))
-                                       (:current current)))))
+                                       current)
+                                     )))
 
 ;;
     :client> {:fn (x/global-shandler
@@ -326,7 +329,7 @@
 ;; tester
 
 
-
+;; todo: rewrite tester
 
 (defn wf-tester []
   (let [

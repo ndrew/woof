@@ -60,3 +60,40 @@
     (wf/process-results! (wf/->ResultProcessor xtor opts))))
 
 ;; todo: wrap to a function with outer params (state for ui, socket chan for ws)
+
+
+
+;; todo: find proper names
+
+;; joining wf constructors
+;;   wf + opt1 + opt2
+
+
+(defn merge-opts [opt1 opt2]
+  (let [{bp1 :before-process} opt1
+        {bp2 :before-process} opt2
+
+        opts (merge opt1 opt2
+         {
+           :before-process (fn[wf-chan xtor]
+                             (if (fn? bp1)
+                               (bp1 wf-chan xtor))
+                             (if (fn? bp2)
+                               (bp2 wf-chan xtor))
+                             )})
+        ]
+
+    ;; todo: merge :op-handlers-map
+    opts
+    ))
+
+
+
+(defn merge-full-opts [opts1 opts2]
+  {
+    :params (merge (:params opts1)
+                    (:params opts2))
+    :opts (merge-opts (:opts opts1)
+                      (:opts opts2))
+    }
+  )

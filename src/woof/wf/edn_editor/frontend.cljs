@@ -13,6 +13,7 @@
     [woof.ui.state :as ui-state]
     [woof.wf-ui :as wf-ui]
 
+    [woof.core.runner :as runner]
 
     )
   (:require-macros
@@ -27,7 +28,10 @@
 ;;   todo: add steps
 
 
-(defn context-fn [& {:keys [*local send! in-chan> out-chan<]}]
+(defn context-fn [& {:keys [
+                             *local                    ; ui
+                             send! in-chan> out-chan<  ; ws
+                             ]}]
 
   {
 
@@ -53,24 +57,24 @@
 
 
     :ui-loop  {
-                          :fn (x/global-shandler
-                                (x/infinite-expand-rf (fn
-                                                        ([] in-chan>) ;; return channel
+                :fn (x/global-shandler
+                      (x/infinite-expand-rf (fn
+                                              ([] in-chan>) ;; return channel
 
-                                                        ([steps]
-                                                         (locking *out* (println "EDN: new commands: " (d/pretty steps)))
-                                                         steps)
+                                              ([steps]
+                                               (locking *out* (println "EDN: new commands: " (d/pretty steps)))
+                                               steps)
 
-                                                        ([in-chan out-chan]
+                                              ([in-chan out-chan]
 
-                                                         (locking *out* (println "EDN: closing :wait-for-commands" in-chan out-chan))
-                                                         ;; when this is called
+                                               (locking *out* (println "EDN: closing :wait-for-commands" in-chan out-chan))
+                                               ;; when this is called
 
-                                                         )
-                                                        )))
-                          :infinite true
-                          :expands? true
-                          }
+                                               )
+                                              )))
+                :infinite true
+                :expands? true
+                }
 
 
     }
@@ -95,6 +99,7 @@
 ;; workflow function
 
 
+
 (defn wwf-fn [in-chan> out-chan< *local  ;; <- these should be partially applied ;; <?> why these are not in params?
            params]
 
@@ -117,9 +122,12 @@
 ;; workflow constructor
 
 
+
+
+
 (defn wf!
   "*local - state atom for ui updates"
-  [*local]
+  [*local initial-params]
 
   ;; inits necessary channels/resources for wf
 
@@ -131,17 +139,14 @@
                             (let [[op v] msg]
 
                               {
-                                (wf/rand-sid) [:log (str
-                                                      "got op"
-                                                      (d/pretty msg)
-                                                      ) ]
+                                ;; just save the data from server to state
+                                (wf/rand-sid) [:state! [[:wf :wf-state op] v]]
                                 }
                               )
                             )
 
         client-msg->server-steps (fn [msg]
-                                   msg
-                                   )
+                                   msg)
 
         receive-fn (fn [msg]
 
@@ -166,27 +171,28 @@
                    (async/put! in-chan>
                                {
                                  (u/seq-sid "send-") [:send! msg]
-                                 }
-                               )
+                                 })
                    )
         ]
 
     {
       :wf (partial wwf-fn in-chan> out-chan< *local)
 
-      ; :receive-fn receive-fn
-      ; :close-fn close-fn
-
-
-      :params {
+      :params (merge initial-params
+                     {
                 :receive-fn receive-fn
                 :server-msg-fn server-msg->steps
+
+                :api {
+                       :server-msg server-msg!
+                       :current (fn[]
+                                  (server-msg! [:current nil]))
+                       }
 
                 :actions [
                            ["currently selected file"
                             (fn[]
-                              (server-msg! [:current nil])
-                              )
+                              (server-msg! [:current nil]))
                             ]
 
                            ["test change file" (fn[]
@@ -197,10 +203,7 @@
                                                       (server-msg! [:contents! "azazazaz"]))]
 
                            ] ;; todo: add some actions
-
-                }
-
-
+                })
       }
     )
   )
@@ -211,7 +214,10 @@
 
 
 
-(defn wf-fn
+
+
+
+(defn opts-fn
   "default wf-fn for the config workflow
 
   * registers a ws endpoint /api/config
@@ -219,18 +225,26 @@
   "
   [*STATE params]
 
-  (ui-state/merge-full-opts
+  (runner/merge-full-opts
     (webservice/ws-opts "/api/config" *STATE params)
-    (ui-state/ui-opts *STATE params)))
+    (ui-state/ui-opts *STATE params))
+
+  )
+
+
+
+
 
 
 
 (rum/defc <file-editor> < rum/reactive [*STATE]
   (let [cursor (partial rum/cursor-in *STATE)
         *wf (cursor [:wf])
-        *ui (cursor [:wf :config-editor])
+        *ui (cursor [:wf :wf-state])
+        ;{{} :file} @*ui
         ]
     [:div
+
      (wf-ui/<wf-menu-ui>
            "config editor:"
            @(cursor [:wf :status])
@@ -238,11 +252,14 @@
 
      (if-let [ui @*ui]
        (do
-        [:div "working"]
+        [:div
+         [:pre (d/pretty @*ui)]
+         ]
          )
        (do
         [:div
-
+          "UI NOT INITIALIZED"
+         [:pre (d/pretty (keys @*wf))]
          ]
          )
 
@@ -256,10 +273,7 @@
 
 
 (defn ui-fn
-  ([]
-   {} ;; default params
-   )
-  ([WF opts woof-ui-fn]
+  [WF opts woof-ui-fn]
    ;; how to access the wf inner state?
    (let [params (wfc/get-params WF)
          context-map (wfc/get-context-map WF)
@@ -289,7 +303,9 @@
 
          ]
 
+
      ;; pass here initial ui state
+
      (woof-ui-fn *STATE
        {
          :steps steps
@@ -305,11 +321,10 @@
          :stop! stop-fn
          :reset! reset-fn
 
-         :config-editor nil
 
-         :api {
+         ;; the place where workflow can store data
+         :wf-state {}
 
-                }
 
          }
 
@@ -317,8 +332,7 @@
          (<file-editor> *STATE))
        )
      )
-   )
-  )
+)
 
 
 
