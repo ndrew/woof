@@ -36,35 +36,38 @@
      ]
 )
 
+
 ;; default wf runner ui
+
 (rum/defcs <wf-ui> < rum/reactive
+
   [local header *STATE]
 
   (let [cursor (partial rum/cursor-in *STATE)
 
         {status :status
-         wf :wf
          full-history :history
          } @*STATE]
 
     [:div.wfui
+
      [:h5 header]
+
+     ;; [:pre (d/pretty @*STATE)]
 
      ;; pre-wf stuff: steps
 
-
-
      ;; wf actions menu
-     (wf-ui/<wf-menu-ui> "wf:" status @(cursor [:wf :status-actions]))
+     (wf-ui/<wf-menu-ui> "wf:" status @(cursor [:status-actions]))
 
 
 
      [:div
-      (steps-ui/<steps> (cursor [:wf :steps]) @(cursor [:wf :context-map]))
+      (steps-ui/<steps> (cursor [:steps]) @(cursor [:context-map]))
       ]
 
      [:div
-      (<opts-ui> (cursor [:wf :opts]))
+      (<opts-ui> (cursor [:opts]))
       ]
 
 
@@ -102,11 +105,3 @@
      ]
     )
   )
-
-
-
-
-(defn default-ui-fn [header & r]
-  (fn [*STATE]
-    (<wf-ui> header *STATE)))
-
