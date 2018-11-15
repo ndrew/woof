@@ -10,7 +10,6 @@
 
     [rum.core :as rum]
     [woof.ws :as webservice]
-    [woof.ui.state :as ui-state]
     [woof.wf-ui :as wf-ui]
 
     [woof.core.runner :as runner]
@@ -100,7 +99,7 @@
 
 
 
-(defn wwf-fn [in-chan> out-chan< *local  ;; <- these should be partially applied ;; <?> why these are not in params?
+(defn- wwf-fn [in-chan> out-chan< *local  ;; <- these should be partially applied ;; <?> why these are not in params?
            params]
 
   (let [defaults {
@@ -185,15 +184,21 @@
 
                 :api {
                        :server-msg server-msg!
-                       :current (fn[]
+
+                       :current (fn []
                                   (server-msg! [:current nil]))
+                       :file (fn [path]
+                               (server-msg! [:file path]))
+
                        }
 
                 :actions [
-                           ["currently selected file"
+                           ["current file"
                             (fn[]
                               (server-msg! [:current nil]))
                             ]
+
+
 
                            ["test change file" (fn[]
                                                  (server-msg! [:file "/Users/ndrw/m/woof/test/data/config1.edn"])
@@ -227,7 +232,9 @@
 
   (runner/merge-full-opts
     (webservice/ws-opts "/api/config" *STATE params)
-    (ui-state/ui-opts *STATE params))
+    (ui-state/ui-opts *STATE params)
+
+    )
 
   )
 
@@ -241,7 +248,8 @@
   (let [cursor (partial rum/cursor-in *STATE)
         *wf (cursor [:wf])
         *ui (cursor [:wf :wf-state])
-        ;{{} :file} @*ui
+        {{path :path
+          contents :contents} :file} @*ui
         ]
     [:div
 
@@ -250,20 +258,19 @@
            @(cursor [:wf :status])
            @(cursor [:wf :status-actions]))
 
-     (if-let [ui @*ui]
-       (do
-        [:div
-         [:pre (d/pretty @*ui)]
-         ]
-         )
-       (do
-        [:div
-          "UI NOT INITIALIZED"
-         [:pre (d/pretty (keys @*wf))]
-         ]
-         )
+     [:div
 
-       )
+         (when-let [api @(cursor [:wf :api])]
+           [:button {:on-click (fn[e]
+                                 ((:file api) path)
+                                 )} "reload (via api)"]
+           )
+
+         [:hr]
+
+         [:header path]
+         [:pre contents]
+         ]
 
 
      ]
@@ -274,6 +281,9 @@
 
 (defn ui-fn
   [WF opts woof-ui-fn]
+
+  ;; :: todo: extract from here
+
    ;; how to access the wf inner state?
    (let [params (wfc/get-params WF)
          context-map (wfc/get-context-map WF)
@@ -311,7 +321,10 @@
          :steps steps
          :context-map context-map
 
-         :opts params  ;; rename
+
+         :api (:api params)
+
+         :params params  ;; rename
 
          ; :args args
          :status :woof.app/not-started
