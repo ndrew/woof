@@ -1,21 +1,16 @@
-(ns woof.example.infinite
+(ns woof.wf.simple.infinite
   (:require
     [cljs.core.async :as async]
 
-    [rum.core :as rum]
 
     [woof.data :as d]
     [woof.wf :as wf]
+    [woof.wfc :as wfc]
 
     [woof.utils :as u]
     [woof.ui :as ui]
 
-    [woof.wf-ui :as wf-ui]
-
     [woof.ui.results :as r]
-
-
-    [markdown.core :refer [md->html]]
 
     )
   (:require-macros
@@ -130,6 +125,10 @@
   )
 
 
+
+;; define its opts fn
+
+
 (defn actions-fn [& {:keys [chan-factory]}]
     {
      ;; :start! (fn[])
@@ -141,3 +140,55 @@
 
       ]
   })
+
+
+
+(defn opts-fn [params]
+
+;  (runner/merge-full-opts)
+
+  ;; why this is not running
+
+  (let [new-params (merge params
+                          {
+                            :azaza "ururur"
+                            } )
+
+        close-fn (fn [] (:chan-factory params) :close)
+
+        init-fn (fn[wf-chan xtor]
+                  ;;
+                  :ok
+                  )
+        ]
+
+    {
+      :params new-params
+      :opts {
+              :before-process init-fn
+              ;:after-process (fn [wf-chan]
+              ;                 (println "azazaza"))
+              :op-handlers-map {
+                                 :done (fn [data]
+                                         (close-fn)
+                                         )
+
+                   :error (fn [data]
+                            (close-fn))
+                                 }
+              }
+      })
+  )
+
+
+
+(defn wf! [initial-params]
+  (println "wf-fn: " initial-params)
+
+  {
+    :wf (fn [params]
+          (wfc/params-wf params context-map-fn steps-fn)
+          ) ;; (partial wwf in-chan> out-chan< *local) ;; wf constructor
+    :params (merge initial-params {})
+    }
+  )

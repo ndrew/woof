@@ -20,6 +20,8 @@
 
 
 
+
+
 ;;;;;;;;;;;;;;;;;
 ;;
 ;; context
@@ -139,7 +141,7 @@
 
                               {
                                 ;; just save the data from server to state
-                                (wf/rand-sid) [:state! [[:wf :wf-state op] v]]
+                                (wf/rand-sid) [:state! [[:wf-state op] v]]
                                 }
                               )
                             )
@@ -193,6 +195,22 @@
                        }
 
                 :actions [
+                           ["upd"
+                            (fn[]
+                              (let [s1 (wf/rand-sid)
+                                    s2 (wf/rand-sid)]
+                              (go
+                                 (async/put! in-chan>
+                                             {s1 [:state [:wf-state]]
+                                              s2 [:log s1]
+
+                                              (wf/rand-sid) [:state! [[:wf-state] :givno]]
+                                              }
+                                             )))
+                              )
+                            ]
+
+
                            ["current file"
                             (fn[]
                               (server-msg! [:current nil]))
@@ -230,37 +248,27 @@
   "
   [*STATE params]
 
-  (runner/merge-full-opts
-    (webservice/ws-opts "/api/config" *STATE params)
-    (ui-state/ui-opts *STATE params)
+;  (runner/merge-full-opts)
 
-    )
+  (webservice/ws-opts "/api/config" *STATE params)
 
   )
 
 
 
-
-
-
-
 (rum/defc <file-editor> < rum/reactive [*STATE]
   (let [cursor (partial rum/cursor-in *STATE)
-        *wf (cursor [:wf])
-        *ui (cursor [:wf :wf-state])
+        ;*wf (cursor [:wf])
+        *ui (cursor [:wf-state])
         {{path :path
           contents :contents} :file} @*ui
         ]
+
     [:div
 
-     (wf-ui/<wf-menu-ui>
-           "config editor:"
-           @(cursor [:wf :status])
-           @(cursor [:wf :status-actions]))
+         [:pre (d/pretty (keys @*STATE))]
 
-     [:div
-
-         (when-let [api @(cursor [:wf :api])]
+         (when-let [api @(cursor [:api])]
            [:button {:on-click (fn[e]
                                  ((:file api) path)
                                  )} "reload (via api)"]
@@ -273,79 +281,12 @@
          ]
 
 
-     ]
+
+
     )
 
   )
 
-
-(defn ui-fn
-  [WF opts woof-ui-fn]
-
-  ;; :: todo: extract from here
-
-   ;; how to access the wf inner state?
-   (let [params (wfc/get-params WF)
-         context-map (wfc/get-context-map WF)
-         steps (wfc/get-steps WF)
-
-         {
-           *STATE :*state
-           actions :actions
-           } params
-
-         xtor (wfc/wf-xtor WF)
-
-
-         start-fn (fn []
-                    ;;(js-debugger)
-
-                    (wf/process-results! (wf/->ResultProcessor xtor opts))
-                    ;; default processing
-                    )
-
-         stop-fn  (fn []
-                    (wf/end! xtor))
-
-         reset-fn (fn []
-                   (woof-ui-fn *STATE) ;;
-                   )
-
-         ]
-
-
-     ;; pass here initial ui state
-
-     (woof-ui-fn *STATE
-       {
-         :steps steps
-         :context-map context-map
-
-
-         :api (:api params)
-
-         :params params  ;; rename
-
-         ; :args args
-         :status :woof.app/not-started
-         :status-actions (ui-state/status-actions start-fn stop-fn reset-fn actions)
-
-         :start! start-fn
-         :stop! stop-fn
-         :reset! reset-fn
-
-
-         ;; the place where workflow can store data
-         :wf-state {}
-
-
-         }
-
-       (fn [*STATE]
-         (<file-editor> *STATE))
-       )
-     )
-)
 
 
 

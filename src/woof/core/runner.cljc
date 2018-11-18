@@ -63,27 +63,26 @@
 
 
 
-;; todo: find proper names
-
-;; joining wf constructors
-;;   wf + opt1 + opt2
-
-
 (defn merge-opts [opt1 opt2]
-  (let [{bp1 :before-process} opt1
-        {bp2 :before-process} opt2
+  (let [{bp1 :before-process
+         op1 :op-handlers-map
+         } opt1
+        {bp2 :before-process
+         op2 :op-handlers-map
+         } opt2
 
         opts (merge opt1 opt2
          {
-           :before-process (fn[wf-chan xtor]
+           :before-process (fn [wf-chan xtor]
                              (if (fn? bp1)
                                (bp1 wf-chan xtor))
                              (if (fn? bp2)
                                (bp2 wf-chan xtor))
-                             )})
-        ]
+                             )
+           :op-handlers-map (merge-with juxt op1 op2)
 
-    ;; todo: merge :op-handlers-map
+           })
+        ]
     opts
     ))
 
@@ -93,6 +92,7 @@
   {
     :params (merge (:params opts1)
                     (:params opts2))
+
     :opts (merge-opts (:opts opts1)
                       (:opts opts2))
     }

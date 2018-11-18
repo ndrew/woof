@@ -12,7 +12,9 @@
 
 
     [woof.ui :as ui]
-    [woof.ui.context :as ctx-ui]
+
+    [woof.ui.default.context :as ctx-ui]
+
     [woof.ui.steps :as steps-ui]
     [woof.ui.results :as r]
 
@@ -41,34 +43,51 @@
 
 (rum/defcs <wf-ui> < rum/reactive
 
-  [local header *STATE]
+  [local header *STATE & {:keys [results? custom-ui]}]
 
   (let [cursor (partial rum/cursor-in *STATE)
 
         {status :status
          full-history :history
+         params :params
          } @*STATE]
+
+
 
     [:div.wfui
 
      [:h5 header]
 
-     ;; [:pre (d/pretty @*STATE)]
-
-     ;; pre-wf stuff: steps
-
-     ;; wf actions menu
+      ;; wf actions menu
      (wf-ui/<wf-menu-ui> "wf:" status @(cursor [:status-actions]))
 
+     ;; [:pre (d/pretty @(cursor [:wf-state]))]
 
 
-     [:div
-      (steps-ui/<steps> (cursor [:steps]) @(cursor [:context-map]))
+     (if results?
+       (r/<wf-results-ui> "result"
+                          @(cursor [:result])
+                          @(cursor [:steps])
+                          (atom {:pre   {} ;; *editors
+                                 :post {}})))
+
+
+     (if custom-ui
+       (custom-ui *STATE)
+       )
+
+
+     (comment [:div.hbox
+      [:div
+        (steps-ui/<steps> (cursor [:steps]) @(cursor [:context-map]))
+        (ctx-ui/<context> "context" (cursor [:context-map]))]
       ]
 
-     [:div
-      (<opts-ui> (cursor [:opts]))
-      ]
+
+
+
+
+     ; [:div (<opts-ui> (cursor [:opts]))]
 
 
 
@@ -94,14 +113,12 @@
 
         [:hr]
         ;; todo: migrate old ui
-        (r/<wf-results-ui> "result"
-                           @(cursor [:result])
-                           @(cursor [:steps])
-                           (atom {:pre   {} ;; *editors
-                                  :post {}}))
 
 
-        ])
+
+        ]))
+
+
      ]
     )
   )

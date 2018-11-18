@@ -9,7 +9,7 @@
 
     [woof.example.big-wf :as big-wf]
     [woof.example.files-ui :as files-ws]
-    [woof.example.infinite :as infinite]
+;    [woof.example.infinite :as infinite]
     [woof.example.ouroboros :as ouroboros]
     [woof.example.ui-loop :as ui-loop]
     [woof.example.ws :as ws] ;; todo: rename
@@ -27,6 +27,7 @@
     [woof.wf.edn-editor.frontend :as cfg-wf]
     [woof.wf.popup.example1 :as popup]
     [woof.wf.simple.wf :as simple-wf]
+    [woof.wf.simple.infinite :as infinite-wf]
 
 
     [woof.wfc :as wfc]
@@ -46,9 +47,10 @@
 
 (declare init!)
 
-(declare init-ui!)
+;; run
+(declare run-ui!)
+;; end
 (declare reset-ui!)
-
 
 
 ;; -------------------------- ui-state
@@ -61,7 +63,7 @@
 (defn ui-opts
   "returns an options map for the woof.wf with a before-process handler
   for the ui updates."
-  [*STATE params]
+  [*STATE params & {:keys [done]}]
   (let [cursor (partial rum/cursor-in *STATE)
 
         *result  (cursor [:wf :result])
@@ -96,9 +98,11 @@
                               )
 
                    :done (fn [data]
+                           (if (fn? done)
+                             (done data))
+
                            (swap! *history conj
                                   (wdata/inline-results data))
-
                            (reset! *status :woof.app/done))
 
                    :error (fn [data]
@@ -154,13 +158,16 @@
 
 
 (defn- ui-wf-state [*STATE WF opts]
-  (let [params (wfc/get-params WF)
 
+  (let [params (wfc/get-params WF)
 
         xtor (wfc/wf-xtor WF)
         processor (wf/->ResultProcessor xtor opts)
 
-        start-fn (fn [] (wf/process-results! processor))
+        start-fn (fn []
+                   (wf/process-results! processor)
+                   ;; :status-actions
+                   )
         stop-fn  (fn [] (wf/end! xtor))
         reset-fn (fn [] (reset-ui! *STATE))
 
@@ -191,11 +198,9 @@
       :opts opts
 
 
+    ;; default wf stuff
       :history []
       :result {}
-
-    ;; other
-      :api (:api params)
 
       }
 
@@ -203,103 +208,143 @@
 
   )
 
-(defn ui-fn [*STATE <ui> & {:keys [auto-start]}]
+
+(defn ui-fn [*STATE <ui> & {:keys [auto-start state-fn]}]
 
   (fn [WF opts]
-        (let [ui-wf (ui-wf-state *STATE WF opts)
+        (let [f (if (fn? state-fn)
+                  state-fn
+                  identity)
+              ui-wf (f (ui-wf-state *STATE WF opts))
 
-              params  (:params ui-wf)
-              start-fn (:start! ui-wf)
               ]
 
           ;; pass here initial ui state
-          (init-ui! *STATE
+          (run-ui! *STATE
                     ui-wf
                     <ui>)
 
           ;; auto-start
           (if auto-start
-            (start-fn))
+            ((:start! ui-wf)))
 
           ))
   )
 
 
-(defn simple-popup [*STATE]
 
-  (let [
-         ;; todo: editing defaults
-         defaults-fn (fn [] {:hello :world})
-         ]
+(defn init-ui! [params-fn
+                compile-fn
+                ]
+  (fn [*STATE]
+    (let [params (params-fn)]
+      (swap! *STATE merge
+             {
+               :screen :compile
+               :compile {
+                          :params params
+                          :fn compile-fn
+                          }
+               })
+      )
+    )
+  )
+
+
+
+
+
+(defn simple-popup-runner [*STATE params]
+  (runner/run-wf
+    (fn [] params)
+    simple-wf/wf!  ;; (fn [params] -> {:wf <wf>, :params {}})
+    (partial ui-opts *STATE)
+    (ui-fn *STATE
+           (fn [*STATE]
+             (default-ui/<wf-ui> "SIMPLE WORKFLOW:" *STATE))
+           :auto-start false)
+    ))
+
+
+(def simple-popup (init-ui!
+                    (fn [] {:hello :world})
+                    simple-popup-runner))
+
+
+
+(defn infinite-wf-runner [*STATE params]
+  ;
 
     (runner/run-wf
-      defaults-fn
-      simple-wf/wf!  ;; (fn [params] -> {:wf <wf>, :params {}})
-      (partial ui-opts *STATE)
+      (fn[] params)
+      infinite-wf/wf!  ;; (fn [params] -> {:wf <wf>, :params {}})
+
+      (fn [params]
+        (runner/merge-full-opts
+          (infinite-wf/opts-fn params)
+          (ui-opts *STATE params)))
+
+
       (ui-fn *STATE
              (fn [*STATE]
 
-               (default-ui/<wf-ui> "SIMPLE WORKFLOW:" *STATE))
+               (default-ui/<wf-ui> "INFINITE:" *STATE))
              :auto-start false)
       )
-
-    )
-
   )
+
+(def infinite-wf (init-ui!
+                   infinite-wf/prepare-params!
+                   infinite-wf-runner))
 
 
 ;;
 ;; example of higher order wf for handling ui
 
 
-(defn popup-wf [*STATE]
+
+
+
+(defn popup-wf-runner [*STATE params]
   ; todo:
 
   (runner/run-wf
-      (fn []
-        ;; defaults
-        (popup/prepare-params))
-
+      (fn [] params)
       (partial popup/wf! *STATE)  ;; (fn [params] -> {:wf <wf>, :params {}})
       (partial ui-opts *STATE)
 
       (fn [WF opts]  ; WF is wf-impl
 
         (let [ui-wf (ui-wf-state *STATE WF opts)
-
               params  (:params ui-wf)
               start-fn (:start! ui-wf)
               ]
 
 
-          (.log js/console ui-wf)
-
           ;; pass here initial ui state
-          (init-ui! *STATE
+          (run-ui! *STATE
                     ui-wf
                     (fn [*STATE]
                       (popup/<popup-ui> *STATE (:editor-chan params))))
 
           ;; auto-start
             (start-fn)
-
           )
-
-
         )
-
     )
-
   )
 
 
+(def popup-wf (init-ui!
+                popup/prepare-params
+                popup-wf-runner))
 
 
 
 
 
 
-(defn config-ws [*STATE]
+(defn config-ws-runner [*STATE params]
     ;; init-fn ; (fn [] => defaults )
 
   ;; wf-fn   ; (fn [params] -> {:wf <wf>, :params {}})
@@ -307,20 +352,57 @@
 
   ;; run-fn ; (fn [wf-impl opts])
 
-  (runner/run-wf
-      (fn []
-        {}) ;; defaults
-      (partial cfg-wf/wf! *STATE)  ;; (fn [params] -> {:wf <wf>, :params {}})
-      (partial cfg-wf/opts-fn *STATE)
+  (let [init-ui-state-fn (fn [ui-wf]
+                           (merge ui-wf
+                                  {    ;; others
+                                    :api (get-in ui-wf [:params :api])
+                                    :wf-state {:file {}}
+                                    }
+                                  )
+                           )
+        done-fn (fn[data]
+                  (.log js/console @*STATE)
+                  (.log js/console data)
+                  ;; wf is done
 
-      (fn [WF opts]  ; WF is wf-impl
-        (cfg-wf/ui-fn WF opts init-ui!))
+                  )
+        ]
 
+    (runner/run-wf
+      (fn [] params) ;; defaults
+
+      (partial cfg-wf/wf! (rum/cursor-in *STATE [:wf]))  ;; (fn [params] -> {:wf <wf>, :params {}})
+
+      (fn [params]
+        (runner/merge-full-opts
+          (webservice/ws-opts "/api/config" *STATE params) ;; (cfg-wf/opts-fn *STATE params)
+          (ui-opts *STATE params
+                   :done done-fn)))
+
+      (ui-fn *STATE
+             (fn [*STATE]
+               (default-ui/<wf-ui> "CONFG:" *STATE
+                                   :results? false
+                                   :custom-ui (fn [*UI-STATE]
+                                                [:div
+                                                 (d/pretty
+                                                   (keys @*UI-STATE))
+                                                 ]
+                                                )
+                                   )
+               )
+             :auto-start true
+             :state-fn init-ui-state-fn)
+      )
     )
-)
+  )
 
 
-
+(def config-ws (init-ui!
+                  (fn [] {
+                           :initial-steps {::yo [:log "hello there"]}
+                           })
+                  config-ws-runner))
 
 
 
@@ -330,13 +412,14 @@
       :basic-worflows [
                         ["simplest wf" simple-popup]
                         []
+                        ["infinite" infinite-wf]
+                        []
                         ["popup"   popup-wf ]
-
-                        ;[]
-                        ;["config" config-ws]
+                        []
+                        ["config" config-ws]
 
                         ;["ouroboros" ouroboros-wf]
-                        ;["infinite" infinite-wf]
+
                         ;["expand" expand-wf]
                         ]
       :complex-workflows [
@@ -351,8 +434,12 @@
                             ;[]
                             ]
 
+      :screen :wf-selector
+
 
       ;; workflow specific map
+      :compile nil
+
       :wf nil
 
       ;; current ui
@@ -373,6 +460,9 @@
   ([]
    (swap! *UI-STATE merge
          {
+           :screen :wf-selector
+
+           :compile nil
            :wf nil ;; reset the wf state
          })
    )
@@ -394,14 +484,16 @@
 ;; -API
 
 
+
 (defn reset-ui! [*STATE]
   (init!))
 
 
-(defn init-ui!
+(defn run-ui!
   [*STATE wf-map ui-fn]   ;; init fn
     (swap! *STATE merge
            {
+             :screen :run
              :wf wf-map
              :rum-ui ui-fn
              })
@@ -438,19 +530,63 @@
 
 
 
+(rum/defc <wf-compilation> < rum/reactive [*STATE]
 
+  [:div
+   (into [:div.params-ui
+             [:header "Params:"]]
+
+            (map (fn[[k v]]
+                   [:div
+                    [:span (d/pretty k)]
+
+                    (ui/data-editor (fn[new-v]
+                                      ;(.log js/console new-v)
+                                      (reset! (rum/cursor-in *STATE [:compile :params k]) new-v))
+                                    v)
+                    ]
+                   )
+                 @(rum/cursor-in *STATE [:compile :params])
+                 ))
+
+      (ui/menubar "Compile WF:" [
+                               ["run" (fn []
+                                        (let [{ compile-fn :fn
+                                                params :params
+                                              } @(rum/cursor-in *STATE [:compile])]
+
+                                          (compile-fn *STATE params)
+                                          )
+                                        )]
+                               ])
+
+
+   ]
+
+)
 
 
 (rum/defc <ui> < rum/reactive [*STATE]
   (let [{
-          wf :wf
-          ui  :rum-ui
-          :or {ui (partial default-ui/<wf-ui> "WF:")}
+          screen :screen
         } @*STATE]
 
-    (if-not wf
-      (<wf-list> *STATE)
-      (ui (rum/cursor-in *STATE [:wf])))))
+
+    (condp = screen
+      :wf-selector (<wf-list> *STATE)
+      :compile (<wf-compilation> *STATE)
+      :run (let [{
+                  wf :wf
+                  ui  :rum-ui
+                  :or {ui (partial default-ui/<wf-ui> "WF:")}
+                  } @*STATE]
+             (ui (rum/cursor-in *STATE [:wf]))
+             )
+
+      [:pre "????"]
+      )
+
+    ))
 
 
 

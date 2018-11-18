@@ -1,14 +1,8 @@
-(ns woof.ui.context
+(ns woof.ui.default.context
   (:require
     [cljs.core.async :as async]
-    [cljs.test :as test :refer-macros [deftest is testing run-tests async]]
-
-    [goog.string :as gstring]
-    [goog.string.format]
 
     [rum.core :as rum]
-
-    [woof.app-data :as app-model]
 
     [woof.data :as d]
     [woof.graph :as g]
@@ -16,7 +10,6 @@
     [woof.ws :as ws]
 
     [woof.ui :as ui]
-    [woof.wf-ui :as wf-ui]
     [woof.utils :as u]
 
     )
