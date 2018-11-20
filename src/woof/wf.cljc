@@ -19,6 +19,23 @@
         )))
 
 
+;; debug stuff
+
+(defn debug [& r]
+  (locking *out*
+    (apply println r)))
+
+
+
+
+;; quick hacky way of getting insides for debugging purposes
+(defprotocol WoofDebug
+
+  ;; processes results received from executor
+  (dbg! [this k])
+  )
+
+
 
 
 
@@ -401,12 +418,19 @@
 
 
 (defrecord WFState [cfg STEPS]
+  WoofDebug
+
+  (dbg! [this k]
+        STEPS)
+
+
   WoofState
 
   ;;
   (get-initial-steps [this] (initial-steps STEPS))
 
   (get-steps [this] (get-steps* STEPS))
+
   (get-steps2add [this] (get-steps2add* STEPS))
 
   (get-steps-left [this] (get-steps-left* STEPS))
@@ -762,7 +786,7 @@
                 (swap! *steps-left merge (reduce #(assoc %1 %2 :pending) {} actions)))))
 
         (step-ready! [this id]
-                     #_(locking *out* (println "\tworking" id))
+                     #_(debug "\tstep ready" id)
 
                      (swap! *steps-left dissoc id))
 
@@ -1458,9 +1482,32 @@
     (if (and (:collect? step-cfg)
              (sid-list? params))
       ;; collect
-      (let [collected (get!* wf-state params)]
-        (when (not-any? #(or (nil? %1) (u/channel? %1)) collected)
-          (store-result! (f collected))))
+      (do
+        (let [collected (get!* wf-state params)]
+
+          (when (not-any? #(or (nil? %1)
+                               (u/channel? %1)
+                               ) collected)
+
+            ;; handle sid-lists for now differently
+            ;; FIXME: recursive check
+            (if-let [sidz (filter #(u/sid-list? %1) collected)]
+              (do
+                (when (not-any? #(or (nil? %1)
+                                      (u/channel? %1))
+                                (flatten (map #(get!* wf-state %1) sidz)))
+
+                    (store-result! (f (map (fn [k]
+                                             (if (sid-list? k)
+                                               (get!* wf-state k)
+                                               k)) collected)))
+
+                  )
+                )
+              (store-result! (f collected))
+              )
+            ))
+        )
       ;; process sid or value
       (do ;; (nil? (get! wf-state id))
 
@@ -1568,7 +1615,6 @@
 ;;
 
 
-
 ;;
 ;; default executor
 (defrecord AsyncExecutor [context model ready-channel ]
@@ -1647,6 +1693,12 @@
       (get-step-config [this step-id]
                        (get-step-config context step-id))
 
+      WoofDebug
+
+      (dbg! [this k]
+            model
+            )
+
       )))
 
 
@@ -1720,6 +1772,20 @@
              process-loop-handler (fn[msg]
                                     (let [[status data] msg
                                           continue? (-> status #{:done :error} nil?)]
+
+                                      #_(let [state (dbg! executor :model)
+                                            steps-model (dbg! state :steps)
+                                            ]
+                                        (debug "RP: " (d/pretty (steps steps-model)))
+                                        (debug "2add: " (d/pretty @(get-steps2add* steps-model)))
+                                        (debug "left" (d/pretty @(get-steps-left* steps-model)))
+
+                                        (debug "\n")
+
+                                        )
+
+
+
 
                                       (if-let [status-handler (get op-handlers-map status)]
                                         (status-handler data))
