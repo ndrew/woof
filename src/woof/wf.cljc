@@ -334,6 +334,9 @@
   (get! [this id])
   (get!* [this id-list])
 
+  (get-all! [this vs])
+
+
   ;;
 
 )
@@ -686,6 +689,17 @@
          ;; todo: nils?
          (map (partial get! this) id-list)
          )
+
+  (get-all! [this vs]
+            (if (seq? vs)
+              (map (fn [s]
+                     (if (sid-list? s)
+                       (if-let [z (get!* this s)]
+                         (get-all! this z)
+                         s)
+                       s)
+                     ) vs)
+              vs))
 
 )
 
@@ -1465,7 +1479,6 @@
 
 
 
-
 (defn- do-handle-commit! [executor context wf-state id step-id params]
   (let [step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
         infinite? (:infinite step-cfg)
@@ -1483,30 +1496,17 @@
              (sid-list? params))
       ;; collect
       (do
-        (let [collected (get!* wf-state params)]
+
+        (let [all-collected (get-all! wf-state (get!* wf-state params))]
 
           (when (not-any? #(or (nil? %1)
                                (u/channel? %1)
-                               ) collected)
+                               ) (flatten all-collected))
+            (store-result! (f all-collected))
 
-            ;; handle sid-lists for now differently
-            ;; FIXME: recursive check
-            (if-let [sidz (filter #(u/sid-list? %1) collected)]
-              (do
-                (when (not-any? #(or (nil? %1)
-                                      (u/channel? %1))
-                                (flatten (map #(get!* wf-state %1) sidz)))
+            )
 
-                    (store-result! (f (map (fn [k]
-                                             (if (sid-list? k)
-                                               (get!* wf-state k)
-                                               k)) collected)))
-
-                  )
-                )
-              (store-result! (f collected))
-              )
-            ))
+          )
         )
       ;; process sid or value
       (do ;; (nil? (get! wf-state id))
