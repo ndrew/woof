@@ -2,7 +2,7 @@
   (:require
     [rum.core :as rum]
 
-    [woof.ui.wf-runner :as runner]))
+    [woof.ui.playground.core :as playground]))
 
 
 (enable-console-print!)
@@ -24,14 +24,15 @@
 
 (let [el (. js/document (getElementById "app"))
 
-      <app> runner/<app> ;; (fn [] .. a rum component .. )
-      init! runner/init! ;; (fn [mount-fn] .. initializer - call mount-fn to rebuild ui.. )
+      <app> playground/<app> ;; (fn [] .. a rum component .. )
+      init! playground/init! ;; (fn [mount-fn] .. initializer - call mount-fn to rebuild ui.. )
 
       mount-app #(rum/mount (<app-ui> <app>) el)]
 
   (init! mount-app)
 
   (defn on-js-reload []
+    (playground/reload!)
     (mount-app)) ;; re-mount app on js reload
 
 )
