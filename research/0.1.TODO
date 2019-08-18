@@ -1,6 +1,118 @@
 WOOF:
 
-☐ go through all todos and fixmes @in-progress
+☐ migrate to use deps.edn, so there will be separate core library and playground @in-progress
+
+blog
+dev
+old
++ research
+resources
+src
+└── woof
+    ├── app.cljs
+    ├── app_data.cljs
+    ├── blog
+    │   ├── backend.clj
+    │   └── frontend.cljs
+   
+    ├── core
+    │   └── runner.cljc
+      data mgmt
+ +  ├── core.clj
+ +  ├── core.cljs
+ +  ├── data.cljc
+ +  ├── fipp.cljc
+    --- helpers 
+  + ├── graph.cljc
+
+~   ├── dsl.cljc
+    ├── example
+    │   ├── big_wf.cljs
+    │   ├── edn_editor
+    │   │   ├── config_editor.cljs
+    │   │   └── fs.clj
+    │   ├── files.clj
+    │   ├── files_ui.cljs
+    │   ├── ouroboros.cljs
+    │   ├── popup.cljs
+    │   ├── ui_loop.cljs
+    │   ├── ws.clj
+    │   └── ws.cljs
+  
+    ├── server
+    │   └── utils.clj
+    ├── server.clj
+    ├── test-ui.cljs
+    ├── ui
+    │   ├── core.cljs
+    │   ├── def
+    │   │   └── context.cljs
+    │   ├── grid.cljs
+    │   ├── playground
+    │   │   ├── core.cljs
+    │   │   └── ui.cljs
+    │   ├── results.cljs
+    │   ├── steps.cljs
+    │   └── wf.cljs
+    ├── ui.cljs
+ ---   utils 
++   ├── u.cljc
++   ├── utils.clj
++   ├── utils.cljs
++   ├── utils_macros.clj
+
+    ├── wf
+    │   ├── edn_editor
+    │   │   ├── backend.clj
+    │   │   └── frontend.cljs
+    │   ├── popup
+    │   │   └── example1.cljs
+    │   └── simple
+    │       ├── infinite.cljs
+    │       └── wf.cljs
+  --- core
+ +  ├── cache.cljc
+ +  ├── wf.cljc
+ +  ├── wfc.cljc
+ +  ├── wf_data.cljc
+ +  ├── xform.cljc  
+  --- test data (for now)
+ +  ├── test_data.cljc
+
+ ~   ├── wf_ui.cljs
+ ~   └── ws.cljs
+
+
+target
+test
+├── data
+│   ├── config.edn
+│   ├── config1.edn
+│   └── config2.edn
+└── woof
+    ├── async_playground.clj
+    ├── blog
+    │   └── content_test.clj
+    ├── ccs_api.clj
+    ├── core
+    │   └── runner_test.clj
+  + ├── data_test.clj
+  + fipp-test
+  + cache-test
+    ├── pipeline_test.clj
+  
+  + ├── test_wf.clj
+
+    ├── wf_blog_test.clj
+  + ├── wf_infinite_test.clj
+    ├── wf_internals_test.clj
+    ├── wf_publish_subscribe.clj
+    ├── wf_remote_test.clj
+    ├── wf_research_test.clj
+  + ├── wf_shandlers_test.clj
+    └── wf_test.clj
+
+☐ go through all todos and fixmes 
   ☐ project description and licence
   ☐ rework the IWFUi, if it's needed
   ☐ data editor for workflow UI
@@ -193,8 +305,14 @@ development:
   ☐ notifications
 
 
+---
+
+ ☐ move woof.wf-data into core
+
 
 
 
 
 better logging via adzerk-oss/cljs-console
+
+lunr.js

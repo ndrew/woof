@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+    <meta charset='utf-8'>
+
+<!--    <script src='scripts/lib/helpers.js'></script>
+    <script src='scripts/lib/runic.js'></script>
+    <script src='scripts/lib/indental.js'></script>
+    <script src='scripts/lib/tablatal.js'></script>
+    <script src='scripts/lib/neralie.js'></script>
+    <script src='scripts/lib/arvelie.js'></script>
+    <script src='scripts/lib/lisp.js'></script>
+    <script src='scripts/lib/heol.js'></script>
+
+    <script type='text/javascript' src='scripts/types/entry.js'></script>
+    <script type='text/javascript' src='scripts/types/term.js'></script>
+    <script type='text/javascript' src='scripts/types/list.js'></script>
+    <script type='text/javascript' src='scripts/types/log.js'></script>
+    <script type='text/javascript' src='scripts/types/issue.js'></script>
+    <script type='text/javascript' src='scripts/types/horaire.js'></script>
+    <script type='text/javascript' src='scripts/types/forecast.js'></script>
+    <script type='text/javascript' src='scripts/types/yleta.js'></script>
+    <script type='text/javascript' src='scripts/types/yletaodeta.js'></script>
+
+    <script src='scripts/riven/riven.js'></script>
+
+    <script src='scripts/riven/nodes/model/mouse.js'></script>
+    <script src='scripts/riven/nodes/model/query.js'></script>
+    <script src='scripts/riven/nodes/model/router.js'></script>
+    <script src='scripts/riven/nodes/model/database.js'></script>
+    <script src='scripts/riven/nodes/model/table.js'></script>
+    <script src='scripts/riven/nodes/model/map.js'></script>
+
+    <script src='scripts/riven/nodes/controller/template.js'></script>
+    <script src='scripts/riven/nodes/controller/journal.js'></script>
+    <script src='scripts/riven/nodes/controller/calendar.js'></script>
+    <script src='scripts/riven/nodes/controller/tracker.js'></script>
+    <script src='scripts/riven/nodes/controller/default.js'></script>
+
+    <script src='scripts/viz/viz.js'></script>
+    <script src='scripts/viz/activity.js'></script>
+    <script src='scripts/viz/bar.js'></script>
+    <script src='scripts/viz/balance.js'></script>
+
+    <script src='scripts/riven/nodes/view/document.js'></script>
+    <script src='scripts/riven/nodes/view/dom.js'></script>
+    <script src='scripts/riven/nodes/view/dom.input.js'></script>
+    <script src='scripts/riven/nodes/view/dom.photo.js'></script>
+    <script src='scripts/riven/nodes/view/dom.terminal.js'></script>
+    <script src='scripts/riven/nodes/view/dom.path.js'></script>
+
+    <script src='scripts/riven/nodes/services/rss.js'></script>
+    <script src='scripts/riven/nodes/services/static.js'></script>
+
+    <script type='text/javascript' src='scripts/database/lexicon.ndtl'></script>
+    <script type='text/javascript' src='scripts/database/issues.ndtl'></script>
+    <script type='text/javascript' src='scripts/database/horaire.tbtl'></script>
+    <script type='text/javascript' src='scripts/database/asulodeta.tbtl'></script>
+    <script type='text/javascript' src='scripts/database/glossary.ndtl'></script>
+
+    <script src='scripts/graph.js'></script>
+
+    <link rel='stylesheet' type='text/css' href='links/reset.css'/>
+    <link rel='stylesheet' type='text/css' href='links/fonts.css'/>
+    <link rel='stylesheet' type='text/css' href='links/riven.css'/>
+
+    <title>Riven</title> -->
+
+    <style>
+    /*-------------------/
+      @ Reset
+    /-------------------*/
+
+        *           { margin:0;padding:0;border:0;outline:0;border-spacing:0;text-decoration:none;font-weight:inherit;font-style:inherit;color:inherit;font-size:100%;font-family:inherit;vertical-align:baseline;list-style:none;border-collapse:collapse;-webkit-font-smoothing: antialiased;-moz-osx-font-smoothing: grayscale;}
+        *:focus     { outline: none}
+
+
+    /*-------------------/
+      @ Styleguide
+    /-------------------*/
+
+    :root {
+        --f_high: #fff;
+        --f_med: #999;
+        --f_low: #444;
+        --background: #000;
+        --stroke: 1px;
+        --wire: 2px;
+    }
+
+    /*-------------------/
+      @ Main
+    /-------------------*/
+
+    body { height:100vh;
+           background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20'><circle cx='10' cy='10' r='1' fill='%23333'></circle></svg>");
+           background-color:#000;
+           font-family: 'Input Mono'; font-size:9px; background-size:20px 20px;}
+
+    svg#riven { width:100vw; height:100vh; position: fixed; left:0px; top:0px; stroke-width: 10;stroke: white;stroke-linecap: round;}
+    svg#riven.magnet { transition: all 250ms }
+    svg#riven #viewport { fill:none; }
+
+    /* Node */
+    svg#riven g#nodes g.node {}
+    svg#riven g#nodes g.node text { text-anchor: start; stroke:none; font-family: 'Input Mono'; font-size:9px; }
+    svg#riven g#nodes g.node.mesh rect { stroke:var(--f_low); fill:none; }
+    svg#riven g#nodes g.node .glyph { stroke-width:10; stroke:#fff; }
+    svg#riven g#nodes g.node rect { stroke:white; fill:black; stroke-width:1; }
+    svg#riven g#nodes g.node:hover rect { fill:white; cursor: hand; }
+    svg#riven g#nodes g.node:hover path.glyph { stroke:#000; stroke-width:12; }
+    svg#riven g#nodes g.node.meshnode rect {fill:none; stroke:var(--f_low); stroke-width:2;}
+    svg#riven g#nodes g.node.meshnode .port { display: none; }
+
+    /* Ports */
+    svg#riven g#nodes g.node g.port {  }
+    svg#riven g#nodes g.node g.port path { fill:var(--background); stroke: var(--f_high); stroke-width: var(--stroke);}
+    svg#riven g#nodes g.node g.port.in path { fill:var(--f_high); }
+    svg#riven g#nodes g.node g.port.answer path { fill:var(--f_high); }
+    svg#riven g#nodes g.node path.glyph { stroke:var(--f_med); fill:none; stroke-width:10; stroke-linejoin: round; stroke-linecap: round  }
+    svg#riven g#nodes g.node text { fill:var(--f_high); }
+
+    /* Route */
+    svg#riven g#routes {}
+    svg#riven g#routes path.route { stroke-width:2; stroke:var(--f_low) }
+    svg#riven g#routes path.route.request { stroke-dasharray: 0,5; stroke-dashoffset: -250; animation: dash 20s linear infinite; }
+    svg#riven g#routes path.route.output { stroke:var(--f_high); stroke-dasharray: 20,5; stroke-dashoffset: 250; animation: dash 20s linear infinite; }
+    svg#riven g#routes path.route.bidirectional { stroke-dasharray: 10,5; stroke-dashoffset: 200; animation: dash 20s linear infinite;  }
+
+    @keyframes dash { to { stroke-dashoffset: 0;} }
+
+    </style>
+</head>
+<body id='riven'>
+
+<svg id="riven">
+    <g id="viewport">
+
+        <g id="routes">
+    <path d="
+      M80,130 L100,130
+      Q110,130 120,150
+      Q 130,170 140,170
+      L160,170
+    " class="route output"></path><path d="
+      M60,70
+      L60,90
+      L340,90
+      L340,230
+    " class="route request"></path><path d="
+      M60,70
+      L60,90
+      L1080,90
+      L1080,150
+    " class="route request"></path><path d="
+      M60,70
+      L60,90
+      L180,90
+      L180,150
+    " class="route request"></path>
+    <path d="
+      M200,170 L220,170
+      Q255,170 290,170
+      Q 325,170 360,170
+      L380,170
+    " class="route output"></path>
+    <path d="
+      M420,170 L440,170
+      Q505,170 570,170
+      Q 635,170 700,170
+      L720,170
+    " class="route output"></path><path d="
+      M400,190
+      L400,210
+      L340,210
+      L340,230
+    " class="route request"></path>
+    <path d="
+      M360,250 L380,250
+      Q375,250 370,250
+      Q 365,250 360,250
+      L380,250
+    " class="route output"></path><path d="
+      M340,270
+      L340,290
+      L580,290
+      L580,310
+    " class="route request"></path><path d="
+      M340,270
+      L340,290
+      L520,290
+      L520,310
+    " class="route request"></path><path d="
+      M340,270
+      L340,290
+      L460,290
+      L460,310
+    " class="route request"></path><path d="
+      M340,270
+      L340,290
+      L340,290
+      L340,310
+    " class="route request"></path><path d="
+      M340,270
+      L340,290
+      L400,290
+      L400,310
+    " class="route request"></path>
+    <path d="
+      M760,170 L780,170
+      Q845,170 910,170
+      Q 975,170 1040,170
+      L1060,170
+    " class="route output"></path><path d="
+      M740,190
+      L740,210
+      L740,210
+      L740,230
+    " class="route request"></path><path d="
+      M740,190
+      L740,210
+      L860,210
+      L860,230
+    " class="route request"></path><path d="
+      M740,190
+      L740,210
+      L800,210
+      L800,230
+    " class="route request"></path><path d="
+      M740,190
+      L740,210
+      L920,210
+      L920,230
+    " class="route request"></path><path d="M1080,190 L1080,210 L1080,210 L1200,210L1200,210 L1200,230" class="route bidirectional"></path><path d="M1080,190 L1080,210 L1080,210 L1080,210L1080,210 L1080,230" class="route bidirectional"></path><path d="M1080,190 L1080,210 L1080,210 L1320,210L1320,210 L1320,230" class="route bidirectional"></path><path d="M1080,190 L1080,210 L1080,210 L1500,210L1500,210 L1500,230" class="route bidirectional"></path><path d="M1080,270 L1080,290 L1080,290 L1080,290L1080,290 L1080,310" class="route bidirectional"></path><path d="M1080,270 L1080,290 L1080,290 L1140,290L1140,290 L1140,310" class="route bidirectional"></path><path d="M1140,350 L1140,370 L1140,370 L1200,370L1200,370 L1200,390" class="route bidirectional"></path><path d="M1140,350 L1140,370 L1140,370 L1080,370L1080,370 L1080,390" class="route bidirectional"></path><path d="M1140,350 L1140,370 L1140,370 L1260,370L1260,370 L1260,390" class="route bidirectional"></path><path d="M1140,350 L1140,370 L1140,370 L1140,370L1140,370 L1140,390" class="route bidirectional"></path><path d="M1080,430 L1080,450 L1080,450 L1140,450L1140,450 L1140,470" class="route bidirectional"></path><path d="M1080,430 L1080,450 L1080,450 L1080,450L1080,450 L1080,470" class="route bidirectional"></path><path d="M1320,270 L1320,290 L1320,290 L1320,290L1320,290 L1320,310" class="route bidirectional"></path><path d="M1320,270 L1320,290 L1320,290 L1380,290L1380,290 L1380,310" class="route bidirectional"></path><path d="M1320,270 L1320,290 L1320,290 L1440,290L1440,290 L1440,310" class="route bidirectional"></path><path d="M1380,350 L1380,370 L1380,370 L1320,370L1320,370 L1320,390" class="route bidirectional"></path><path d="M1380,350 L1380,370 L1380,370 L1500,370L1500,370 L1500,390" class="route bidirectional"></path><path d="M1380,350 L1380,370 L1380,370 L1380,370L1380,370 L1380,390" class="route bidirectional"></path><path d="M1380,350 L1380,370 L1380,370 L1440,370L1440,370 L1440,390" class="route bidirectional"></path><path d="M1500,270 L1500,290 L1500,290 L1500,290L1500,290 L1500,310" class="route bidirectional"></path></g>
+
+        <g id="nodes">
+    <g class="node mousenode" id="node_mouse">
+        <rect rx="2" ry="2" x="40" y="110" width="40" height="40" class="fill"></rect>
+        <text x="66" y="164">mouse</text>
+        <g class="port in" id="mouse_port_in"><path d="M36.666666666666664,130 L40,126.66666666666667 L43.333333333333336,130 L40,133.33333333333334 Z"></path></g><g class="port out" id="mouse_port_out"><path d="M76.66666666666667,130 L80,126.66666666666667 L83.33333333333333,130 L80,133.33333333333334 Z"></path></g><g class="port answer" id="mouse_port_answer"><path d="M56.666666666666664,110 L60,106.66666666666667 L63.333333333333336,110 L60,113.33333333333333 Z"></path></g><g class="port request" id="mouse_port_request"><path d="M56.666666666666664,150 L60,146.66666666666666 L63.333333333333336,150 L60,153.33333333333334 Z"></path></g>
+        <path class="glyph" transform="translate(45,115) scale(0.1)" d="M60,150 L60,150 L240,150 L240,150 L150,240 M150,60 L150,60 L240,150"></path>
+    </g>
+    <g class="node querynode" id="node_init">
+        <rect rx="2" ry="2" x="40" y="30" width="40" height="40" class="fill"></rect>
+        <text x="66" y="84">init</text>
+        <g class="port in" id="init_port_in"><path d="M36.666666666666664,50 L40,46.666666666666664 L43.333333333333336,50 L40,53.333333333333336 Z"></path></g><g class="port out" id="init_port_out"><path d="M76.66666666666667,50 L80,46.666666666666664 L83.33333333333333,50 L80,53.333333333333336 Z"></path></g><g class="port answer" id="init_port_answer"><path d="M56.666666666666664,30 L60,26.666666666666668 L63.333333333333336,30 L60,33.333333333333336 Z"></path></g><g class="port request" id="init_port_request"><path d="M56.666666666666664,70 L60,66.66666666666667 L63.333333333333336,70 L60,73.33333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(45,35) scale(0.1)" d="M60,150 L60,150 L240,150 L240,150 L150,240 M150,60 L150,60 L240,150"></path>
+    </g>
+    <g class="node querynode" id="node_query">
+        <rect rx="2" ry="2" x="160" y="150" width="40" height="40" class="fill"></rect>
+        <text x="186" y="204">query</text>
+        <g class="port in" id="query_port_in"><path d="M156.66666666666666,170 L160,166.66666666666666 L163.33333333333334,170 L160,173.33333333333334 Z"></path></g><g class="port out" id="query_port_out"><path d="M196.66666666666666,170 L200,166.66666666666666 L203.33333333333334,170 L200,173.33333333333334 Z"></path></g><g class="port answer" id="query_port_answer"><path d="M176.66666666666666,150 L180,146.66666666666666 L183.33333333333334,150 L180,153.33333333333334 Z"></path></g><g class="port request" id="query_port_request"><path d="M176.66666666666666,190 L180,186.66666666666666 L183.33333333333334,190 L180,193.33333333333334 Z"></path></g>
+        <path class="glyph" transform="translate(165,155) scale(0.1)" d="M60,150 L60,150 L240,150 L240,150 L150,240 M150,60 L150,60 L240,150"></path>
+    </g>
+    <g class="node routernode" id="node_router">
+        <rect rx="2" ry="2" x="380" y="150" width="40" height="40" class="fill"></rect>
+        <text x="406" y="204">router</text>
+        <g class="port in" id="router_port_in"><path d="M376.6666666666667,170 L380,166.66666666666666 L383.3333333333333,170 L380,173.33333333333334 Z"></path></g><g class="port out" id="router_port_out"><path d="M416.6666666666667,170 L420,166.66666666666666 L423.3333333333333,170 L420,173.33333333333334 Z"></path></g><g class="port answer" id="router_port_answer"><path d="M396.6666666666667,150 L400,146.66666666666666 L403.3333333333333,150 L400,153.33333333333334 Z"></path></g><g class="port request" id="router_port_request"><path d="M396.6666666666667,190 L400,186.66666666666666 L403.3333333333333,190 L400,193.33333333333334 Z"></path></g>
+        <path class="glyph" transform="translate(385,155) scale(0.1)" d="M60,120 L60,120 L150,120 L240,60 M60,150 L60,150 L240,150 M60,180 L60,180 L150,180 L240,240"></path>
+    </g>
+    <g class="node databasenode" id="node_database">
+        <rect rx="2" ry="2" x="320" y="230" width="40" height="40" class="fill"></rect>
+        <text x="346" y="284">database</text>
+        <g class="port in" id="database_port_in"><path d="M316.6666666666667,250 L320,246.66666666666666 L323.3333333333333,250 L320,253.33333333333334 Z"></path></g><g class="port out" id="database_port_out"><path d="M356.6666666666667,250 L360,246.66666666666666 L363.3333333333333,250 L360,253.33333333333334 Z"></path></g><g class="port answer" id="database_port_answer"><path d="M336.6666666666667,230 L340,226.66666666666666 L343.3333333333333,230 L340,233.33333333333334 Z"></path></g><g class="port request" id="database_port_request"><path d="M336.6666666666667,270 L340,266.6666666666667 L343.3333333333333,270 L340,273.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(325,235) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M60,150 L60,150 L240,150 M60,105 L60,105 L240,105 M60,195 L60,195 L240,195 "></path>
+    </g>
+    <g class="node tablenode" id="node_asulodeta">
+        <rect rx="2" ry="2" x="560" y="310" width="40" height="40" class="fill"></rect>
+        <text x="586" y="364">asulodeta</text>
+        <g class="port in" id="asulodeta_port_in"><path d="M556.6666666666666,330 L560,326.6666666666667 L563.3333333333334,330 L560,333.3333333333333 Z"></path></g><g class="port out" id="asulodeta_port_out"><path d="M596.6666666666666,330 L600,326.6666666666667 L603.3333333333334,330 L600,333.3333333333333 Z"></path></g><g class="port answer" id="asulodeta_port_answer"><path d="M576.6666666666666,310 L580,306.6666666666667 L583.3333333333334,310 L580,313.3333333333333 Z"></path></g><g class="port request" id="asulodeta_port_request"><path d="M576.6666666666666,350 L580,346.6666666666667 L583.3333333333334,350 L580,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(565,315) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M120,120 L120,120 L180,120 M120,180 L120,180 L180,180 M120,150 L120,150 L180,150"></path>
+    </g>
+    <g class="node tablenode" id="node_lexicon">
+        <rect rx="2" ry="2" x="380" y="310" width="40" height="40" class="fill"></rect>
+        <text x="406" y="364">lexicon</text>
+        <g class="port in" id="lexicon_port_in"><path d="M376.6666666666667,330 L380,326.6666666666667 L383.3333333333333,330 L380,333.3333333333333 Z"></path></g><g class="port out" id="lexicon_port_out"><path d="M416.6666666666667,330 L420,326.6666666666667 L423.3333333333333,330 L420,333.3333333333333 Z"></path></g><g class="port answer" id="lexicon_port_answer"><path d="M396.6666666666667,310 L400,306.6666666666667 L403.3333333333333,310 L400,313.3333333333333 Z"></path></g><g class="port request" id="lexicon_port_request"><path d="M396.6666666666667,350 L400,346.6666666666667 L403.3333333333333,350 L400,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(385,315) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M120,120 L120,120 L180,120 M120,180 L120,180 L180,180 M120,150 L120,150 L180,150"></path>
+    </g>
+    <g class="node tablenode" id="node_horaire">
+        <rect rx="2" ry="2" x="440" y="310" width="40" height="40" class="fill"></rect>
+        <text x="466" y="364">horaire</text>
+        <g class="port in" id="horaire_port_in"><path d="M436.6666666666667,330 L440,326.6666666666667 L443.3333333333333,330 L440,333.3333333333333 Z"></path></g><g class="port out" id="horaire_port_out"><path d="M476.6666666666667,330 L480,326.6666666666667 L483.3333333333333,330 L480,333.3333333333333 Z"></path></g><g class="port answer" id="horaire_port_answer"><path d="M456.6666666666667,310 L460,306.6666666666667 L463.3333333333333,310 L460,313.3333333333333 Z"></path></g><g class="port request" id="horaire_port_request"><path d="M456.6666666666667,350 L460,346.6666666666667 L463.3333333333333,350 L460,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(445,315) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M120,120 L120,120 L180,120 M120,180 L120,180 L180,180 M120,150 L120,150 L180,150"></path>
+    </g>
+    <g class="node tablenode" id="node_issues">
+        <rect rx="2" ry="2" x="500" y="310" width="40" height="40" class="fill"></rect>
+        <text x="526" y="364">issues</text>
+        <g class="port in" id="issues_port_in"><path d="M496.6666666666667,330 L500,326.6666666666667 L503.3333333333333,330 L500,333.3333333333333 Z"></path></g><g class="port out" id="issues_port_out"><path d="M536.6666666666666,330 L540,326.6666666666667 L543.3333333333334,330 L540,333.3333333333333 Z"></path></g><g class="port answer" id="issues_port_answer"><path d="M516.6666666666666,310 L520,306.6666666666667 L523.3333333333334,310 L520,313.3333333333333 Z"></path></g><g class="port request" id="issues_port_request"><path d="M516.6666666666666,350 L520,346.6666666666667 L523.3333333333334,350 L520,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(505,315) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M120,120 L120,120 L180,120 M120,180 L120,180 L180,180 M120,150 L120,150 L180,150"></path>
+    </g>
+    <g class="node tablenode" id="node_glossary">
+        <rect rx="2" ry="2" x="320" y="310" width="40" height="40" class="fill"></rect>
+        <text x="346" y="364">glossary</text>
+        <g class="port in" id="glossary_port_in"><path d="M316.6666666666667,330 L320,326.6666666666667 L323.3333333333333,330 L320,333.3333333333333 Z"></path></g><g class="port out" id="glossary_port_out"><path d="M356.6666666666667,330 L360,326.6666666666667 L363.3333333333333,330 L360,333.3333333333333 Z"></path></g><g class="port answer" id="glossary_port_answer"><path d="M336.6666666666667,310 L340,306.6666666666667 L343.3333333333333,310 L340,313.3333333333333 Z"></path></g><g class="port request" id="glossary_port_request"><path d="M336.6666666666667,350 L340,346.6666666666667 L343.3333333333333,350 L340,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(325,315) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M120,120 L120,120 L180,120 M120,180 L120,180 L180,180 M120,150 L120,150 L180,150"></path>
+    </g>
+    <g class="node mapnode" id="node_map">
+        <rect rx="2" ry="2" x="380" y="230" width="40" height="40" class="fill"></rect>
+        <text x="406" y="284">map</text>
+        <g class="port in" id="map_port_in"><path d="M376.6666666666667,250 L380,246.66666666666666 L383.3333333333333,250 L380,253.33333333333334 Z"></path></g><g class="port out" id="map_port_out"><path d="M416.6666666666667,250 L420,246.66666666666666 L423.3333333333333,250 L420,253.33333333333334 Z"></path></g><g class="port answer" id="map_port_answer"><path d="M396.6666666666667,230 L400,226.66666666666666 L403.3333333333333,230 L400,233.33333333333334 Z"></path></g><g class="port request" id="map_port_request"><path d="M396.6666666666667,270 L400,266.6666666666667 L403.3333333333333,270 L400,273.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(385,235) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M150,60 L150,60 L150,240 M60,150 L60,150 L240,150 "></path>
+    </g>
+    <g class="node meshnode" id="node_model">
+        <rect rx="2" ry="2" x="280" y="110" width="380" height="280" class=""></rect>
+        <text x="476" y="404">model</text>
+        <g class="port in" id="model_port_in"><path d="M276.6666666666667,130 L280,126.66666666666667 L283.3333333333333,130 L280,133.33333333333334 Z"></path></g><g class="port out" id="model_port_out"><path d="M656.6666666666666,370 L660,366.6666666666667 L663.3333333333334,370 L660,373.3333333333333 Z"></path></g><g class="port answer" id="model_port_answer"><path d="M296.6666666666667,110 L300,106.66666666666667 L303.3333333333333,110 L300,113.33333333333333 Z"></path></g><g class="port request" id="model_port_request"><path d="M636.6666666666666,390 L640,386.6666666666667 L643.3333333333334,390 L640,393.3333333333333 Z"></path></g>
+
+    </g>
+    <g class="node templatenode" id="node_template">
+        <rect rx="2" ry="2" x="720" y="150" width="40" height="40" class="fill"></rect>
+        <text x="746" y="204">template</text>
+        <g class="port in" id="template_port_in"><path d="M716.6666666666666,170 L720,166.66666666666666 L723.3333333333334,170 L720,173.33333333333334 Z"></path></g><g class="port out" id="template_port_out"><path d="M756.6666666666666,170 L760,166.66666666666666 L763.3333333333334,170 L760,173.33333333333334 Z"></path></g><g class="port answer" id="template_port_answer"><path d="M736.6666666666666,150 L740,146.66666666666666 L743.3333333333334,150 L740,153.33333333333334 Z"></path></g><g class="port request" id="template_port_request"><path d="M736.6666666666666,190 L740,186.66666666666666 L743.3333333333334,190 L740,193.33333333333334 Z"></path></g>
+        <path class="glyph" transform="translate(725,155) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M240,150 L240,150 L150,150 L150,240"></path>
+    </g>
+    <g class="node templatenode" id="node_:default">
+        <rect rx="2" ry="2" x="720" y="230" width="40" height="40" class="fill"></rect>
+        <text x="746" y="284">:default</text>
+        <g class="port in" id=":default_port_in"><path d="M716.6666666666666,250 L720,246.66666666666666 L723.3333333333334,250 L720,253.33333333333334 Z"></path></g><g class="port out" id=":default_port_out"><path d="M756.6666666666666,250 L760,246.66666666666666 L763.3333333333334,250 L760,253.33333333333334 Z"></path></g><g class="port answer" id=":default_port_answer"><path d="M736.6666666666666,230 L740,226.66666666666666 L743.3333333333334,230 L740,233.33333333333334 Z"></path></g><g class="port request" id=":default_port_request"><path d="M736.6666666666666,270 L740,266.6666666666667 L743.3333333333334,270 L740,273.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(725,235) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M240,150 L240,150 L150,150 L150,240"></path>
+    </g>
+    <g class="node templatenode" id="node_:journal">
+        <rect rx="2" ry="2" x="780" y="230" width="40" height="40" class="fill"></rect>
+        <text x="806" y="284">:journal</text>
+        <g class="port in" id=":journal_port_in"><path d="M776.6666666666666,250 L780,246.66666666666666 L783.3333333333334,250 L780,253.33333333333334 Z"></path></g><g class="port out" id=":journal_port_out"><path d="M816.6666666666666,250 L820,246.66666666666666 L823.3333333333334,250 L820,253.33333333333334 Z"></path></g><g class="port answer" id=":journal_port_answer"><path d="M796.6666666666666,230 L800,226.66666666666666 L803.3333333333334,230 L800,233.33333333333334 Z"></path></g><g class="port request" id=":journal_port_request"><path d="M796.6666666666666,270 L800,266.6666666666667 L803.3333333333334,270 L800,273.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(785,235) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M240,150 L240,150 L150,150 L150,240"></path>
+    </g>
+    <g class="node templatenode" id="node_:calendar">
+        <rect rx="2" ry="2" x="840" y="230" width="40" height="40" class="fill"></rect>
+        <text x="866" y="284">:calendar</text>
+        <g class="port in" id=":calendar_port_in"><path d="M836.6666666666666,250 L840,246.66666666666666 L843.3333333333334,250 L840,253.33333333333334 Z"></path></g><g class="port out" id=":calendar_port_out"><path d="M876.6666666666666,250 L880,246.66666666666666 L883.3333333333334,250 L880,253.33333333333334 Z"></path></g><g class="port answer" id=":calendar_port_answer"><path d="M856.6666666666666,230 L860,226.66666666666666 L863.3333333333334,230 L860,233.33333333333334 Z"></path></g><g class="port request" id=":calendar_port_request"><path d="M856.6666666666666,270 L860,266.6666666666667 L863.3333333333334,270 L860,273.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(845,235) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M240,150 L240,150 L150,150 L150,240"></path>
+    </g>
+    <g class="node templatenode" id="node_:tracker">
+        <rect rx="2" ry="2" x="900" y="230" width="40" height="40" class="fill"></rect>
+        <text x="926" y="284">:tracker</text>
+        <g class="port in" id=":tracker_port_in"><path d="M896.6666666666666,250 L900,246.66666666666666 L903.3333333333334,250 L900,253.33333333333334 Z"></path></g><g class="port out" id=":tracker_port_out"><path d="M936.6666666666666,250 L940,246.66666666666666 L943.3333333333334,250 L940,253.33333333333334 Z"></path></g><g class="port answer" id=":tracker_port_answer"><path d="M916.6666666666666,230 L920,226.66666666666666 L923.3333333333334,230 L920,233.33333333333334 Z"></path></g><g class="port request" id=":tracker_port_request"><path d="M916.6666666666666,270 L920,266.6666666666667 L923.3333333333334,270 L920,273.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(905,235) scale(0.1)" d="M60,60 L60,60 L240,60 L240,240 L60,240 Z M240,150 L240,150 L150,150 L150,240"></path>
+    </g>
+    <g class="node rssnode" id="node_rss">
+        <rect rx="2" ry="2" x="720" y="310" width="40" height="40" class="fill"></rect>
+        <text x="746" y="364">rss</text>
+        <g class="port in" id="rss_port_in"><path d="M716.6666666666666,330 L720,326.6666666666667 L723.3333333333334,330 L720,333.3333333333333 Z"></path></g><g class="port out" id="rss_port_out"><path d="M756.6666666666666,330 L760,326.6666666666667 L763.3333333333334,330 L760,333.3333333333333 Z"></path></g><g class="port answer" id="rss_port_answer"><path d="M736.6666666666666,310 L740,306.6666666666667 L743.3333333333334,310 L740,313.3333333333333 Z"></path></g><g class="port request" id="rss_port_request"><path d="M736.6666666666666,350 L740,346.6666666666667 L743.3333333333334,350 L740,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(725,315) scale(0.1)" d="M65,65 L65,65 L245,65 L245,245 L65,245 Z M65,125 L65,125 L245,125 M95,95 L95,95 L95,95 "></path>
+    </g>
+    <g class="node staticnode" id="node_static">
+        <rect rx="2" ry="2" x="780" y="310" width="40" height="40" class="fill"></rect>
+        <text x="806" y="364">static</text>
+        <g class="port in" id="static_port_in"><path d="M776.6666666666666,330 L780,326.6666666666667 L783.3333333333334,330 L780,333.3333333333333 Z"></path></g><g class="port out" id="static_port_out"><path d="M816.6666666666666,330 L820,326.6666666666667 L823.3333333333334,330 L820,333.3333333333333 Z"></path></g><g class="port answer" id="static_port_answer"><path d="M796.6666666666666,310 L800,306.6666666666667 L803.3333333333334,310 L800,313.3333333333333 Z"></path></g><g class="port request" id="static_port_request"><path d="M796.6666666666666,350 L800,346.6666666666667 L803.3333333333334,350 L800,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(785,315) scale(0.1)" d="M65,65 L65,65 L245,65 L245,245 L65,245 Z M65,125 L65,125 L245,125 M95,95 L95,95 L95,95 "></path>
+    </g>
+    <g class="node meshnode" id="node_controller">
+        <rect rx="2" ry="2" x="680" y="110" width="320" height="280" class=""></rect>
+        <text x="846" y="404">controller</text>
+        <g class="port in" id="controller_port_in"><path d="M676.6666666666666,130 L680,126.66666666666667 L683.3333333333334,130 L680,133.33333333333334 Z"></path></g><g class="port out" id="controller_port_out"><path d="M996.6666666666666,370 L1000,366.6666666666667 L1003.3333333333334,370 L1000,373.3333333333333 Z"></path></g><g class="port answer" id="controller_port_answer"><path d="M696.6666666666666,110 L700,106.66666666666667 L703.3333333333334,110 L700,113.33333333333333 Z"></path></g><g class="port request" id="controller_port_request"><path d="M976.6666666666666,390 L980,386.6666666666667 L983.3333333333334,390 L980,393.3333333333333 Z"></path></g>
+
+    </g>
+    <g class="node documentnode" id="node_document">
+        <rect rx="2" ry="2" x="1060" y="150" width="40" height="40" class="fill"></rect>
+        <text x="1086" y="204">#document</text>
+        <g class="port in" id="document_port_in"><path d="M1056.6666666666667,170 L1060,166.66666666666666 L1063.3333333333333,170 L1060,173.33333333333334 Z"></path></g><g class="port out" id="document_port_out"><path d="M1096.6666666666667,170 L1100,166.66666666666666 L1103.3333333333333,170 L1100,173.33333333333334 Z"></path></g><g class="port answer" id="document_port_answer"><path d="M1076.6666666666667,150 L1080,146.66666666666666 L1083.3333333333333,150 L1080,153.33333333333334 Z"></path></g><g class="port request" id="document_port_request"><path d="M1076.6666666666667,190 L1080,186.66666666666666 L1083.3333333333333,190 L1080,193.33333333333334 Z"></path></g>
+        <path class="glyph" transform="translate(1065,155) scale(0.1)" d="M150,60 L150,60 L240,150 L150,240 L60,150 Z M150,120 L150,120 L180,150 L150,180 L120,150 Z "></path>
+    </g>
+    <g class="node terminalnode" id="node_terminal">
+        <rect rx="2" ry="2" x="1180" y="230" width="40" height="40" class="fill"></rect>
+        <text x="1206" y="284">#terminal</text>
+        <g class="port in" id="terminal_port_in"><path d="M1176.6666666666667,250 L1180,246.66666666666666 L1183.3333333333333,250 L1180,253.33333333333334 Z"></path></g><g class="port out" id="terminal_port_out"><path d="M1216.6666666666667,250 L1220,246.66666666666666 L1223.3333333333333,250 L1220,253.33333333333334 Z"></path></g><g class="port answer" id="terminal_port_answer"><path d="M1196.6666666666667,230 L1200,226.66666666666666 L1203.3333333333333,230 L1200,233.33333333333334 Z"></path></g><g class="port request" id="terminal_port_request"><path d="M1196.6666666666667,270 L1200,266.6666666666667 L1203.3333333333333,270 L1200,273.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1185,235) scale(0.1)" d="M65,65 L65,65 L245,65 M65,125 L65,125 L245,125 M65,185 L65,185 L245,185 M65,245 L65,245 L245,245 "></path>
+    </g>
+    <g class="node domnode" id="node_header">
+        <rect rx="2" ry="2" x="1060" y="230" width="40" height="40" class="fill"></rect>
+        <text x="1086" y="284">#header</text>
+        <g class="port in" id="header_port_in"><path d="M1056.6666666666667,250 L1060,246.66666666666666 L1063.3333333333333,250 L1060,253.33333333333334 Z"></path></g><g class="port out" id="header_port_out"><path d="M1096.6666666666667,250 L1100,246.66666666666666 L1103.3333333333333,250 L1100,253.33333333333334 Z"></path></g><g class="port answer" id="header_port_answer"><path d="M1076.6666666666667,230 L1080,226.66666666666666 L1083.3333333333333,230 L1080,233.33333333333334 Z"></path></g><g class="port request" id="header_port_request"><path d="M1076.6666666666667,270 L1080,266.6666666666667 L1083.3333333333333,270 L1080,273.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1065,235) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node photonode" id="node_photo">
+        <rect rx="2" ry="2" x="1060" y="310" width="40" height="40" class="fill"></rect>
+        <text x="1086" y="364">#photo</text>
+        <g class="port in" id="photo_port_in"><path d="M1056.6666666666667,330 L1060,326.6666666666667 L1063.3333333333333,330 L1060,333.3333333333333 Z"></path></g><g class="port out" id="photo_port_out"><path d="M1096.6666666666667,330 L1100,326.6666666666667 L1103.3333333333333,330 L1100,333.3333333333333 Z"></path></g><g class="port answer" id="photo_port_answer"><path d="M1076.6666666666667,310 L1080,306.6666666666667 L1083.3333333333333,310 L1080,313.3333333333333 Z"></path></g><g class="port request" id="photo_port_request"><path d="M1076.6666666666667,350 L1080,346.6666666666667 L1083.3333333333333,350 L1080,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1065,315) scale(0.1)" d="M60,90 L60,90 L60,60 L90,60 M210,60 L210,60 L240,60 L240,90 M240,210 L240,210 L240,240 L210,240 M90,240 L90,240 L60,240 L60,210 "></path>
+    </g>
+    <g class="node domnode" id="node_menu">
+        <rect rx="2" ry="2" x="1120" y="310" width="40" height="40" class="fill"></rect>
+        <text x="1146" y="364">#menu</text>
+        <g class="port in" id="menu_port_in"><path d="M1116.6666666666667,330 L1120,326.6666666666667 L1123.3333333333333,330 L1120,333.3333333333333 Z"></path></g><g class="port out" id="menu_port_out"><path d="M1156.6666666666667,330 L1160,326.6666666666667 L1163.3333333333333,330 L1160,333.3333333333333 Z"></path></g><g class="port answer" id="menu_port_answer"><path d="M1136.6666666666667,310 L1140,306.6666666666667 L1143.3333333333333,310 L1140,313.3333333333333 Z"></path></g><g class="port request" id="menu_port_request"><path d="M1136.6666666666667,350 L1140,346.6666666666667 L1143.3333333333333,350 L1140,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1125,315) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_logo">
+        <rect rx="2" ry="2" x="1180" y="390" width="40" height="40" class="fill"></rect>
+        <text x="1206" y="444">#logo</text>
+        <g class="port in" id="logo_port_in"><path d="M1176.6666666666667,410 L1180,406.6666666666667 L1183.3333333333333,410 L1180,413.3333333333333 Z"></path></g><g class="port out" id="logo_port_out"><path d="M1216.6666666666667,410 L1220,406.6666666666667 L1223.3333333333333,410 L1220,413.3333333333333 Z"></path></g><g class="port answer" id="logo_port_answer"><path d="M1196.6666666666667,390 L1200,386.6666666666667 L1203.3333333333333,390 L1200,393.3333333333333 Z"></path></g><g class="port request" id="logo_port_request"><path d="M1196.6666666666667,430 L1200,426.6666666666667 L1203.3333333333333,430 L1200,433.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1185,395) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node inputnode" id="node_search">
+        <rect rx="2" ry="2" x="1240" y="390" width="40" height="40" class="fill"></rect>
+        <text x="1266" y="444">#search</text>
+        <g class="port in" id="search_port_in"><path d="M1236.6666666666667,410 L1240,406.6666666666667 L1243.3333333333333,410 L1240,413.3333333333333 Z"></path></g><g class="port out" id="search_port_out"><path d="M1276.6666666666667,410 L1280,406.6666666666667 L1283.3333333333333,410 L1280,413.3333333333333 Z"></path></g><g class="port answer" id="search_port_answer"><path d="M1256.6666666666667,390 L1260,386.6666666666667 L1263.3333333333333,390 L1260,393.3333333333333 Z"></path></g><g class="port request" id="search_port_request"><path d="M1256.6666666666667,430 L1260,426.6666666666667 L1263.3333333333333,430 L1260,433.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1245,395) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_activity">
+        <rect rx="2" ry="2" x="1120" y="390" width="40" height="40" class="fill"></rect>
+        <text x="1146" y="444">#activity</text>
+        <g class="port in" id="activity_port_in"><path d="M1116.6666666666667,410 L1120,406.6666666666667 L1123.3333333333333,410 L1120,413.3333333333333 Z"></path></g><g class="port out" id="activity_port_out"><path d="M1156.6666666666667,410 L1160,406.6666666666667 L1163.3333333333333,410 L1160,413.3333333333333 Z"></path></g><g class="port answer" id="activity_port_answer"><path d="M1136.6666666666667,390 L1140,386.6666666666667 L1143.3333333333333,390 L1140,393.3333333333333 Z"></path></g><g class="port request" id="activity_port_request"><path d="M1136.6666666666667,430 L1140,426.6666666666667 L1143.3333333333333,430 L1140,433.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1125,395) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_info">
+        <rect rx="2" ry="2" x="1060" y="390" width="40" height="40" class="fill"></rect>
+        <text x="1086" y="444">#info</text>
+        <g class="port in" id="info_port_in"><path d="M1056.6666666666667,410 L1060,406.6666666666667 L1063.3333333333333,410 L1060,413.3333333333333 Z"></path></g><g class="port out" id="info_port_out"><path d="M1096.6666666666667,410 L1100,406.6666666666667 L1103.3333333333333,410 L1100,413.3333333333333 Z"></path></g><g class="port answer" id="info_port_answer"><path d="M1076.6666666666667,390 L1080,386.6666666666667 L1083.3333333333333,390 L1080,393.3333333333333 Z"></path></g><g class="port request" id="info_port_request"><path d="M1076.6666666666667,430 L1080,426.6666666666667 L1083.3333333333333,430 L1080,433.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1065,395) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node pathnode" id="node_glyph">
+        <rect rx="2" ry="2" x="1120" y="470" width="40" height="40" class="fill"></rect>
+        <text x="1146" y="524">#glyph</text>
+        <g class="port in" id="glyph_port_in"><path d="M1116.6666666666667,490 L1120,486.6666666666667 L1123.3333333333333,490 L1120,493.3333333333333 Z"></path></g><g class="port out" id="glyph_port_out"><path d="M1156.6666666666667,490 L1160,486.6666666666667 L1163.3333333333333,490 L1160,493.3333333333333 Z"></path></g><g class="port answer" id="glyph_port_answer"><path d="M1136.6666666666667,470 L1140,466.6666666666667 L1143.3333333333333,470 L1140,473.3333333333333 Z"></path></g><g class="port request" id="glyph_port_request"><path d="M1136.6666666666667,510 L1140,506.6666666666667 L1143.3333333333333,510 L1140,513.3333333333334 Z"></path></g>
+        <path class="glyph" transform="translate(1125,475) scale(0.1)" d="M60,90 L60,90 L60,60 L90,60 M210,60 L210,60 L240,60 L240,90 M240,210 L240,210 L240,240 L210,240 M90,240 L90,240 L60,240 L60,210 "></path>
+    </g>
+    <g class="node domnode" id="node_title">
+        <rect rx="2" ry="2" x="1060" y="470" width="40" height="40" class="fill"></rect>
+        <text x="1086" y="524">#title</text>
+        <g class="port in" id="title_port_in"><path d="M1056.6666666666667,490 L1060,486.6666666666667 L1063.3333333333333,490 L1060,493.3333333333333 Z"></path></g><g class="port out" id="title_port_out"><path d="M1096.6666666666667,490 L1100,486.6666666666667 L1103.3333333333333,490 L1100,493.3333333333333 Z"></path></g><g class="port answer" id="title_port_answer"><path d="M1076.6666666666667,470 L1080,466.6666666666667 L1083.3333333333333,470 L1080,473.3333333333333 Z"></path></g><g class="port request" id="title_port_request"><path d="M1076.6666666666667,510 L1080,506.6666666666667 L1083.3333333333333,510 L1080,513.3333333333334 Z"></path></g>
+        <path class="glyph" transform="translate(1065,475) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_core">
+        <rect rx="2" ry="2" x="1300" y="230" width="40" height="40" class="fill"></rect>
+        <text x="1326" y="284">#core</text>
+        <g class="port in" id="core_port_in"><path d="M1296.6666666666667,250 L1300,246.66666666666666 L1303.3333333333333,250 L1300,253.33333333333334 Z"></path></g><g class="port out" id="core_port_out"><path d="M1336.6666666666667,250 L1340,246.66666666666666 L1343.3333333333333,250 L1340,253.33333333333334 Z"></path></g><g class="port answer" id="core_port_answer"><path d="M1316.6666666666667,230 L1320,226.66666666666666 L1323.3333333333333,230 L1320,233.33333333333334 Z"></path></g><g class="port request" id="core_port_request"><path d="M1316.6666666666667,270 L1320,266.6666666666667 L1323.3333333333333,270 L1320,273.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1305,235) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_content">
+        <rect rx="2" ry="2" x="1360" y="310" width="40" height="40" class="fill"></rect>
+        <text x="1386" y="364">#content</text>
+        <g class="port in" id="content_port_in"><path d="M1356.6666666666667,330 L1360,326.6666666666667 L1363.3333333333333,330 L1360,333.3333333333333 Z"></path></g><g class="port out" id="content_port_out"><path d="M1396.6666666666667,330 L1400,326.6666666666667 L1403.3333333333333,330 L1400,333.3333333333333 Z"></path></g><g class="port answer" id="content_port_answer"><path d="M1376.6666666666667,310 L1380,306.6666666666667 L1383.3333333333333,310 L1380,313.3333333333333 Z"></path></g><g class="port request" id="content_port_request"><path d="M1376.6666666666667,350 L1380,346.6666666666667 L1383.3333333333333,350 L1380,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1365,315) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_main">
+        <rect rx="2" ry="2" x="1300" y="390" width="40" height="40" class="fill"></rect>
+        <text x="1326" y="444">#main</text>
+        <g class="port in" id="main_port_in"><path d="M1296.6666666666667,410 L1300,406.6666666666667 L1303.3333333333333,410 L1300,413.3333333333333 Z"></path></g><g class="port out" id="main_port_out"><path d="M1336.6666666666667,410 L1340,406.6666666666667 L1343.3333333333333,410 L1340,413.3333333333333 Z"></path></g><g class="port answer" id="main_port_answer"><path d="M1316.6666666666667,390 L1320,386.6666666666667 L1323.3333333333333,390 L1320,393.3333333333333 Z"></path></g><g class="port request" id="main_port_request"><path d="M1316.6666666666667,430 L1320,426.6666666666667 L1323.3333333333333,430 L1320,433.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1305,395) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_tracker">
+        <rect rx="2" ry="2" x="1360" y="390" width="40" height="40" class="fill"></rect>
+        <text x="1386" y="444">#tracker</text>
+        <g class="port in" id="tracker_port_in"><path d="M1356.6666666666667,410 L1360,406.6666666666667 L1363.3333333333333,410 L1360,413.3333333333333 Z"></path></g><g class="port out" id="tracker_port_out"><path d="M1396.6666666666667,410 L1400,406.6666666666667 L1403.3333333333333,410 L1400,413.3333333333333 Z"></path></g><g class="port answer" id="tracker_port_answer"><path d="M1376.6666666666667,390 L1380,386.6666666666667 L1383.3333333333333,390 L1380,393.3333333333333 Z"></path></g><g class="port request" id="tracker_port_request"><path d="M1376.6666666666667,430 L1380,426.6666666666667 L1383.3333333333333,430 L1380,433.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1365,395) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_calendar">
+        <rect rx="2" ry="2" x="1420" y="390" width="40" height="40" class="fill"></rect>
+        <text x="1446" y="444">#calendar</text>
+        <g class="port in" id="calendar_port_in"><path d="M1416.6666666666667,410 L1420,406.6666666666667 L1423.3333333333333,410 L1420,413.3333333333333 Z"></path></g><g class="port out" id="calendar_port_out"><path d="M1456.6666666666667,410 L1460,406.6666666666667 L1463.3333333333333,410 L1460,413.3333333333333 Z"></path></g><g class="port answer" id="calendar_port_answer"><path d="M1436.6666666666667,390 L1440,386.6666666666667 L1443.3333333333333,390 L1440,393.3333333333333 Z"></path></g><g class="port request" id="calendar_port_request"><path d="M1436.6666666666667,430 L1440,426.6666666666667 L1443.3333333333333,430 L1440,433.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1425,395) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_journal">
+        <rect rx="2" ry="2" x="1480" y="390" width="40" height="40" class="fill"></rect>
+        <text x="1506" y="444">#journal</text>
+        <g class="port in" id="journal_port_in"><path d="M1476.6666666666667,410 L1480,406.6666666666667 L1483.3333333333333,410 L1480,413.3333333333333 Z"></path></g><g class="port out" id="journal_port_out"><path d="M1516.6666666666667,410 L1520,406.6666666666667 L1523.3333333333333,410 L1520,413.3333333333333 Z"></path></g><g class="port answer" id="journal_port_answer"><path d="M1496.6666666666667,390 L1500,386.6666666666667 L1503.3333333333333,390 L1500,393.3333333333333 Z"></path></g><g class="port request" id="journal_port_request"><path d="M1496.6666666666667,430 L1500,426.6666666666667 L1503.3333333333333,430 L1500,433.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1485,395) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_sidebar">
+        <rect rx="2" ry="2" x="1300" y="310" width="40" height="40" class="fill"></rect>
+        <text x="1326" y="364">#sidebar</text>
+        <g class="port in" id="sidebar_port_in"><path d="M1296.6666666666667,330 L1300,326.6666666666667 L1303.3333333333333,330 L1300,333.3333333333333 Z"></path></g><g class="port out" id="sidebar_port_out"><path d="M1336.6666666666667,330 L1340,326.6666666666667 L1343.3333333333333,330 L1340,333.3333333333333 Z"></path></g><g class="port answer" id="sidebar_port_answer"><path d="M1316.6666666666667,310 L1320,306.6666666666667 L1323.3333333333333,310 L1320,313.3333333333333 Z"></path></g><g class="port request" id="sidebar_port_request"><path d="M1316.6666666666667,350 L1320,346.6666666666667 L1323.3333333333333,350 L1320,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1305,315) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_navi">
+        <rect rx="2" ry="2" x="1420" y="310" width="40" height="40" class="fill"></rect>
+        <text x="1446" y="364">#navi</text>
+        <g class="port in" id="navi_port_in"><path d="M1416.6666666666667,330 L1420,326.6666666666667 L1423.3333333333333,330 L1420,333.3333333333333 Z"></path></g><g class="port out" id="navi_port_out"><path d="M1456.6666666666667,330 L1460,326.6666666666667 L1463.3333333333333,330 L1460,333.3333333333333 Z"></path></g><g class="port answer" id="navi_port_answer"><path d="M1436.6666666666667,310 L1440,306.6666666666667 L1443.3333333333333,310 L1440,313.3333333333333 Z"></path></g><g class="port request" id="navi_port_request"><path d="M1436.6666666666667,350 L1440,346.6666666666667 L1443.3333333333333,350 L1440,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1425,315) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_footer">
+        <rect rx="2" ry="2" x="1480" y="230" width="40" height="40" class="fill"></rect>
+        <text x="1506" y="284">#footer</text>
+        <g class="port in" id="footer_port_in"><path d="M1476.6666666666667,250 L1480,246.66666666666666 L1483.3333333333333,250 L1480,253.33333333333334 Z"></path></g><g class="port out" id="footer_port_out"><path d="M1516.6666666666667,250 L1520,246.66666666666666 L1523.3333333333333,250 L1520,253.33333333333334 Z"></path></g><g class="port answer" id="footer_port_answer"><path d="M1496.6666666666667,230 L1500,226.66666666666666 L1503.3333333333333,230 L1500,233.33333333333334 Z"></path></g><g class="port request" id="footer_port_request"><path d="M1496.6666666666667,270 L1500,266.6666666666667 L1503.3333333333333,270 L1500,273.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1485,235) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node domnode" id="node_credits">
+        <rect rx="2" ry="2" x="1480" y="310" width="40" height="40" class="fill"></rect>
+        <text x="1506" y="364">#credits</text>
+        <g class="port in" id="credits_port_in"><path d="M1476.6666666666667,330 L1480,326.6666666666667 L1483.3333333333333,330 L1480,333.3333333333333 Z"></path></g><g class="port out" id="credits_port_out"><path d="M1516.6666666666667,330 L1520,326.6666666666667 L1523.3333333333333,330 L1520,333.3333333333333 Z"></path></g><g class="port answer" id="credits_port_answer"><path d="M1496.6666666666667,310 L1500,306.6666666666667 L1503.3333333333333,310 L1500,313.3333333333333 Z"></path></g><g class="port request" id="credits_port_request"><path d="M1496.6666666666667,350 L1500,346.6666666666667 L1503.3333333333333,350 L1500,353.3333333333333 Z"></path></g>
+        <path class="glyph" transform="translate(1485,315) scale(0.1)" d="M150,60 L150,60 L60,150 L150,240 L240,150 Z"></path>
+    </g>
+    <g class="node meshnode" id="node_view">
+        <rect rx="2" ry="2" x="1020" y="110" width="560" height="440" class=""></rect>
+        <text x="1306" y="564">view</text>
+        <g class="port in" id="view_port_in"><path d="M1016.6666666666666,130 L1020,126.66666666666667 L1023.3333333333334,130 L1020,133.33333333333334 Z"></path></g><g class="port out" id="view_port_out"><path d="M1576.6666666666667,530 L1580,526.6666666666666 L1583.3333333333333,530 L1580,533.3333333333334 Z"></path></g><g class="port answer" id="view_port_answer"><path d="M1036.6666666666667,110 L1040,106.66666666666667 L1043.3333333333333,110 L1040,113.33333333333333 Z"></path></g><g class="port request" id="view_port_request"><path d="M1556.6666666666667,550 L1560,546.6666666666666 L1563.3333333333333,550 L1560,553.3333333333334 Z"></path></g>
+
+    </g></g></g>
+</svg>
+
+
+<script>
+
+    var GRID_SIZE = 20;
+
+    var cursor = {
+        host: null,
+        el: document.createElement('cursor'),
+        target: null,
+        pos: { x: 0, y: 0 },
+        offset: { x: 0, y: 0 },
+        origin: null,
+        install: function (host) {
+            // host is window
+            this.host = host;
+            this.target = document.getElementById('viewport');
+
+            var that = this;
+
+            document.body.appendChild(this.el);
+            document.addEventListener('mousedown', function (e) { that.touch({ x: e.clientX, y: e.clientY }, true); e.preventDefault() });
+            document.addEventListener('mousemove', function (e) { that.touch({ x: e.clientX, y: e.clientY }, false); e.preventDefault() });
+            document.addEventListener('mouseup',   function (e) { that.touch({ x: e.clientX, y: e.clientY }); e.preventDefault() });
+        },
+        update: function () {
+
+            var x = parseInt(this.offset.x);
+            var y = parseInt(this.offset.y);
+
+            var bgX = parseInt(this.offset.x * 0.75);
+            var bgY = parseInt(this.offset.y * 0.75);
+
+            this.target.style.transform = 'translate('+ x +'px,' + y + 'px)';
+            document.body.style.backgroundPosition = 'translate('+ bgX +'px,' + bgY + 'px)';
+        },
+        touch: function (pos, click) {
+            if (typeof click === "undefined") {
+                click = null;
+            }
+            if (click === true) {
+                this.origin = pos;
+                return
+            }
+            if (this.origin) {
+                this.offset.x += parseInt(pos.x - this.origin.x)
+                this.offset.y += parseInt(pos.y - this.origin.y)
+                this.update();
+                this.origin = pos
+            }
+            if (click === null) {
+                this.origin = null;
+                return
+            }
+            this.pos = pos
+        },
+        magnet: function (val) {
+            return (parseInt(val / GRID_SIZE) * GRID_SIZE) + (GRID_SIZE / 2)
+        }
+    };
+
+    cursor.install(this);
+
+    // RIVEN.create(false)
+    // RIVEN.graph()
+</script>
+
+
+
+</body>
+</html>

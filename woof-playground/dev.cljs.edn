@@ -1,0 +1,11 @@
+^{:watch-dirs ["src"
+               "test"
+               "../woof-core/src"
+               ]
+  :extra-main-files {:devcards {:main woof.devcards}}
+  }
+{:main woof.app
+ :devcards true
+ }
+
+;; woof.app/on-js-reload

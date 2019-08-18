@@ -1,4 +1,0 @@
-^{:watch-dirs ["src"]}
-{:main woof.app}
-
-;; woof.app/on-js-reload

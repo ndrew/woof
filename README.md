@@ -1,10 +1,14 @@
-[![CircleCI](https://circleci.com/gh/ndrew/woof.svg?style=svg)](https://circleci.com/gh/ndrew/woof)
-
 # woof
 
 reusable workflow implementation in clojure/clojurescript.
 
-## Overview
+## woof-core
+core library for workflows
+
+## woof-playground
+playground for working with woof workflows
+
+## Rationale
 
 The idea is to use have a 'unit of work' implemented as a very specific, yet generalizable implementation of producer/consumer problem.
 
@@ -30,9 +34,9 @@ does some work and return value (sync/async) based upon param passed. These will
 
 * expand:
 
-adds new steps to the workflow.
+step that adds new steps to the workflow.
 
-It's the way to 'flatten' the collection/seq passed as param, so the processing will done always on colleaction items, not collection itself — think of this as loop
+It's the way to 'flatten' the collection/seq passed as param, so the processing will done always on colleaction items, not collection itself — think of this as loop.
 
 * compose:
 
@@ -40,25 +44,10 @@ If param is a step-id, then workflow will wait until that step is processed and 
 
 This is similar to function composition, the types should match. Or the adapter step should be added.
 
-'Compose' steps will run in certain order.
-
 Flat workflow can be executed and will produce the flattened map with step-handler results under corresponding step-id.
 
-### Infinite workflows
-
-### Adjusting params for step function from UI
-
-
-
-
-### Hammock stuff
-
-Flat workflows may be described in a declarative way via hiccup-like DSL.
-
-Also flat workflows may be configured via generic ui.
-
-Step handler type check may be done via spec.
-
+'Compose' steps will run in certain order. So thats the way to introduce order to workflow.
+But order is a strong contstraint, so if it can be ommitted - then it should be ommitted.
 
 
 ### Implementation
@@ -84,6 +73,25 @@ where step handlers live in execution context, like
 These can be executed via executor protocol.
 
 Details later.
+
+
+### Infinite workflows
+
+...
+
+### Adjusting params for step function from UI
+
+...
+
+
+### Hammock stuff
+
+Flat workflows may be described in a declarative way via hiccup-like DSL.
+
+Also flat workflows may be configured via generic ui.
+
+Step handler type check may be done via spec.
+
 
 
 ## Setup

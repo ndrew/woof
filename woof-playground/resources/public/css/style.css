@@ -1,0 +1,94 @@
+body {
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 11px;
+    line-height: 1.2;
+}
+
+/** {
+    outline: 1px solid rgba(0,0,0,.0187777);
+}*/
+
+header {
+    font-weight: bold;
+}
+
+
+.menubar {
+    box-sizing: content-box;
+
+    display: inline-flex;
+    align-content: flex-end;
+    align-items: baseline;
+
+}
+
+.menubar .menu-item {
+    font-weight: 100;
+
+    padding: .1rem .33rem 0 .33rem;
+
+    color: rgb(220,20,60);
+    text-decoration: none;
+    border: 1px solid crimson;
+    margin-left: .5rem;
+
+}
+
+.menubar .menu-item:hover,
+.menubar .menu-item.selected {
+    color: #fff;
+    background-color: rgba(255,128,128,.75);
+}
+
+.menubar > .header {
+    font-weight: bolder;
+}
+
+.menubar .separator {
+    width: 1rem;
+}
+
+.wf {
+    outline: 1px solid cadetblue;
+    padding: 1rem;
+}
+
+
+
+
+.context, .workflow {
+    margin: auto 1rem;
+}
+
+.project > div {
+
+    margin-bottom: 1rem;
+    margin-left: .1rem;
+}
+
+.context > span {
+    margin-right: .33rem;
+}
+
+
+
+.listbox {
+    min-height: 2rem;
+    padding: 0;
+    background: white;
+    outline: 1px solid #aaa;
+    display: block;
+}
+
+
+.listbox > li {
+    display: block;
+    padding: 0rem .5rem;
+    position: relative;
+    line-height: 1.5rem;
+}
+
+
+.listbox > li.selected {
+    color: red;
+}
