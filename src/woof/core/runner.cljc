@@ -30,7 +30,7 @@
          ;; 2. init wf with init params -> get wf xtor fn and new params
          {
            wf :wf                 ;; workflow xtor
-           wf-params :params          ;; (merge wf-default-params initial-params)
+           wf-params :params          ;; (merge wf-def-params initial-params)
            } (wf-fn initial-params)
 
          ;; todo: may return channel
@@ -53,7 +53,7 @@
   )
 
 
-;; default wf processing via result processor
+;; def wf processing via result processor
 
 (defn default-run-fn [wf-impl opts]
   (let [xtor (wfc/wf-xtor wf-impl)]

@@ -144,7 +144,7 @@
 (defn expand-handler
   "generates an expand step handler
 
-  by default step-handler-fn returns {(rand-sid) (step-body-fn x)}
+  by def step-handler-fn returns {(rand-sid) (step-body-fn x)}
   "
   ([sid-fn step-body-fn]
    (expand-handler sid-fn step-body-fn
@@ -819,7 +819,7 @@
 
 
 
-(defn- make-state! [context state-config]
+(defn make-state! [context state-config]
 
   (let [*results (atom (array-map))
         *infinite (atom {})
@@ -1616,7 +1616,7 @@
 
 
 ;;
-;; default executor
+;; def executor
 (defrecord AsyncExecutor [context model ready-channel ]
   WoofExecutor
 
@@ -1743,14 +1743,14 @@
 
 
 
-;; default impl for a parametrizible result processor via options map
+;; def impl for a parametrizible result processor via options map
 (defrecord ResultProcessor [executor options]
   WoofResultProcessor
 
   (process-results!
     [this]
 
-    (let [op-handlers-map (get options :op-handlers-map {}) ;; FIXME: add :default handler as in cond
+    (let [op-handlers-map (get options :op-handlers-map {}) ;; FIXME: add :def handler as in cond
 
           ;; FIXME: find proper names for these keys
 

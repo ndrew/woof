@@ -38,7 +38,7 @@
 ;;   - :infinite
 ;;   ? :spec
 
-;; <?> have some step handlers available by default?
+;; <?> have some step handlers available by def?
 
 ;; :id — {:fn identity}
 ;;   returns a single value from sbody parameter or via reference
@@ -137,6 +137,13 @@
 ;;     :id
 ;;
 
+;; ...
+
+;; stateful steps, same way as rum mixins
+;; or just (partial *STATE ...)
+
+
+
 ;; * sids
 ;;    - namespaced keyword, e.g. ::sid
 ;;
@@ -147,7 +154,65 @@
 
 
 
+
+
 ;;
 ;; usage patterns
+
+
+
+
+
+;;
+;; 2 + 2 example
+
+
+#_(let [ctx-map {
+                :v  {:fn identity}
+
+
+
+                :v* {:fn identity :collect? true}
+
+                :sum {:fn (fn[nums]
+                            (reduce + nums))
+                      :collect? true
+                      }
+
+
+
+                :nums* {:fn (fn [nums]
+                              (into {}
+                                    (map (fn[x] [(wf/rand-sid)
+                                                 (wf/sbody :v x)]) nums))
+                              )
+                         :expands? true}
+
+
+                }
+      steps {
+
+
+              ::ns [:nums* [2 3 4 ]]
+              ::sum [:sum ::ns]
+
+
+              ::v1 [:v 2]
+              ::v2 [:v 3]
+
+              ::sum1 [:sum [::v1 ::v2]]
+
+              }]
+  (println (d/pretty  @(wf/sync-execute!
+     (wf/build-executor (wf/make-context ctx-map) steps)
+     100)))
+)
+
+
+;;
+
+;; intermediary step for ui
+
+;;
 
 

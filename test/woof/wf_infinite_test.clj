@@ -58,13 +58,13 @@
 
   (let [done-channel (async/chan)
 
-        cnt (volatile! [])
+        cnt (atom [])
         start-t (System/currentTimeMillis)
 
 
         context-map {
           :id {:fn (fn [x]
-                     (vswap! cnt conj x) ;; track number of step-fn runs
+                     (swap! cnt conj x) ;; track number of step-fn runs
 
                      ;; (println x)
 
@@ -75,17 +75,20 @@
                               (go
                                 ;; test sending with pauses
                                (async/<! (u/timeout 10))
-                               (async/>! chan { (wf/rand-sid) [:id [1 (- (System/currentTimeMillis) start-t)]] })
-
-
-                               (async/<! (u/timeout 70))
+                               (async/>! chan { (u/sid "_" "1") [:id [1 (- (System/currentTimeMillis) start-t)]] })
+                               ;(async/<! (u/timeout 70))
                                ;; try sending simultaneously
-                               (async/>! chan { (wf/rand-sid) [:id [2 (- (System/currentTimeMillis) start-t)]] })
-                               (async/>! chan { (wf/rand-sid) [:id [3 (- (System/currentTimeMillis) start-t)]] })
-                               (async/>! chan { (wf/rand-sid) [:id [4 (- (System/currentTimeMillis) start-t)]] })
-                               (async/>! chan { (wf/rand-sid) [:id [5 (- (System/currentTimeMillis) start-t)]] })
-                               ;;(async/>! chan { (wf/rand-sid) [:id (+ 1000 (System/currentTimeMillis))] })
-                               ;;(async/>! chan { (wf/rand-sid) [:id (- 1000 (System/currentTimeMillis))] })
+                               (async/>! chan { (u/sid "_" "2") [:id [2 (- (System/currentTimeMillis) start-t)]] })
+                               (async/>! chan { (u/sid "_" "3") [:id [3 (- (System/currentTimeMillis) start-t)]] })
+                               (async/>! chan { (u/sid "_" "4") [:id [4 (- (System/currentTimeMillis) start-t)]] })
+                               (async/>! chan { (u/sid "_" "5") [:id [5 (- (System/currentTimeMillis) start-t)]] })
+
+                               (async/>! chan { (u/sid "_" "6") [:id [6 (- (System/currentTimeMillis) start-t)]] })
+                               (async/>! chan { (u/sid "_" "7") [:id [7 (- (System/currentTimeMillis) start-t)]] })
+                               (async/>! chan { (u/sid "_" "8") [:id [8 (- (System/currentTimeMillis) start-t)]] })
+                               (async/>! chan { (u/sid "_" "9") [:id [9 (- (System/currentTimeMillis) start-t)]] })
+
+
                                 )
 
                               chan))
@@ -101,16 +104,18 @@
 
       (let [d (async/<!! done-channel)]
         (println  "WF DONE:\n"
-                  (d/pretty (::ui d))
+
+                  (d/pretty d)
+                  ;(d/pretty (::ui d))
 
                   "id called times= " @cnt
                   )
-        (println @cnt)
-        (println d)
-
-
-        ;;(is (= (count (::ui d)) 3))
-        ;; (is (= @cnt 3))
+        (println (count @cnt))
+        ; (println d)
+;; FIXME: add more assertions
+        ;; (is (<= (count @cnt) 5)) ;; FIXME: why the values are dropped?
+        (is (= (count (::ui d)) 9))
+        ;;
 
         ))
 
@@ -118,7 +123,7 @@
 
 
 
-#_(deftest infinite-expand-collect-test
+(deftest infinite-expand-collect-test
   ;;
   ;; test if values from infinite collect are passed to a linked step
 
@@ -130,7 +135,6 @@
 
         context-map {
                       ;; this is fired twice
-
 
           :n {:fn (fn [x]
                      ;; to test that these are executed once
@@ -187,19 +191,13 @@
 
         (is (= (::c d) '(:1 :2) ))
         (is (= (::c d) (::linked-step d) ))
-        ;; (is (= @n-history ))
-
 
         )))
 
 
 
 
-
-
-
-
-#_(deftest infite-actions-test
+(deftest infite-actions-test
 
   (let [context-map {:f {:fn (fn [s]
                                  (let [chan (async/chan)]
@@ -261,7 +259,7 @@
 
 
 
-#_(deftest infite-actions-update-test
+(deftest infite-actions-update-test
 
   (let [context-map {:f {:fn (fn [s]
                                  ; (str "Hello " s "!")

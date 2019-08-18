@@ -1,4 +1,6 @@
-(ns woof.app
+(ns ^:figwheel-hooks
+    ^:figwheel-always
+  woof.app
   (:require
     [rum.core :as rum]
 
@@ -31,7 +33,7 @@
 
   (init! mount-app)
 
-  (defn on-js-reload []
+  (defn ^:after-load on-js-reload []
     (playground/reload!)
     (mount-app)) ;; re-mount app on js reload
 

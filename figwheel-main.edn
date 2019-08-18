@@ -1,0 +1,6 @@
+{
+ :watch-dirs ["src"]
+ :css-dirs ["resources/public/css"]
+
+ :ring-handler woof.server/app
+ }

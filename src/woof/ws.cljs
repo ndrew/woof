@@ -4,6 +4,7 @@
     [cljs.core.async :as async]
     [cognitect.transit :as transit]
 
+    [woof.wf :as wf]
     [woof.data :as d]
     [woof.utils :as u]
 

@@ -7,7 +7,6 @@
 
 
 
-
 (deftest selector-test
   (is (= (d/selector? (d/selector [:foo]))))
 

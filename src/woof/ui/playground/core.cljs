@@ -1,4 +1,4 @@
-(ns woof.ui.playground.core
+(ns ^:figwheel-hooks woof.ui.playground.core
   (:require
     [cljs.reader]
     [rum.core :as rum]
@@ -133,7 +133,7 @@
       :opts opts
 
 
-    ;; default wf stuff
+    ;; def wf stuff
       :history []
       :result {}
 

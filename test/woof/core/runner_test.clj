@@ -67,11 +67,13 @@
   )
 
 
+;; todo: wrap to a test
+
 (runner/run-wf
       (fn []
         (println "INIT")
         {:hello :world}) ;; defaults
       wf-fn  ;; (fn [params] -> {:wf <wf>, :params {}})
       opts-fn
-      runner/default-run-fn ;;
+      runner/default-run-fn ;; todo: sync runner
   )

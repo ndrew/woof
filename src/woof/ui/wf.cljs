@@ -13,7 +13,7 @@
 
     [woof.ui :as ui]
 
-    [woof.ui.default.context :as ctx-ui]
+    [woof.ui.def.context :as ctx-ui]
 
     [woof.ui.steps :as steps-ui]
     [woof.ui.results :as r]
@@ -28,7 +28,7 @@
 
 
 ;;
-;; default ui for the workflow
+;; def ui for the workflow
 
 
 (rum/defc <opts-ui> < rum/reactive [*opts]
@@ -39,7 +39,7 @@
 )
 
 
-;; default wf runner ui
+;; def wf runner ui
 
 (rum/defcs <wf-ui> < rum/reactive
 

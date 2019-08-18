@@ -241,10 +241,10 @@
 
 
 (defn opts-fn
-  "default wf-fn for the config workflow
+  "def wf-fn for the config workflow
 
   * registers a ws endpoint /api/config
-  * uses default ui-opts handler
+  * uses def ui-opts handler
   "
   [*STATE params]
 
@@ -580,12 +580,12 @@
                          )
 
        ;; BACKEND
-       *backend-state (atom { ;; intial state - the default file
+       *backend-state (atom { ;; intial state - the def file
                              :current {:path "Users/ndrw/m/woof/example.edn"}})
 
 
        backend-initial-steps {
-                              ;; get default config file from state
+                              ;; get def config file from state
                                ::initial-file [:state [:current]]
 
                                ::log [:log ::initial-file]

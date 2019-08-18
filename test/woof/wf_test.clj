@@ -324,6 +324,7 @@
 
 
 (defn- async-wf [test-context-map test-steps result-fn]
+
   (let [context (wf/make-context test-context-map)
         executor (wf/build-executor context test-steps)
 
@@ -342,7 +343,7 @@
 
         before-processing! (fn [exec-chann executor]
                              (go
-                               (async/<! (u/timeout 3500))
+                               (async/<! (u/timeout 3500)) ;; ?????
                                ;;(println "timeout" (d/pretty @*result))
                                (if-not (nil? @*done)
                                  (async/put! exec-chann [:error :timeout])))
@@ -367,19 +368,20 @@
                                     (async/>! c :timeout)))
                           }
 
-
         processor (wf/->ResultProcessor executor
                                      { :execute start-wf-with-transducers!
                                        :before-process before-processing!
                                        ;; :process-handler op-handler
                                        :op-handlers-map op-handlers-map
                                        :after-process after-processing!
-                                       })
-        ]
 
-    (wf/process-results! processor)
+                                       :timeout 3500 ;; remove later
+                                       })]
+
+        (wf/process-results! processor)
     )
-  )
+
+   )
 
 
 
@@ -516,5 +518,273 @@
 ;; (run-tests)
 
 
+;;
+;; multi-arity step handler
+
+#_(let [*state (atom {})
+       test-context
+      {
+        :state! {:fn (fn [v]
+                       (swap! *state assoc :test v)
+                       (str "Hello " v "!")
+                      )}
+
+        :v {:fn (fn[v]
+                  v
+                  )}
+
+        :fn-2 {:fn (fn [[a b]]
+                     (str "(fn " a " " b ")")
+                     )
+               :collect? true
+               }
+
+        ;; how to do steps sequentially without wrapping them to an intermediary step
 
 
+        }
+        ; workflow is described by a finite number of steps, each of calls to an action
+        test-steps {
+                     ::arg-1  [:state! "BAR"]
+                     ::arg-2  [:v "param-pum-pum"]
+
+                     ::arity-test [:fn-2 [::arg-1 ::arg-2]]
+
+                     ;;::first [:state! "FOO"]
+                     }
+
+
+        ]
+    (async-wf test-context test-steps
+              (fn [v result]
+                (println v result)
+
+                (println "STATE" @*state)
+
+                ;; todo: add assertion
+                ;; (println result)
+                ))
+    )
+
+
+
+
+#_(let [*state (atom {})
+       test-context
+      {
+        :state! {:fn (fn [[k v]]
+                       (swap! *state assoc k v)
+                       (str "Hello " v "!")
+                      )}
+
+        :state {:fn (fn[v]
+                      (get @*state v)
+                      )}
+
+        :v {:fn (fn[v]
+                  v
+                  )}
+
+        :c {:fn (fn[v]
+                  v
+                  )
+            :collect? true
+            }
+
+
+        :wait-last {:fn (fn[v]
+                          (last v))
+                    :collect? true
+                    :expands? true
+                    }
+
+        :fn-2 {:fn (fn [[a b]]
+                     ;(str "(fn " a " " b ")")
+                     [a b]
+                     )
+               :collect? true
+               }
+
+
+
+
+        :e-fn {:fn (fn[[a b]]
+                  (println [a b])
+
+                  (assoc (array-map)
+                    ;; should wait for ::a ::a
+
+                    ::a [:state! [:a a]]
+                    ::b [:state! [:b b]]
+
+
+                    )
+                  )
+            :collect? true
+            :expands? true
+            }
+
+
+
+        ;; how to do steps sequentially without wrapping them to an intermediary step
+
+
+        }
+        ; workflow is described by a finite number of steps, each of calls to an action
+        test-steps {
+
+
+                     ::arg-1  [:state! [:test "BAR"]]
+                     ::arg-2  [:v "param-pum-pum"]
+
+                     ;; ::v [:fn-2 [::arg-1 ::arg-2]]
+
+
+                     ;; multi-arity step handler
+                     ::expand-wait [:e-fn [::arg-1 ::arg-2]]
+
+
+                     ;; collect keys/values
+                     ::expand-k [:v ::expand-wait]
+                     ::expand-v [:c ::expand-wait]
+
+
+                     ;; waiting for step
+
+                     ;; add a meta handler with steps to be executed after data are ready
+                     ::step [:v {::at-last [:state :a]}]
+
+                     ;; wait for all values, but treat last as steps
+                     ::wait [:wait-last [::expand-v ::expand-k ::step]]
+                     ;; have the result
+                     ::wait-result [:c ::wait]
+
+                     ;; ::v [:v ::www]
+
+
+                     ;;::first [:state! "FOO"]
+                     }
+
+
+        ]
+    (async-wf test-context test-steps
+              (fn [v result]
+                (println v (d/pretty result))
+
+                (println "STATE" @*state)
+
+                ;; todo: add assertion
+                ;; (println result)
+                ))
+    )
+
+
+
+
+;; multi-expand
+
+(let [test-context
+      {
+        :e1 {:fn (fn[[a b]]
+                  (assoc (array-map)
+                    ;; should wait for ::a ::a
+
+                    ::a1 [:e2 [:a a]]
+                    ::b1 [:e2 [:b b]]
+                    )
+                  )
+            :expands? true
+            }
+
+        :e2 {:fn (fn[a]
+                  (assoc (array-map)
+                    ;; should wait for ::a ::a
+                    (u/seq-sid "e2-") [:e3 (str "--" a)]
+
+                    )
+                  )
+            :expands? true
+            }
+
+
+        :e3 {:fn (fn[a]
+                  (assoc (array-map)
+                    ;; should wait for ::a ::a
+                    (u/seq-sid "e3-") [:v (str "--" a)]
+
+                    )
+                  )
+            :expands? true
+            }
+
+
+
+        :v {:fn (fn[v]
+                  v
+                  )}
+
+
+
+        :c {:fn (fn[v]
+
+                  (if (every? wf/sid-list? v)
+                    (let [s (u/seq-sid "c-")]
+                      {
+                        s [:c (apply concat v)]
+                        ;;(wf/rand-sid) [:c s]
+                        })
+                    v
+                    ; { (u/seq-sid "result-") [:v v] }
+                  )
+
+                )
+            :expands? true
+            :collect? true
+            }
+
+
+        :c1 {:fn (fn[v]
+                  v)
+             :collect? true
+             }
+
+
+
+        ;; how to do steps sequentially without wrapping them to an intermediary step
+
+
+        }
+        ; workflow is described by a finite number of steps, each of calls to an action
+        test-steps {
+
+                     ;; generate multi expand
+                     ::e1 [:e1 ["1" "2"]]
+
+                     ;; test injecting the result as step - callback?
+                     ::c  [:c [::e1]]
+
+                     ;; ::c1 [:c1 ::c]
+
+                     }
+
+
+        ]
+
+
+  (async-wf test-context test-steps
+            (fn [v result]
+              (println v (d/pretty result))
+
+              ))
+
+  )
+
+
+
+
+
+; (every? wf/sid-list? [[::a] [::b]])
+
+
+
+;;(every? wf/sid-list? [:a])

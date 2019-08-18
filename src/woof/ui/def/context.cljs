@@ -1,4 +1,4 @@
-(ns woof.ui.default.context
+(ns woof.ui.def.context
   (:require
     [cljs.core.async :as async]
 

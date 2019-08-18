@@ -93,6 +93,39 @@
 
 
 
+;; todo: can other rf be used
+#_(defn infinite-expand-rf [in-chan step-fn]
+  (let [chan> (async/chan)]
+    (fn
+      ([]
+       (go-loop []
+                (when-let [new-steps (async/<! in-chan)]
+
+                  (if-not (map? new-steps)
+                    (u/throw! (str "invalid expand map passed to :in " (d/pretty new-steps))))
+
+                  ;; send the steps into workflow
+                  (async/put! chan> (step-fn new-steps))
+                  (recur)
+                  )
+
+                )
+       )
+      ([v]
+
+       chan>)
+      ([initial out-chan]
+       (if (and (map? initial) (not (empty? initial))
+         (go
+           (async/put! out-chan (step-fn initial)))
+         )
+
+       out-chan)
+      ))
+  ))
+
+
+
 
 ;; xform that waits for values via channel
 ;;

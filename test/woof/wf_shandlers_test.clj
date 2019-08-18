@@ -129,11 +129,11 @@
 
 
 
-(deftest rpc-via-xform
+;; (deftest rpc-via-xform
   ;; example of using stateful transducers to return data from the workflow
   ;;
 
-  (let [*log (atom [])
+  #_(let [*log (atom [])
         dbg (fn [x]
               (swap! *log conj x)
               ;; (locking *out* (println x))
@@ -172,9 +172,12 @@
         base-context {
                       :v   {:fn identity}
                       ;; return sid as a value
-                      :&v  {:fn (fn[a] {(wf/rand-sid) [:v a]}) :expands? true}
+                      :&v  {:fn (fn[a] {(wf/rand-sid) [:v a]})
+                            :expands? true}
                       ;; return value as sid-list
-                      :v*  {:fn identity :collect? true}
+                      :v*  {:fn identity
+                            :collect? true
+                            }
                       ;; group
                       :zip-1 {:fn (fn [vs]
                                     (let [[a b] vs]
@@ -183,7 +186,9 @@
                                       )
 
                                     ;(first (partition (count vs) (apply interleave vs)))
-                                    ) :collect? true}
+                                    )
+                              :collect? true
+                              }
 
                      }
 
@@ -198,7 +203,7 @@
 
                                            ::z  [:zip-1 [::v-ref ::v-val]]
 
-                                           ::out [:out ::z ]
+                                           ;::out [:out ::z ]
                                            })
                                          )
                                    :expands? true
@@ -210,7 +215,7 @@
         steps {
                 ::hello [:in "hello"]
 
-                ::woof [:in "woof"]
+                ;;::woof [:in "woof"]
                 }
 
 
@@ -218,13 +223,16 @@
 
     (let [v @(wf/sync-execute! executor)]
       ;;
-      (async/thread
+      #_(async/thread
         (Thread/sleep 500)
 
         (let [log @*log]
+          (println log)
+
+
           (is (= 2 (count log)))
 
-          (doseq [{v :v
+          #_(doseq [{v :v
                    sid :sid
                    } log]
             (is (not (nil? (#{"hello!!!" "woof!!!"} v))))
@@ -232,13 +240,19 @@
             )
           )
         )
-      (let [result (wdata/inline-results v)]
+
+
+      (println (d/pretty v))
+      (println (d/pretty (wdata/inline-results v)))
+
+      #_(let [result (wdata/inline-results v)]
+        ;(println (d/pretty result))
         (is (= "hello!!!" (last (::hello result))))
         (is (= "woof!!!" (last (::woof result))))
         )
 
       ))
-)
+;;)
 
 
 

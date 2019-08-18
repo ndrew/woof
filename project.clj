@@ -8,7 +8,7 @@
 
   ;; :jvm-opts ["-agentpath:/Users/ndrw/m/async-profiler/build/libasyncProfiler.so=start,event=cpu,file=lein-child.txt,collapsed"]
 
-  :dependencies [[org.clojure/clojure "1.9.0"]
+  :dependencies [[org.clojure/clojure "1.10.0"]
                  [org.clojure/clojurescript "1.10.126"]
                  [org.clojure/core.async  "0.3.443"
                   :exclusions [org.clojure/tools.reader]]
@@ -34,23 +34,38 @@
                  ;; [com.clojure-goes-fast/clj-async-profiler "0.1.0"]
 
                  [http-kit "2.2.0"]
+                 ;; [ring "1.7.0"]
+
                  [compojure                  "1.4.0" :exclusions [commos-codec]]
                  [com.cognitect/transit-clj  "0.8.300"]
                  [com.cognitect/transit-cljs "0.8.239"]
 
+                 ;;
+                 [org.clojure/data.json "0.2.6"]
 
                  ;; testing deps
 
                  [me.raynes/fs "1.4.6"]
 
+                 ;; property files
+                 [clojurewerkz/propertied "1.3.0"]
+                 [hawk "0.2.11"]
+                 ;;
+
+                 ;; [cljsjs/codemirror "5.40.2-1"]
+
+
+
+
+
                  ]
 
 
   :aot          [ woof.server ]
-
   :main         woof.server
 
-  :plugins [[lein-figwheel "0.5.15"]
+  :plugins [[lein-nomis-ns-graph "0.14.2"]
+            [lein-figwheel "0.5.15"]
             [lein-cljsbuild "1.1.7" :exclusions [[org.clojure/clojure]]]]
 
   :source-paths ["src"]
@@ -64,7 +79,7 @@
                 ;; into your build
                 :figwheel {:on-jsload "woof.app/on-js-reload"
                            ;; :open-urls will pop open your application
-                           ;; in the default browser once Figwheel has
+                           ;; in the def browser once Figwheel has
                            ;; started and compiled your application.
                            ;; Comment this out once it no longer serves you.
                            :open-urls ["http://localhost:8080/index.html"]}
@@ -88,9 +103,7 @@
                            :pretty-print false}}]}
 
   :figwheel {
-              :http-server-root "public" ;; default and assumes "resources"
-             ;; :server-port 3449 ;; default
-
+             :http-server-root "public" ;; def and assumes "resources"
              :ring-handler  woof.server/app
              :server-port   8080
              :server-ip "127.0.0.1"
@@ -129,7 +142,7 @@
              ;; :server-logfile "tmp/logs/figwheel-logfile.log"
 
              ;; to pipe all the output to the repl
-             ;; :server-logfile false
+             :server-logfile true
 
 
 

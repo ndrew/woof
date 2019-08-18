@@ -181,7 +181,7 @@
 
 ;; api for webserivce
 (defn wf! []
-  ;; pass here the default path
+  ;; pass here the def path
 
   (let [in-chan> (async/chan)
         out-chan< (async/chan)

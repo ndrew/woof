@@ -300,7 +300,7 @@
 
 ;; api for webserivce
 (defn wf! []
-  ;; pass here the default path
+  ;; pass here the def path
 
   (let [*local (atom {})
         in-chan> (async/chan)
