@@ -40,7 +40,17 @@
   (let [graph (reduce (fn [a [k [op p]]]
                         (if (u/sid? p)
                           (assoc a k (conj (get a k []) p))
-                          a)) {} steps)]
+                          (if  (u/sid-list? p)
+                            (do
+                              ;(assoc a k (concat (get a k []) p))
+                              a
+                              )
+                            a
+                            )
+                          )) {} steps)]
+
+    (println "[GRAPH-CMP]: " graph)
+
     (tarjan (keys graph) graph)))
 
 (def graph-component (memoize graph-component!))
@@ -59,7 +69,13 @@
   (let [graph (reduce (fn [a [k [op p]]]
                         (if (u/sid? p)
                           (assoc a p (conj (get a p []) k))
-                          a)) {} steps)]
+                          (if (u/sid-list? p)
+                            (reduce (fn [A p*]
+                                      (assoc A p* (conj (get a p* []) k)))
+                                    a p)
+                            a
+                            )
+                          )) {} steps)]
 
     (loop [in [initial-step]
            out []]
