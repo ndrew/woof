@@ -162,7 +162,7 @@
   "parametrized wf implementation
   init-fn (fn []) => {..}
   "
-  [init-fn        ;; returns initial maps
+  ([init-fn        ;; returns initial maps
    wf-params-fn   ;; transforms initial map to a wf params
    opt-params-fn  ;; transforms wf params to opt params
    opts-fn        ;; provides opts map via opt params
@@ -197,6 +197,59 @@
      }
     )
   )
+  ([init-fn        ;; returns initial maps
+     wf-params-fn   ;; transforms initial map to a wf params
+     opt-params-fn  ;; transforms wf params to opt params
+     opts-fn        ;; provides opts map via opt params
+     context-map-fn ;; provides context map from wf params
+     steps-fn       ;; provides steps map from wf params
+     workflow-fn
+     ]
+    (let [wf-fn (fn [params]
+                  (let [nu-params (wf-params-fn params)]
+                    {
+                     :params nu-params
+                     :wf     (partial workflow-fn nu-params context-map-fn steps-fn)
+                     }
+                    )
+                  )
+          opts-fn (fn [opts-params]
+                    (let [nu-opt-params (opt-params-fn opts-params)]
+                      {
+                       :params nu-opt-params
+                       :opts   (opts-fn nu-opt-params)
+                       })
+                    )
+          ]
+      {
+       :init-fn init-fn
+       :wf-fn   wf-fn
+       :opts-fn opts-fn
+       }
+      )
+    )
+  )
+
+
+(defn WF [nu-params context-map-fn steps-fn wf-params]
+  (reify WoofWorkflow
+    (get-params [this] nu-params) ;; is this really needed
+    (get-context-map [this] (context-map-fn nu-params))
+    (get-steps [this] (steps-fn nu-params)))
+  )
+
+(defn capturing-WF [*wf nu-params context-map-fn steps-fn wf-params]
+  (reify WoofWorkflow
+    (get-params [this] nu-params) ;; is this really needed
+    (get-context-map [this] (let [ctx-map (context-map-fn nu-params)]
+                              (swap! *wf assoc ::ctx ctx-map)
+                              ctx-map))
+    (get-steps [this] (let [steps (steps-fn nu-params)]
+                        (swap! *wf assoc ::steps steps)
+                        steps
+                        )))
+  )
+
 
 
 (defn process-wf! [xtor opts]

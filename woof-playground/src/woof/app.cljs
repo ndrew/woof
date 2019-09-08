@@ -4,7 +4,7 @@
   (:require
     [rum.core :as rum]
 
-    [woof.ui.playground.prototype6 :as playground]
+    [woof.ui.playground.prototype8 :as playground]
 
     [woof.lib :as lib]))
 
