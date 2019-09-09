@@ -61,7 +61,12 @@
 ;; we need to have some kind of registry of available parts
 
 ; ready to use
-(defn init-fn__peek [params] (prn params))
+(defn init-fn__peek [params]
+  (prn "peek" params))
+
+
+(defn init-fn__log [params]
+  (.log js/console "peeking on init params: " params))
 
 
 ; needs to be specified (via partial)
@@ -89,14 +94,49 @@
 (defonce REGISTRY (atom {
                          :init-fns {
                                     :peek init-fn__peek
-                                    :peek1 init-fn__peek
+                                    :log init-fn__log
                                     }
 
+                         :ctx-fns {
+                                   :test (fn [params]
+                                         {
+                                          :test {:fn (fn[a]
+                                                       (.warn js/console a)
+                                                       a)}
+                                          })
+                                   }
                          :opt-fns {
                                    :default _opts-fn__state
                                    }
 
                          }))
+
+(defn registry-ds [reg-key]
+  (reduce
+    (fn [a [k v]]
+      (conj a {:text (str k)
+               :v (str k)}))
+    []
+    (get @REGISTRY reg-key))
+  )
+
+(defn registry-mapping [reg-key]
+  (reduce
+    (fn [a [k v]]
+      (assoc a (str k) v))
+    {}
+    (get @REGISTRY reg-key))
+  )
+
+
+;; return registry data
+
+(defn available-init-fns []
+  (registry-ds :init-fns))
+
+
+(defn available-ctx-fns []
+  (registry-ds :ctx-fns))
 
 
 (defn chain-expanded-ctx-cfg [wrapper-step]
@@ -282,28 +322,8 @@
   )
 
 
-;; immutable ds
-(defn select-data-source
-  ([items]
-   (select-data-source items 0))
-  ([items selected-idx]
-   {
-    :data items
-    :ui   {
-           :selected-idx selected-idx
-           }
-    :api  {}
-    }
-   )
-  )
 
 
-(defn select-data-source-atom [items]
-  (let [*a (atom (select-data-source items))]
-    ;; ugly
-    *a
-    )
-  )
 
 
 (defn multi-select-data-source [items available-items]
@@ -320,13 +340,13 @@
      ;; convert values vector into vector of select data sources
      :data     (vec (map
                       (fn [a]
-                        (select-data-source available-items
+                        (ui/select-data-source available-items
                                             (find-i a)))
                       items))
      :api      {
                 :add-new (fn [*ds]
                            (swap! *ds update-in [:data]
-                                  conj (select-data-source available-items 0)))
+                                  conj (ui/select-data-source available-items 0)))
                 :remove (fn [*ds i]
                           (swap! *ds update-in [:data] remove-indexed i))
 
@@ -334,7 +354,8 @@
                               (let [d (:data @*ds)]
                                 (vec (map (fn [a]
                                             ;; todo: use api
-                                            (:v (get-in a [:data (get-in a [:ui :selected-idx])]))
+                                            (:v (get-in a [:data
+                                                           (get-in a [:ui :selected-idx])]))
                                             ) d))
                                 )
                               )
@@ -345,33 +366,6 @@
 
 
 
-
-(rum/defc <select> < rum/reactive [*select-ds]
-  (let [ds (rum/react *select-ds)
-        data (get ds :data [])
-        selected-idx (get-in ds [:ui :selected-idx])
-        ]
-    (into [:select
-           {:on-change (fn [e]
-                         (let [new-idx (.. e -target -options -selectedIndex )]
-                           (swap! *select-ds assoc-in [:ui :selected-idx] new-idx)))
-            ;;
-            :value (:v (get data selected-idx))
-            }
-           ]
-          (map-indexed (fn [i a]
-                         (let [opts-map {:value (:v a)
-                                         }]
-
-                           [:option (if (= selected-idx i)
-                                      (merge opts-map {})
-
-                                      opts-map)
-                            (:text a)])
-                         ) data)
-          )
-    )
-  )
 
 
 (rum/defc <tabs> < rum/reactive [*tab-ds <ui>]
@@ -439,6 +433,8 @@
     )
   )
 
+
+
 (rum/defc <multi-select> < rum/reactive
   [*multi-ds]
   (let [m-ds (rum/react *multi-ds)
@@ -450,14 +446,9 @@
     (into [:div
            ]
           (conj (vec (map-indexed (fn [i a]
-
                                     [:div.select-row
-                                     (<select> (rum/cursor-in *multi-ds [:data i]))
-                                     (ui/menu-item "-" (fn []
-                                                         (remove i)
-                                                         ;; delete i
-                                                         ))
-                                     ]
+                                     (ui/<select> (rum/cursor-in *multi-ds [:data i]))
+                                     (ui/menu-item "-" (fn [] (remove i)))]
                                     )
                                   (:data m-ds)
                                   ))
@@ -467,11 +458,13 @@
                                      (add-new)
                                      ;; add new
                                      ))
-                 (ui/btn "AAA" (fn []
+                 ;; for now select api is not used,
+                 ;; no need to create an intermediary cursor
+                 #_(ui/btn "dbg" (fn []
                                  (prn (get-vals))
                                  ))
                  ]
-                [:pre (d/pretty m-ds)]
+                ; [:pre (d/pretty m-ds)]
                 )
           )
     )
@@ -480,39 +473,98 @@
 
 
 (rum/defc <wf-ui> < rum/reactive
-  [*STATE *tab-ds]
+  [*wf-state *tab-ds]
 
-  (let [available-init-fns (reduce
-                             (fn [a [k v]]
-                               (conj a {:text (str k)
-                                        :v    (str k)}))
-                             []
-                             (:init-fns @REGISTRY)
-                             )]
+  (let [tab-ds (rum/react *tab-ds)
+        selected-idx (get-in tab-ds [:ui :selected-idx])
+
+        *init-fns-ds  (rum/cursor-in *tab-ds [:data selected-idx :ds :init-fns])
+        *ctx-fns-ds  (rum/cursor-in *tab-ds [:data selected-idx :ds :ctx-fns])
+
+        get-ids (fn [*ds]
+                  (let [f (get-in @*ds [:api :get-values])]
+                    (f *ds)))
+
+        get-init-fn (fn[]
+                      (let [init-fn-ids (get-ids *init-fns-ds)
+                            init-fns-mapping (registry-mapping :init-fns)]
+                        (map #(get init-fns-mapping %) init-fn-ids)))
+
+        get-ctx-fn (fn[]
+                      (let [ctx-fn-ids (get-ids *ctx-fns-ds)
+                            ctx-fns-mapping (registry-mapping :ctx-fns)]
+                        (map #(get ctx-fns-mapping %) ctx-fn-ids)))
+
+
+        test-init! (fn []
+                     ;; can ds have a keyword key?
+
+                     (let [
+                           init-fns (get-init-fn)
+                           ctx-fns (get-ctx-fn)
+                           ]
+
+                       (let [wf-cfg {
+                                      :init-fns init-fns
+                                      :ctx-fns ctx-fns
+                                      :steps-fns [(fn [params]
+                                                    {
+                                                     ::test [:test "hello"]
+                                                     })]
+                                      :opt-fns   [(partial _opts-fn__state *wf-state)]
+                                 }]
+                         (run-wf! *wf-state wf-cfg)
+                         )
+
+                       #_(let [init-fn (base/combine-init-fns init-fns)]
+
+                         (let [wf-params (init-fn {:azaza :test})]
+                           (.log js/console "INIT: " wf-params)
+
+                           (let [ctx-fn (base/combine-fns ctx-fns)
+                                 ctx (ctx-fn wf-params)
+                                 ]
+
+                             (.log js/console "CTX: " ctx)
+                             )
+
+                           ))
+                       )
+          )
+        ]
 
     [:div
-     (pr-str @*STATE)
      ;; add state chooser, or hardcode for now
 
-     (into [:select {:multiple ""}]
+     #_(into [:select {:multiple ""}]
            (map (fn [a]
                   [:option (pr-str a)]
                   )
-             available-init-fns)
+             init-fns-mapping)
            )
 
-     [:label "init-fn"]
+     [:div {:style {:margin-bottom ".5rem"}}
+      (ui/menubar "build wf:" [["run init-fn" test-init!]])
+      ]
 
-     (let [tab-ds (rum/react *tab-ds)
-           selected-idx (get-in tab-ds [:ui :selected-idx])
 
-           ]
-       ;(get tabs selected-idx)
-       (<multi-select> (rum/cursor-in *tab-ds [:data selected-idx :ds :init-fns]))
+     [:div.flex
+      [:label "init-fn"]
+      (<multi-select> *init-fns-ds)]
 
-       )
-     ;
+     [:div "___"]
+     [:div.flex
+      [:label "ctx-fn"]
+      (<multi-select> *ctx-fns-ds)]
 
+     [:pre [:strong "state:"] "\n"
+      (d/pretty @*wf-state)
+      ]
+
+
+     [:pre [:strong "tab DS:"] "\n"
+      (d/pretty @*tab-ds)
+      ]
 
      ]
     )
@@ -526,9 +578,6 @@
   (let [state-id :tabs
         *tabs-ds (rum/cursor-in *STATE [:tabs])
         *wf (rum/cursor-in *STATE [:wf])
-
-        *select-ds (get @*STATE :ddl)
-
         *multi-ds (rum/cursor-in *STATE [:multi-ddl])
         ]
 
@@ -539,11 +588,11 @@
       "prototype for combining WF from parts"]
 
 
-     (<multi-select> *multi-ds)
+     #_(<multi-select> *multi-ds)
 
 
-     ;(<select> *select-ds)
-     ;(<select> *select-ds)
+     ;(ui/<select> (get @*STATE :ddl))
+     ;(ui/<select> (get @*STATE :ddl))
      [:hr]
 
      (ui/menubar "compile workflow UI" [
@@ -562,16 +611,15 @@
                                                           )
                                                  )]])
      (<tabs> *tabs-ds
-             (partial <wf-ui> *wf)
-             )
+             (partial <wf-ui> *wf))
+
+     ; [:hr]
+     ; [:pre (d/pretty (rum/react *select-ds))]
 
      [:hr]
-
-     [:pre (d/pretty (rum/react *select-ds))]
-
-     [:hr]
-     [:pre (d/pretty (rum/react *tabs-ds))]
-     [:pre (d/pretty @*wf)]
+     ;[:pre (d/pretty (rum/react *tabs-ds))]
+     [:pre [:strong "WF:"] "\n"
+      (d/pretty @*wf)]
      ]
 
     )
@@ -580,73 +628,50 @@
 
 ; ----- state -------
 
-(defn available-init-fns []
-  (reduce
-    (fn [a [k v]]
-      (conj a {:text (str k)
-               :v (str k)}))
-    []
-    (:init-fns @REGISTRY)
-    ))
-
-#_(let [z 1]
-  ;;;
-  (.log js/console
-        (reduce
-          (fn [a [k v]]
-            (conj a {:text (str k)
-                      :v (str k)}))
-          []
-          (:init-fns @REGISTRY)
-          )
-
-
-        )
-
-  )
 
 (defonce *UI-STATE (atom
                      {
                       ;; wf state atom per each key
-                      :tabs (tabs-data-source
-                              [{
-                                :header   "test wf!"
+                      :tabs      (tabs-data-source
+                                   [{
+                                     :header    "test wf!"
 
-                                :ds {
-                                     :init-fns (multi-select-data-source
-                                                 []
-                                                 (available-init-fns))
-                                    }
+                                     :ds        {
+                                                 :init-fns (multi-select-data-source
+                                                             []
+                                                             (available-init-fns))
 
-                                :init-fns []
-                                :ctx-fns []
-                                :steps-fns []
-                                :opt-fns []
-                                }
-                               ])
+                                                 :ctx-fns (multi-select-data-source
+                                                            []
+                                                            (available-ctx-fns))
+                                                 }
+
+                                     :init-fns  []
+                                     :ctx-fns   []
+                                     :steps-fns []
+                                     :opt-fns   []
+                                     }
+                                    ])
 
 
 
 
                       ;; resulting wf state
-                      :wf {}
+                      :wf        {}
 
                       ;; ui tests
-
                       :multi-ddl (multi-select-data-source
                                    ["a" "b"]
                                    [{:v "a" :text "a"}
                                     {:v "b" :text "b"}
                                     {:v "c" :text "c"}
-                                    ]
-                                   )
+                                    ])
                       ;;
+                      :ddl       (atom [
+                                        {:v "Tttt" :text "Tttt"}
+                                        {:v "zzz" :text "azaza (zzz)"}
 
-                      :ddl (select-data-source-atom [
-                                                {:v "Tttt" :text "Tttt"}
-                                                {:v "zzz" :text "azaza (zzz)"}
-
-                                                ])
+                                        ])
 
                       }))
 

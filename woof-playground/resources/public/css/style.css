@@ -129,10 +129,6 @@ ul.listbox {
 
 /* proto7 */
 
-.proto7 .flex {
-    display: flex;
-    flex: 0 1 auto;
-}
 
 .proto7 .flex > div {
     outline: 1px solid darkolivegreen;
@@ -152,3 +148,97 @@ ul.listbox {
     margin-right: .5rem;
 }
 
+
+.proto8 .tabs > ul {
+    display: flex;
+    flex: 0 1 auto;
+}
+
+.proto8 .tabs > ul {
+    list-style: none;
+
+    -webkit-margin-before:0em;
+    -webkit-margin-after:0em;
+
+    -webkit-margin-start: 0px;
+    -webkit-margin-end: 0px;
+    -webkit-padding-start: 0;
+
+
+}
+
+.proto8 .tabs ul > li {
+    padding: 0 .25rem 0 .25rem;
+
+    box-sizing: content-box;
+
+    line-height: 1.5;
+
+    align-self: flex-end;
+    /*line-height: 1;*/
+    border-bottom: 1px solid gray;
+    border-top: 1px solid gray;
+    border-top-right-radius: 3px;
+    border-top-left-radius: 3px;
+    border-right: 1px solid gray;
+}
+
+.proto8 .tabs ul > li:hover {
+    background-color: rgba(128,32,32,.05);
+    cursor: pointer;
+}
+
+.proto8 .tabs ul > li > header {
+    padding: 0;
+    line-height: 2;
+}
+
+.proto8 .tabs ul > li > header > .menu-item {
+    text-decoration: none;
+
+    border: 1px solid rgba(0,0,0,.1333);
+    box-sizing: content-box;
+    border-radius: 3px;
+    /*display: inline-block;*/
+    min-width: 1rem;
+    margin: 0;
+    padding: 0 .5rem;
+}
+
+.proto8 .tabs ul > li > header > .menu-item:hover {
+    background-color: indianred;
+}
+
+.proto8 .tabs ul > li.selected {
+    border: 1px solid red;
+    border-bottom: none;
+}
+
+
+.proto8 .t-body {
+    padding: 1rem;
+
+    border: 1px solid gray;
+    box-sizing: content-box;
+
+    margin-top: -1px;
+    border-collapse: collapse;
+
+}
+
+.proto8 .select-row > a {
+    outline: 1px solid lightgray;
+    padding: 0 .33rem;
+    text-decoration: none;
+    margin-left: .33rem;
+}
+
+
+.flex {
+    display: flex;
+    flex: 0 1 auto;
+}
+
+.proto8 label {
+    margin-right: .5rem;
+}
