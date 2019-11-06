@@ -49,7 +49,7 @@
                             )
                           )) {} steps)]
 
-    (println "[GRAPH-CMP]: " graph)
+    ;(println "[GRAPH-CMP]: " graph)
 
     (tarjan (keys graph) graph)))
 

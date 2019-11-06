@@ -6,6 +6,8 @@
             #?(:cljs [woof.utils :as u])
 
 
+            #?(:clj [io.aviso.ansi :as ansi])
+
             #?(:clj [clojure.core.async :as async :refer [go go-loop]])
             #?(:cljs [cljs.core.async :as async])
 
@@ -107,7 +109,7 @@
     (let [*results (get-results this)
           step-cfg (get-step-config (get this :CTX) step-id)
           infinite? (and
-                      (:infinite step-cfg)
+                        (:infinite step-cfg)
                       (not (nil? (get @(get this :INF) id))))
           ]
 
@@ -127,9 +129,15 @@
     [this msg]
     (let [[id step-id params result] msg
           step-cfg (get-step-config (get this :CTX) step-id)
-          infinite? (:infinite step-cfg)]
+          infinite? (:infinite step-cfg)
+          dependant-steps (g/get-dependant-steps (steps STEPS) id)
+          ]
 
-      (let [d-steps (rest (g/get-dependant-steps (steps STEPS) id))]
+
+      ;#?(:clj (locking *out* (println (ansi/magenta (pr-str (steps STEPS))))))
+      ;#?(:clj (locking *out* (println (ansi/magenta (pr-str id)))))
+
+      (let [d-steps (rest dependant-steps)]
         (if (not infinite?)
           (do
             (swap! (get-results this) (partial apply dissoc) d-steps)

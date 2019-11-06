@@ -11,6 +11,8 @@
             #?(:clj [clojure.core.async :as async :refer [go go-loop]])
             #?(:cljs [cljs.core.async :as async])
 
+            #?(:clj [io.aviso.ansi :as ansi])
+
     ;; for now refer all the protocols and all their methods
             [woof.core.protocols :as protocols
              :refer [WoofDebug dbg!
@@ -69,13 +71,13 @@
 
   (let [[op v] r]
 
-    (condp = op
+    ;#?(:clj (locking *out* (println (ansi/blue [op v]))))
 
+    (condp = op
       :save (let [[id step-id params result] v]     ; step is done, store the result
               (do-commit! STATE id step-id result)
 
               ; (do-update-sync! STATE v)
-
               (do-update! STATE v)
               )
       :expand (let [[id step-id params result] v]   ; step expanded
@@ -83,7 +85,7 @@
                 (do-expand! STATE id result)
 
                 ;; fixme: do the update here synchronously
-                ; (g    do-update! STATE v)
+                #_(do-update! STATE v)
                 (do-update-sync! STATE v)
 
                 )
@@ -92,7 +94,7 @@
               (vreset! force-stop true))
 
       ;; else
-      (do
+      #_(do
         (locking *out* (println "infinite upd" r))
         )
       )
@@ -110,7 +112,6 @@
    (let [produce-chan (async/chan)
          async-id (rand-int 1000)
          ]
-
 
      (consume-steps! processor
                      ready-channel
@@ -181,20 +182,27 @@
 
     ;; fixme: why f is called several times
 
-    (if (and (:collect? step-cfg)
-             (sid-list? params))
+
+
+
+    (if (:collect? step-cfg)
       ;; collect
       (do
+        (if-let [collect-params (if (sid-list? params)
+                                  params
+                                  (if (sid? params) [params]))]
 
-        (let [all-collected (get-all! wf-state (get!* wf-state params))]
-
-          (when (not-any? #(or (nil? %1)
-                               (u/channel? %1)
-                               ) (flatten all-collected))
-            (store-result! (f all-collected))
-
+          (let [all-collected (get-all! wf-state (get!* wf-state collect-params))]
+            (when (not-any? #(or (nil? %1)
+                                 (u/channel? %1)
+                                 ) (flatten all-collected))
+              (store-result! (f all-collected))
+              )
             )
-
+          (do
+            ; else
+            (store-result! (f params))
+            )
           )
         )
       ;; process sid or value
@@ -204,13 +212,8 @@
                         (store-result! (f params)))
         ;; do we need sync
         (store-result! (f params))
-
         )
-
-
-
       )
-
 
     [id [step-id params]]
     )
@@ -222,11 +225,12 @@
   "runs step implementation "
   [executor context wf-state id step-id params]
   ;; TODO: should expand work with different handler or one will do?
-  ;; TODO: should the step return some typed responce?
+  ;; TODO: should the step return some typed response?
   ;; TODO: what if step handler is not found?
-
   ;; TODO: catch exception in (f ...)
 
+
+  ;
 
   (do-handle-commit! executor context wf-state id step-id params)
 
@@ -243,19 +247,14 @@
   (process-step!
     [this [id [step-id params]]]
 
-
-
     (let [existing-result (get! STATE id)
-
           run-step! (partial execute-step! XTOR id step-id)]
-
 
       (cond
         (nil? existing-result)               ; no step result - run the step
         (do
           (if (sid? params)
             (let [new-params (get! STATE params)]
-
               (cond
                 (or (nil? new-params)
                     (u/channel? new-params)) [id [step-id params]]
@@ -282,7 +281,7 @@
 
     ;; consumer. processes results from processing channel and pipes them to resulting channel
 
-    (let [ *steps       (get-steps STATE)
+    (let [*steps       (get-steps STATE)
           *steps-left  (get-steps-left STATE)
           *results     (get-results STATE)
 

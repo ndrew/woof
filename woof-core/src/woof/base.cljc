@@ -203,7 +203,7 @@
      opts-fn        ;; provides opts map via opt params
      context-map-fn ;; provides context map from wf params
      steps-fn       ;; provides steps map from wf params
-     workflow-fn
+     workflow-fn ;;
      ]
     (let [wf-fn (fn [params]
                   (let [nu-params (wf-params-fn params)]
@@ -238,9 +238,13 @@
     (get-steps [this] (steps-fn nu-params)))
   )
 
+
 (defn capturing-WF [*wf nu-params context-map-fn steps-fn wf-params]
+  ;; todo: how to use here your ::ctx and ::steps
+  ;; (swap! *wf assoc ::init-params nu-params)
   (reify WoofWorkflow
-    (get-params [this] nu-params) ;; is this really needed
+    (get-params [this]
+      nu-params) ;; is this really needed
     (get-context-map [this] (let [ctx-map (context-map-fn nu-params)]
                               (swap! *wf assoc ::ctx ctx-map)
                               ctx-map))
@@ -287,4 +291,38 @@
                      (async/chan 1 (utils/time-update-xf t)))]
     ;; (async/chan 1 (wf/chunk-update-xf 20))
     exec-chann)
+  )
+
+
+;;
+;; channel factory
+
+(defprotocol ChannelFactory
+  (make-chan [this id])
+
+  ; (make-mult [this id])
+
+  (close-chans! [this])
+  )
+
+
+(defn chan-factory [*state-map]
+  (reify ChannelFactory
+
+    (make-chan [this id]
+      (let [c (async/chan)]
+        (swap! *state-map assoc id c)
+        c))
+
+    #_(make-mult [this id]
+                 (let [reload-chan (async/chan)
+                       reload-mult (async/mult reload-chan)]
+                   ;...
+                   ))
+
+    (close-chans! [this]
+      (utils/close-channels! @*state-map)
+      )
+
+    )
   )
