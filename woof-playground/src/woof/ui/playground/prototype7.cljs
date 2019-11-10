@@ -1,5 +1,6 @@
 (ns ^:figwheel-hooks woof.ui.playground.prototype7
   (:require
+    [cljs.core.async :as async]
     [rum.core :as rum]
 
 
@@ -19,8 +20,9 @@
      ]
 
 
-    ;; core async
-    [cljs.core.async :as async]
+
+    [woof.ui.playground.common :as cmn]
+
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -28,27 +30,6 @@
 
 ;;
 
-(declare *UI-STATE)                                         ;;
-(declare <ui>)                                              ;; (defc <ui> []) - exported ui component
-(declare reload!)                                           ;;
-
-
-(defn init!
-  "calls outside mount-fn if the ui state had been changed"
-  [mount-fn]
-
-  ;; todo: implement proper subscription
-  (add-watch *UI-STATE :woof-main
-             (fn [key atom old-state new-state]
-               (mount-fn)))
-
-  (when-not (::initialized @*UI-STATE)
-    (swap! *UI-STATE merge {::initialized true}))
-  )
-
-
-(defn reload! []
-  (swap! *UI-STATE merge {::initialized false}))
 
 
 ;; -------
@@ -58,6 +39,13 @@
                      {
                       ;; wf state atom per each key
                       }))
+
+
+(declare <ui>)                                              ;; (defc <ui> []) - exported ui component
+
+
+(def init! (partial cmn/default-init! *UI-STATE))
+(def reload! (partial cmn/default-reload! *UI-STATE))
 
 
 
@@ -152,6 +140,8 @@
                (base/combine-fns opt-fns :merge-results base/merge-opts-maps)
                (base/combine-fns ctx-fns)
                (base/combine-fns steps-fns)
+               ;; todo: migrate base/capturing-WF
+               ;; todo: how to use here your ::ctx and ::steps
                (partial capturing-WF *wf)
                )]
 
