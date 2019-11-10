@@ -8,9 +8,9 @@
     [woof.wf :as wf]
     [woof.utils :as u]
     [woof.playground.old.wf-ui :as wf-ui]
+    [woof.playground.v1.ui :as new-ui]
 
     [markdown.core :refer [md->html]]
-
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -266,7 +266,7 @@
         ]
 
     [:div.popup
-     (wf-ui/<wf-menu-ui> "POPUP:" status @(cursor [:wf :status-actions]))
+     (new-ui/<wf-menu-ui> "POPUP:" status @(cursor [:wf :status-actions]))
 
      [:hr]
 

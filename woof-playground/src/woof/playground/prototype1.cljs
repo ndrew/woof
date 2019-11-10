@@ -13,7 +13,7 @@
     [woof.playground.v1.ui :as ui]
 
     [woof.playground.state :as state]
-    )
+    [woof.utils :as u])
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -30,8 +30,7 @@
   *UI-STATE
   (atom
     {
-
-     :swf {}
+     :swf (state/empty-swf "test")
 
      ;; workflow model atom
      :wf {
@@ -361,46 +360,80 @@
      ]))
 
 
+(defn swf-ctx-fn [params]
+  {
+   :v    {
+          :fn identity
+          }
+   :wait {
+          :fn (fn [v]
+                (let [chan (async/chan 1)]
+                  (go
+                    (async/<! (utils/timeout 3000))
+                    (async/put! chan v)
+                    )
+
+                  chan)
+                )
+
+          }
+   }
+  )
+
 (rum/defcs <ui> < rum/reactive
                   (rum/local 2 ::wf-n)
   [local *STATE]
 
   [:div
 
-   (let [*swf (rum/cursor *STATE :swf)]
+   (let [*swf (rum/cursor *STATE :swf)
+
+         init-swf (fn []
+                    (let [initial-wf (state/state-wf "test!")
+                          updated-wf {
+                                      :ctx-fns   [swf-ctx-fn]
+                                      :steps-fns [(fn [params]
+                                                    {
+                                                     ::test [:v "this is a test"]
+                                                     ::wait [:wait "for testing ui state"]
+                                                     }
+                                                    )
+                                                  ]
+                                      }
+                          wf (merge initial-wf updated-wf)
+                          ]
+                      ;; todo: add stuff to a wf
+                      (reset! *swf wf)
+                      ))
+         init-swf-action ["init swf" init-swf]
+         run-swf-action ["run!" (fn []
+                                  (state/swf-run! *swf))]
+         actions-map {
+                      :not-started [init-swf-action
+                                    run-swf-action]
+                      :running [["stop" (fn []
+                                          (state/swf-stop! *swf)
+                                          )]]
+                      :done        [["reset" (fn []
+                                               (reset! *swf (state/empty-swf "test"))
+                                               )]]
+                      }
+         ]
      [:div
-      (ui/btn "init swf"
-              (fn []
-                (let [initial-wf (state/state-wf "test!")
-                      wf (merge initial-wf
-                                {
-                                 :ctx-fns [
-                                           (fn [params]
-                                             {
-                                              :v {
-                                                    :fn identity
-                                                    }
-                                              }
-                                             )
-                                           ]
-                                 :steps-fns [
-                                             (fn [params]
-                                               {
-                                                ::test [:v "this is a test"]
-                                                }
-                                               )
-                                             ]
-                                 }
-                                )
-                      ]
-                  ;; todo: add stuff
-                  (reset! *swf wf)
-                  )))
-      (ui/btn "run swf"
-              (fn []
-                (state/swf-run! *swf)
-                ))
-      [:pre (d/pretty (into (sorted-map) @*swf))]
+
+      (let [wf @*swf]
+        [:div
+         (ui/<wf-menu-ui> (:id wf)
+                          (:status wf)
+                          actions-map
+                          )
+
+
+         [:pre (d/pretty (into (sorted-map) @*swf))]
+         ]
+        )
+
+
       ]
 
 

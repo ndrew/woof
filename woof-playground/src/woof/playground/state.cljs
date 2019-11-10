@@ -10,22 +10,30 @@
     [woof.utils :as u]))
 
 
-(defn state-wf [id]
+;; statuses
+;:not-started ""
+;:done        "done"
+;:running     "pending"
+;:stopped     "error"
+;:error       "error"
+
+
+(defn empty-swf [id]
   {
    :id id
 
-   :status :not-running
+   :status :not-started ;;
 
    :runtime {
-          :xtor nil
-          :wf nil
-          }
-;; auto-combined functions
+             :xtor nil
+             :wf nil
+             }
+   ;; auto-combined functions
    :init-fns []
    :opt-fns []
    :ctx-fns []
    :steps-fns []
-;; or just single ones?
+   ;; or just single ones?
 
 
    :actions {
@@ -43,9 +51,12 @@
    :state {
 
            }
-
-
    }
+  )
+
+(defn state-wf [id]
+  (empty-swf id)
+  ;; todo: merge stuff
   )
 
 
@@ -79,8 +90,9 @@
                      }
    })
 
-(defn swf-run! [*state]
-  (let [st @*state
+
+(defn swf-run! [*swf]
+  (let [st @*swf
 
         init-fns (get st :init-fns [])
         ctx-fns (get st :ctx-fns [])
@@ -101,18 +113,25 @@
                identity
                (base/combine-fns
                  (conj opt-fns
-                       (partial swf-opt-fn *state))
+                       (partial swf-opt-fn *swf))
                  :merge-results base/merge-opts-maps)
                (base/combine-fns ctx-fns)
                (base/combine-fns steps-fns))]
 
       ;; store prepared wf
-      (swap! *state assoc-in [:runtime :wf] wf)
-      (swap! *state assoc :status :running)
+      (swap! *swf assoc-in [:runtime :wf] wf)
+      (swap! *swf assoc :status :running)
 
       (base/run-wf! wf identity)
 
       )
+    )
+  )
+
+(defn swf-stop! [*swf]
+  (let [swf @*swf]
+    (base/end! (get-in swf [:runtime :xtor]))
+    ;; which status to set
     )
   )
 

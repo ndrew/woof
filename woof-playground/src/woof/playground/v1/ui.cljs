@@ -89,7 +89,45 @@
     )
   )
 
+;; generic wf ui
 
+
+
+(defonce status-classes-map {
+                             :not-started ""
+                             :done        "done"
+                             :running     "pending"
+                             :stopped     "error"
+                             :error       "error"
+                             })
+
+(defonce status-caption-map {
+                             :not-started "…"
+                             :done        "done!"
+                             :running     "running"
+                             :stopped     "stopped!"
+                             :error       "error!"
+                             })
+
+
+(rum/defc <wf-status-ui>  < rum/static
+  [status]
+
+  [:span.tag
+   {:class (get status-classes-map status "")}
+   (get status-caption-map status "")])
+
+
+(rum/defc <wf-menu-ui> < rum/reactive
+  [header status all-actions]
+  [:div.main-menu
+   [:span "  " (<wf-status-ui> status)]
+   (let [actions (get all-actions status [])]
+     (menubar header actions))
+   ])
+
+
+;;
 
 (rum/defcs <debug> < rum/reactive (rum/local true ::show?)
 

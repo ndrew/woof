@@ -26,7 +26,6 @@
 (defn default-init!  ;; ;; todo: re-implement as subscription
   "initializes ui state"
   [*UI-STATE mount-fn]
-   (println "MOUNT")
    (add-watch *UI-STATE :woof-main
               (fn [key atom old-state new-state]
                 (mount-fn)))

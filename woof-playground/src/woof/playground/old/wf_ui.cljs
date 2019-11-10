@@ -11,33 +11,6 @@
 (defonce UI-UPDATE-RATE 50) ; ms
 
 
-;; todo: implement a state machine for ui state
-
-
-(defonce status-classes-map {
-                             :not-started ""
-                             :done        "done"
-                             :running     "pending"
-                             :stopped     "error"
-                             :error       "error"
-                             })
-
-(defonce status-caption-map {
-                             :not-started "…"
-                             :done        "done!"
-                             :running     "running"
-                             :stopped     "stopped!"
-                             :error       "error!"
-                             })
-
-
-(rum/defc <wf-status-ui>  < rum/static
-  [status]
-
-  [:span.tag
-   {:class (get status-classes-map status "")}
-   (get status-caption-map status "")])
-
 
 
 (rum/defc <step-status>   <    rum/static
@@ -55,17 +28,11 @@
       [:span.k (pr-str k)]
       [:span.action (d/pretty step)]
 
+      ;; todo: use status ui
+      (pr-str status)
+      ; (<wf-status-ui> status)
+      ]]))
 
-      (<wf-status-ui> status)]]))
 
-
-
-(rum/defc <wf-menu-ui> < rum/reactive
-  [header status all-actions]
-  [:div.main-menu
-   [:span "  " (<wf-status-ui> status)]
-   (let [actions (get all-actions status [])]
-     (ui/menubar header actions))
-   ])
 
 

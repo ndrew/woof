@@ -291,10 +291,10 @@
 (defn init!
       "initializes ui state"
       ([]
-       (prn "INIT")
+       ; todo: is this needed
+       ; (prn "INIT")
        )
       ([mount-fn]
-        (println "MOUNT")
 
        (watch-ui-state! mount-fn)
        (init-state!)

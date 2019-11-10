@@ -33,6 +33,8 @@
     [woof.playground.old.example.infinite :as infinite]
     [woof.playground.old.example.big-wf :as big-wf]
 
+    [woof.playground.v1.ui :as new-ui]
+
 
     )
 
@@ -425,7 +427,7 @@
 
      ;; wf actions menu
 
-     (wf-ui/<wf-menu-ui> "wf:" status @(cursor [:wf :status-actions]))
+     (new-ui/<wf-menu-ui> "wf:" status @(cursor [:wf :status-actions]))
 
      ;; results
 

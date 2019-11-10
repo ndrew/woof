@@ -163,7 +163,7 @@
 ;;
 (rum/defc <generic-wf-ui> < rum/reactive [*wf cmp]
   (let [wf @*wf
-        status (get wf ::status :not-running)
+        status (get wf ::status :not-started)
         ;; ui-state (get-in wf [::ui] {})
         ]
     [:div {:style {:outline "1px solid crimson"
