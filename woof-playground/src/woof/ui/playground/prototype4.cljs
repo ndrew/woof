@@ -30,9 +30,10 @@
 
     [woof.base :as base]
 
-    ;; client core
-    [woof.client.ws :as ws]
-    [woof.wf :as wf])
+    [woof.wf :as wf]
+    [woof.ui.playground.common :as cmn]
+
+    )
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -93,31 +94,9 @@
 ;; --- exports
 
 (declare <ui>)
-(declare init!)
 
-(declare reload!)
-
-
-
-(defn init!  ;; ;; todo: re-implement as subscription
-  "initializes ui state"
-  ([mount-fn]
-    ;(println "MOUNT")
-   (add-watch *UI-STATE :woof-main
-              (fn [key atom old-state new-state]
-                (mount-fn)))
-
-   (when-not (::initialized @*UI-STATE)
-     (swap! *UI-STATE merge
-            {::initialized true})))
-  )
-
-
-(defn reload! []
-  (swap! *UI-STATE merge {
-                          ::initialized false
-                          }))
-
+(def init! (partial cmn/default-init! *UI-STATE))
+(def reload! (partial cmn/default-reload! *UI-STATE))
 
 
 ; {::header "" ::status .. ::actions}

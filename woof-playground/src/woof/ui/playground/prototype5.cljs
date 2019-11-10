@@ -1,5 +1,7 @@
 (ns ^:figwheel-hooks woof.ui.playground.prototype5
   (:require
+    [cljs.core.async :as async]
+
     [rum.core :as rum]
 
     [woof.ui :as ui]
@@ -9,69 +11,15 @@
     ;; ns for running wfs
 
     ; internal
+    [woof.ui.playground.common :as cmn]
 
-    [woof.utils :as utils]
-    [woof.core.runner :as runner]
-
-    ;; higher level workflows
-    [woof.wfc :as wfc
-     :refer [WoofWorkflow
-             get-params
-             get-context-map
-             get-steps]
-     ]
-
-    ;; core async
-    [cljs.core.async :as async]
-
-    [woof.base :as base]
-
-    ;; client core
-    [woof.client.ws :as ws]
-    [woof.wf :as wf])
+    )
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
 
 ;; -------------------------- ui-state
-
-
-(declare *UI-STATE)
-
-
-;; --- exports
-
-(declare <ui>)
-(declare init!)
-(declare reload!)
-
-
-(defn init!  ;; ;; todo: re-implement as subscription
-  "initializes ui state"
-  ([mount-fn]
-   ;(println "MOUNT")
-   (add-watch *UI-STATE :woof-main
-              (fn [key atom old-state new-state]
-                (mount-fn)))
-
-   (when-not (::initialized @*UI-STATE)
-     (swap! *UI-STATE merge
-            {::initialized true})))
-  )
-
-
-(defn reload! []
-  (swap! *UI-STATE merge { ::initialized false }))
-
-
-;; -------
-
-;; workflow configuration prototype
-
-
-(defn dummy-ui-fn [*wf]
-  [:div "dafuq"])
 
 (defonce
   *UI-STATE (atom
@@ -101,6 +49,24 @@
                           }
 
                }))
+
+
+;; --- exports
+
+(declare <ui>)
+
+(def init! (partial cmn/default-init! *UI-STATE))
+(def reload! (partial cmn/default-reload! *UI-STATE))
+
+
+;; -------
+
+;; workflow configuration prototype
+
+
+(defn dummy-ui-fn [*wf]
+  [:div "dafuq"])
+
 
 
 ;; wf => :not-configured
