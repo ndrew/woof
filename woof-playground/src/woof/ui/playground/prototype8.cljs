@@ -1,7 +1,9 @@
 (ns ^:figwheel-hooks woof.ui.playground.prototype8
   (:require
-    [rum.core :as rum]
+    [cljs.core.async :as async]
 
+    [rum.core :as rum]
+    [sablono.core :as sablono :refer-macros [html]]
 
     ;; client core
     [woof.base :as base]
@@ -18,9 +20,8 @@
              get-steps]
      ]
 
+    [woof.ui.playground.common :as cmn]
 
-    ;; core async
-    [cljs.core.async :as async]
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -31,28 +32,6 @@
 
 
 ;;
-
-(declare *UI-STATE)                                         ;;
-(declare <ui>)                                              ;; (defc <ui> []) - exported ui component
-(declare reload!)                                           ;;
-
-
-(defn init!
-  "calls outside mount-fn if the ui state had been changed"
-  [mount-fn]
-
-  ;; todo: implement proper subscription
-  (add-watch *UI-STATE :woof-main
-             (fn [key atom old-state new-state]
-               (mount-fn)))
-
-  (when-not (::initialized @*UI-STATE)
-    (swap! *UI-STATE merge {::initialized true}))
-  )
-
-
-(defn reload! []
-  (swap! *UI-STATE merge {::initialized false}))
 
 
 ;; ----- wf ------------
@@ -89,27 +68,119 @@
    }
   )
 
+
+(defn _opts-fn [params]
+  (let [*wf (:wf params)]
+    {
+     :before-process  (fn [wf-chan xtor]
+                        (swap! *wf assoc ::xtor xtor)
+                        :ok)
+     :op-handlers-map {
+                       :process (fn [result]
+                                  (swap! *wf assoc ::result result))
+                       :done    (fn [result]
+                                  (swap! *wf assoc ::result result)
+                                  (swap! *wf assoc ::status :done)
+                                  (println "[wf]:done\n" (d/pretty result)))
+                       :error   (fn [result]
+                                  (swap! *wf assoc ::status :error)
+                                  (println "[wf]:error\n" (d/pretty result)))
+                       }
+     }
+    )
+  )
+
+;; hiccup wf
+
+(defn init-fn__hiccup [params]
+  {}
+  )
+
+
+; no way to have this as html in browser
+(rum/defc <template> < rum/reactive
+  [markup]
+  markup
+  )
+
+(defn ctx-fn__hiccup [params]
+  {
+   :body {:fn (fn [data]
+                (let [z (into [:div.body] data)]
+                  z
+                  )
+                )
+
+          :collect? true
+          }
+   :cmp1 {:fn (fn [data]
+                ;(rum/render-static-m)
+                [:pre {:style {:color "red"}}
+                 (d/pretty data)])
+          }
+   :cmp2 {:fn (fn [data]
+                [:p (d/pretty data)])
+          }
+
+   }
+  )
+
+(defn steps-fn__hiccup [params]
+  #_{
+     ::test [:test "hello"]
+     ::timer [:timer 10]
+     }
+  {
+   ::cmp1 [:cmp1 {:data {:some "stuff"}}]
+   ::cmp2 [:cmp2 "foo"]
+
+   ;;::html [:body [::cmp1 ::cmp2]]
+   ::html [:body [::cmp1]]
+   }
+  )
+
 ;; exposing data via js api
 
-(defonce REGISTRY (atom {
-                         :init-fns {
-                                    :peek init-fn__peek
-                                    :log init-fn__log
-                                    }
+(def registry-map
+  {
+   :init-fns {
+              :hiccup init-fn__hiccup
+              :peek init-fn__peek
+              :log init-fn__log
+              }
 
-                         :ctx-fns {
-                                   :test (fn [params]
-                                         {
-                                          :test {:fn (fn[a]
-                                                       (.warn js/console a)
-                                                       a)}
-                                          })
-                                   }
-                         :opt-fns {
-                                   :default _opts-fn__state
-                                   }
+   :ctx-fns {
+             :hiccup ctx-fn__hiccup
+             :test (fn [params]
+                     {
+                      :test {:fn (fn[a]
+                                   (.warn js/console a)
+                                   a)}
 
-                         }))
+                      :timer {:fn (fn [max]
+                                    (let [c (async/chan)]
+                                      (go
+                                        (dotimes [n max]
+                                          (async/put! c (utils/now))
+                                          (async/<! (utils/timeout 1000))
+                                          (prn "upd!!!")
+                                          )
+                                        )
+                                      c)
+                                    )
+                              :infinite true
+                              }
+                      })
+
+             }
+
+   :opt-fns {
+             :default _opts-fn__state
+             }
+
+   })
+
+(defonce REGISTRY (atom registry-map))
 
 (defn registry-ds [reg-key]
   (reduce
@@ -322,10 +393,6 @@
   )
 
 
-
-
-
-
 (defn multi-select-data-source [items available-items]
   (let [v-map (reduce (fn [a [i v]]
                         (assoc a v i))
@@ -363,9 +430,6 @@
      }
     )
   )
-
-
-
 
 
 (rum/defc <tabs> < rum/reactive [*tab-ds <ui>]
@@ -434,7 +498,6 @@
   )
 
 
-
 (rum/defc <multi-select> < rum/reactive
   [*multi-ds]
   (let [m-ds (rum/react *multi-ds)
@@ -472,6 +535,93 @@
 ;;;
 
 
+(defn short-key [k]
+  (clojure.string/replace-all (pr-str k) #":woof.ui.playground.prototype8/" "::"))
+
+
+(defn short-value [v]
+  (if (utils/channel? v)
+    "<channel>"
+    (d/pretty v)
+    )
+  )
+
+(rum/defcs <results> < rum/static (rum/local true ::show?)
+  [local heading
+   ctx-map
+   initial-steps
+   results]
+
+  (let [show? @(::show? local)]
+    (into [:div
+           (ui/menubar heading [[(if show? "↑" "↓")
+                                 (fn []
+                                   (swap! (::show? local) not))]])
+           ]
+          (if show?
+            (let [tree (reduce (fn [a [k [step-id v]]]
+                                 (let [ctx (get ctx-map step-id)
+                                       expands? (get ctx :expands?)
+                                       modifier (clojure.string/join " "
+                                                                     [(if (get ctx :infinite) "i" "")
+                                                                      (if (get ctx :collect) "c" "")
+                                                                      (if (get ctx :expands?) "e" "")]
+
+                                                                     )
+
+                                       ]
+                                   (assoc a k {
+                                               :step [step-id v]
+                                               :res (get results k)
+                                               :ctx ctx
+                                               :modifier (clojure.string/trim modifier)
+                                               :expands? expands?
+                                               }))
+                                 ) (sorted-map) initial-steps)]
+              (map (fn [[k v]]
+                     [:div {:style {:outline "1px solid red"}}
+                      [:.kv
+                       [:.k (clojure.string/trim
+                              (str
+                                (short-key k)))]
+
+                       [:.v
+                        (pr-str (:step v))
+                        (if (= "" (:modifier v)) "" (str " — (" (:modifier v) ")"))
+                        ]
+                       ]
+
+
+                      [:.kv
+
+                       (if (:expands? v)
+                         (into
+                           [:.v]
+                           (map (fn[a] [:div.kv {:style {:margin-left "1rem"}}
+                                        [:.k (short-key a)]
+                                        [:.v (d/pretty (get results a))]
+                                        ] ) (:res v))
+                           )
+                         [:.v
+                          (str
+                            (short-value (:res v))
+                            )
+                          ]
+                         )
+
+                       ]
+
+                      ]
+                     ) tree)
+              )
+            []
+            )
+          )
+    )
+
+  )
+
+
 (rum/defc <wf-ui> < rum/reactive
   [*wf-state *tab-ds]
 
@@ -498,37 +648,38 @@
 
         test-init! (fn []
                      ;; can ds have a keyword key?
-
                      (let [
-                           init-fns (get-init-fn)
+                           init-fns (conj (vec (get-init-fn))
+                                          (fn [params]
+                                            {:wf *wf-state})
+                                          )
                            ctx-fns (get-ctx-fn)
                            ]
 
                        (let [wf-cfg {
                                       :init-fns init-fns
                                       :ctx-fns ctx-fns
-                                      :steps-fns [(fn [params]
-                                                    {
+                                      :steps-fns [
+                                                  steps-fn__hiccup
+                                                  #_(fn [params]
+                                                    #_{
                                                      ::test [:test "hello"]
-                                                     })]
-                                      :opt-fns   [(partial _opts-fn__state *wf-state)]
+                                                     ::timer [:timer 10]
+                                                     }
+                                                    {
+                                                     ::html [:html {:data {:some "stuff"}}]
+                                                     }
+                                                    )]
+                                     ; how to handle multi-arity functions (that needs to be further specified)
+                                     ; a) we can have a convention and pass args via additional init-fn
+                                     ; b) handle partials somehow else
+
+                                      ;; :opt-fns   [(partial _opts-fn__state *wf-state)]
+                                      :opt-fns   [_opts-fn]
                                  }]
                          (run-wf! *wf-state wf-cfg)
                          )
 
-                       #_(let [init-fn (base/combine-init-fns init-fns)]
-
-                         (let [wf-params (init-fn {:azaza :test})]
-                           (.log js/console "INIT: " wf-params)
-
-                           (let [ctx-fn (base/combine-fns ctx-fns)
-                                 ctx (ctx-fn wf-params)
-                                 ]
-
-                             (.log js/console "CTX: " ctx)
-                             )
-
-                           ))
                        )
           )
         ]
@@ -557,10 +708,33 @@
       [:label "ctx-fn"]
       (<multi-select> *ctx-fns-ds)]
 
+     (let [wf (rum/react *wf-state)
+           ;; todo: do not use ns specific keywords for capturing wf
+           ctx-map (:woof.base/ctx wf)
+           initial-steps (:woof.base/steps wf)
+
+           results (::result wf)
+           ]
+
+       [:div {:style {:margin-top "1rem"}}
+        (<results> "wf results"
+                   ctx-map
+                   initial-steps
+                   results)
+        [:hr]
+        (<template>
+          (::html results))
+
+        ]
+
+       )
+
+     [:hr]
+
+
      [:pre [:strong "state:"] "\n"
       (d/pretty @*wf-state)
       ]
-
 
      [:pre [:strong "tab DS:"] "\n"
       (d/pretty @*tab-ds)
@@ -676,6 +850,8 @@
                       }))
 
 
+(def init! (partial cmn/default-init! *UI-STATE))
+(def reload! (partial cmn/default-reload! *UI-STATE))
 
 
 
