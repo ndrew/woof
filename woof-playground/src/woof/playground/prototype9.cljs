@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.ui.playground.prototype9
+(ns ^:figwheel-hooks woof.playground.prototype9
   (:require
     [rum.core :as rum]
 
@@ -18,14 +18,7 @@
              get-steps]
      ]
 
-
-    ;; core async
-    [cljs.core.async :as async]
-
-    ;;
-    [sablono.core :as sablono :refer-macros [html]]
-
-    [woof.ui.playground.common :as cmn]
+    [woof.playground.common :as cmn]
 
     )
   (:require-macros

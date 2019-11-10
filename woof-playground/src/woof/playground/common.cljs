@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.ui.playground.common
+(ns ^:figwheel-hooks woof.playground.common
   (:require
     [cljs.reader]
     ;; core async
@@ -13,8 +13,8 @@
     [woof.utils :as u]
     [woof.graph :as g]
 
-    [woof.ui.playground.old.app-data :as app-model]
-    [woof.ui.playground.old.wf-runner :as runner]
+    [woof.playground.old.app-data :as app-model]
+    [woof.playground.old.wf-runner :as runner]
 
     [woof.test-data :as test-data]
     [woof.data :as d])

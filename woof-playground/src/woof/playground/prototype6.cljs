@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.ui.playground.prototype6
+(ns ^:figwheel-hooks woof.playground.prototype6
   (:require
     [cljs.core.async :as async]
     [rum.core :as rum]
@@ -12,7 +12,7 @@
     [woof.data :as d]
     [woof.utils :as utils]
 
-    [woof.ui.playground.common :as cmn]
+    [woof.playground.common :as cmn]
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -131,7 +131,7 @@
 ; nice way of displaying wf results
 
 (defn short-key [k]
-  (clojure.string/replace-all (pr-str k) #":woof.ui.playground.prototype6/" "::"))
+  (clojure.string/replace-all (pr-str k) #":woof.playground.prototype6/" "::"))
 
 
 (defn short-value [v]

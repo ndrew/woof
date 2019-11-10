@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.ui.playground.prototype3
+(ns ^:figwheel-hooks woof.playground.prototype3
   (:require
     [rum.core :as rum]
 
@@ -33,7 +33,7 @@
     ;; client core
     [woof.client.ws :as ws]
     [woof.wf :as wf]
-    [woof.ui.playground.common :as cmn]
+    [woof.playground.common :as cmn]
 
     )
 

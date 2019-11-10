@@ -6,16 +6,19 @@
 
     #?(:clj [clojure.pprint :as clj-pprint])))
 
-;; state for workflows
 
-(defonce
-  *STATE (atom {
-              ;; :wf-id {}
-                }))
+;; state factory
+;; provides a sub-atom with id for workflow
 
-(defn add-wf [wf-id wf]
-  (swap! *STATE assoc wf-id wf)
-  )
+(defprotocol StateFactory
+  (sub-state [this id initial-v]))
+
+(defn state-factory [*state-map]
+  (reify StateFactory
+    (sub-state [this id initial-v]
+      (swap! *state-map assoc id initial-v)
+      (rum/cursor-in *state-map [id])
+      )))
 
 
 

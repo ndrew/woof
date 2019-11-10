@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.ui.playground.prototype5
+(ns ^:figwheel-hooks woof.playground.prototype5
   (:require
     [cljs.core.async :as async]
 
@@ -11,7 +11,7 @@
     ;; ns for running wfs
 
     ; internal
-    [woof.ui.playground.common :as cmn]
+    [woof.playground.common :as cmn]
 
     )
 

@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.ui.playground.prototype8
+(ns ^:figwheel-hooks woof.playground.prototype8
   (:require
     [cljs.core.async :as async]
 
@@ -20,7 +20,7 @@
              get-steps]
      ]
 
-    [woof.ui.playground.common :as cmn]
+    [woof.playground.common :as cmn]
 
     )
   (:require-macros
@@ -536,7 +536,7 @@
 
 
 (defn short-key [k]
-  (clojure.string/replace-all (pr-str k) #":woof.ui.playground.prototype8/" "::"))
+  (clojure.string/replace-all (pr-str k) #":woof.playground.prototype8/" "::"))
 
 
 (defn short-value [v]

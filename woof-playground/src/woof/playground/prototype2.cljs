@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.ui.playground.prototype2
+(ns ^:figwheel-hooks woof.playground.prototype2
   (:require
     [cljs.core.async :as async]
     [cljs.reader]
@@ -8,7 +8,7 @@
     [woof.core.runner :as runner]
     [woof.u :as u]
     [woof.ui :as ui]
-    [woof.ui.playground.common :as cmn]
+    [woof.playground.common :as cmn]
     [woof.utils :as utils]
   )
   (:require-macros

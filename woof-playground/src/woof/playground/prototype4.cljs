@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.ui.playground.prototype4
+(ns ^:figwheel-hooks woof.playground.prototype4
   (:require
     [rum.core :as rum]
 
@@ -31,7 +31,7 @@
     [woof.base :as base]
 
     [woof.wf :as wf]
-    [woof.ui.playground.common :as cmn]
+    [woof.playground.common :as cmn]
 
     )
 

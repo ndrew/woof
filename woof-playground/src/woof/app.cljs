@@ -4,13 +4,14 @@
   (:require
     [rum.core :as rum]
 
-    [woof.ui.playground.prototype8 :as playground]
+    [woof.playground.prototype14 :as playground]
+    ;[woof.playground.core :as playground]
 
-    [woof.lib :as lib]))
+    [woof.lib :as lib]
+    ))
 
 
 (enable-console-print!)
-
 
 
 ;;
@@ -59,11 +60,11 @@
   )
 
 
+
 (let [el (. js/document (getElementById "app"))
 
       <app> playground/<app> ;; (fn [] .. a rum component .. )
       init! playground/init! ;; (fn [mount-fn] .. initializer - call mount-fn to rebuild ui.. )
-
       reload! playground/reload!
 
       mount-app #(rum/mount (<app-ui> <app>) el)]

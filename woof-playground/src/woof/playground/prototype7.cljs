@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.ui.playground.prototype7
+(ns ^:figwheel-hooks woof.playground.prototype7
   (:require
     [cljs.core.async :as async]
     [rum.core :as rum]
@@ -18,7 +18,7 @@
              get-context-map
              get-steps]
      ]
-    [woof.ui.playground.common :as cmn]
+    [woof.playground.common :as cmn]
 
     )
   (:require-macros
@@ -127,7 +127,7 @@
 
 
 (defn short-key [k]
-  (clojure.string/replace-all (pr-str k) #":woof.ui.playground.prototype7/" "::"))
+  (clojure.string/replace-all (pr-str k) #":woof.playground.prototype7/" "::"))
 
 
 (defn short-value [v]
