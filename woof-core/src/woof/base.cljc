@@ -145,7 +145,7 @@
         op2 (get b :op-handlers-map {})
 
         combine-ops (fn [o1 o2]
-                      (merge-with juxt o1 o2))
+                      (merge-with comp o1 o2))
 
         ]
     {:before-process (fn [wf-chan xtor]
