@@ -1,37 +1,16 @@
 (ns ^:figwheel-hooks woof.ui.playground.prototype2
   (:require
+    [cljs.core.async :as async]
     [cljs.reader]
     [rum.core :as rum]
 
-    [woof.u :as u]
-
-
-    [woof.data :as d]
-
-    ;; ns for running wfs
-
-    ; internal
-    ;[woof.wf :as wf]
-    ;[woof.core.processors :as p]
-
-    [woof.utils :as utils]
-    [woof.core.runner :as runner]
-
-    ;; higher level workflows
-    [woof.wfc :as wfc
-     :refer [WoofWorkflow
-             get-params
-             get-context-map
-             get-steps]
-     ]
-
-
-    ;; core async
-    [cljs.core.async :as async]
-
     [woof.base :as base]
-    )
-
+    [woof.core.runner :as runner]
+    [woof.u :as u]
+    [woof.ui :as ui]
+    [woof.ui.playground.common :as cmn]
+    [woof.utils :as utils]
+  )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -85,32 +64,8 @@
 
 ;; --- exports
 
-(declare <ui>)
-(declare init!)
-
-(declare reload!)
-
-
-
-(defn init!  ;; ;; todo: re-implement as subscription
-  "initializes ui state"
-  ([mount-fn]
-   ;(println "MOUNT")
-   (add-watch *UI-STATE :woof-main
-              (fn [key atom old-state new-state]
-                (mount-fn)))
-
-   (when-not (::initialized @*UI-STATE)
-     (swap! *UI-STATE merge
-            {::initialized true})))
-  )
-
-
-(defn reload! []
-  (swap! *UI-STATE merge {
-                          ::initialized false
-                          }))
-
+(def init! (partial cmn/default-init! *UI-STATE))
+(def reload! (partial cmn/default-reload! *UI-STATE))
 
 
 ;; prototype
@@ -167,42 +122,6 @@
   )
 
 
-(rum/defc btn < rum/static [label f]
-  [:button {:on-click (fn[e]
-                        (f))} label]
-
-  )
-
-;;;;;;;;;;;
-;;
-;; MENU
-
-
-(rum/defc
-  menu-item          <   { :key-fn (fn [label _] (str label))}
-                         "menu item component"
-  [label action-fn]
-
-  [:a.menu-item
-   {:href "#" :on-click (fn [e]
-                          (action-fn)
-                          (.preventDefault e)
-                          false)}
-   label])
-
-
-(rum/defc menubar     <   rum/reactive     { :key-fn (fn [header items] (str header (count items)))}
-                          "generic menubar component. has header and buttons"
-  [menu-header menu-items]
-
-  (into [:span.menubar
-         [:.header menu-header]]
-        (map (fn [[label action]]
-               (if (and (nil? label) (nil? action))
-                 [:.separator]
-                 (menu-item label action)))
-             menu-items)))
-
 
 ;; actionable ui
 ; provides separate ui for each status + data
@@ -217,7 +136,7 @@
         actions (get actions-map status [])
         ]
     [:div
-     (menubar "Actions:" actions)
+     (ui/menubar "Actions:" actions)
      (ui status DATA)
      ]
     )
@@ -385,63 +304,64 @@
 
   (let [data (:wf @*STATE)]
 
-    (wf-ui (rum/cursor-in *STATE [:ui-wf]))
+    [:div
+     (wf-ui (rum/cursor-in *STATE [:ui-wf]))
 
-    #_[:div
+     [:div
 
-     [:ul
-      [:li "compile"
-       ]
-      (<compile> data)
+      [:ul
+       [:li "compile"
+        ]
+       (<compile> data)
 
-      [:li "run"]
+       [:li "run"]
 
 
-      [:button {:on-click
-                (fn [e]
-                  (let [;; returns initial map
-                        init-fn (:init-fn data)
-                        wf-params-fn identity  ;; transforms initial map to a wf params
-                        opt-params-fn identity ;; transforms wf params to opt params
+       [:button {:on-click
+                 (fn [e]
+                   (let [;; returns initial map
+                         init-fn (:init-fn data)
+                         wf-params-fn identity  ;; transforms initial map to a wf params
+                         opt-params-fn identity ;; transforms wf params to opt params
 
-                        ;; provides opts map via opt params (multi-arity)
-                        OPTS-fn (fn [& {:keys [IN META]}]
-                                  {
-                                   :before-process  (fn [wf-chan xtor]
-                                                      ;;(swap! *wf assoc :status :running)
-                                                      (.log js/console "wf started")
+                         ;; provides opts map via opt params (multi-arity)
+                         OPTS-fn (fn [& {:keys [IN META]}]
+                                   {
+                                    :before-process  (fn [wf-chan xtor]
+                                                       ;;(swap! *wf assoc :status :running)
+                                                       (.log js/console "wf started")
 
-                                                      (swap! *UI-STATE
-                                                             assoc-in [:wf :status] :running)
+                                                       (swap! *UI-STATE
+                                                              assoc-in [:wf :status] :running)
 
-                                                      :ok
-                                                      )
-                                   :op-handlers-map {
-                                                     :process (fn[result]
-                                                                (.warn js/console result)
-                                                                )
+                                                       :ok
+                                                       )
+                                    :op-handlers-map {
+                                                      :process (fn[result]
+                                                                 (.warn js/console result)
+                                                                 )
 
-                                                     :done    (fn [result]
-                                                                (let [result-w-meta (with-meta
-                                                                                      (merge
-                                                                                        IN
-                                                                                        result)
-                                                                                      @META)]
+                                                      :done    (fn [result]
+                                                                 (let [result-w-meta (with-meta
+                                                                                       (merge
+                                                                                         IN
+                                                                                         result)
+                                                                                       @META)]
 
-                                                                  (.log js/console "wf done" result-w-meta))
-                                                                )
-                                                     }
-                                   }
-                                  )
-                        ;; provides context map from wf params (multi-arity)
-                        CTX-fn  (fn [& {:keys [IN META]}]
-                                  {
-                                   :yo1 {
-                                        :fn (fn [a] a)
-                                        }
+                                                                   (.log js/console "wf done" result-w-meta))
+                                                                 )
+                                                      }
+                                    }
+                                   )
+                         ;; provides context map from wf params (multi-arity)
+                         CTX-fn  (fn [& {:keys [IN META]}]
+                                   {
+                                    :yo1 {
+                                          :fn (fn [a] a)
+                                          }
 
-                                   :yo   {
-                                          :fn (fn [s]
+                                    :yo   {
+                                           :fn (fn [s]
                                                  (let [chan (async/chan)]
                                                    (go
                                                      (async/<! (utils/timeout 100))
@@ -451,52 +371,54 @@
                                                      (async/>! chan "2"))
                                                    chan))
 
-                                          :infinite true
-                                          ;:expands? true
-                                          }
+                                           :infinite true
+                                           ;:expands? true
+                                           }
 
-                                   }
-                                  )
-                        ;; provides steps map from wf params (multi-arity)
-                        STEPS-fn (fn [& {:keys [IN META]}]
-                                   (let [steps {
-                                                ::0 [:yo (::data IN)]
-                                                }]
-                                     (swap! META update :OUT conj ::0)
-                                     steps)
+                                    }
                                    )
+                         ;; provides steps map from wf params (multi-arity)
+                         STEPS-fn (fn [& {:keys [IN META]}]
+                                    (let [steps {
+                                                 ::0 [:yo (::data IN)]
+                                                 }]
+                                      (swap! META update :OUT conj ::0)
+                                      steps)
+                                    )
 
-                        wf (base/parametrized-wf!
-                             init-fn
-                             wf-params-fn
-                             opt-params-fn
-                             (base/arg-fn OPTS-fn)
-                             (base/arg-fn CTX-fn)
-                             (base/arg-fn STEPS-fn)
-                             )]
+                         wf (base/parametrized-wf!
+                              init-fn
+                              wf-params-fn
+                              opt-params-fn
+                              (base/arg-fn OPTS-fn)
+                              (base/arg-fn CTX-fn)
+                              (base/arg-fn STEPS-fn)
+                              )]
 
-                    (base/run-wf! wf (fn [xtor]
-                                       (swap! *UI-STATE
-                                              assoc-in [:wf :xtor] xtor)
-                                       xtor
-                                       ))
-                    )
-                  )}
-       "run!"]
-      [:button {:on-click (fn[e]
-                            (base/end! (:xtor data)))}
-       "stop!"
+                     (base/run-wf! wf (fn [xtor]
+                                        (swap! *UI-STATE
+                                               assoc-in [:wf :xtor] xtor)
+                                        xtor
+                                        ))
+                     )
+                   )}
+        "run!"]
+       [:button {:on-click (fn[e]
+                             (base/end! (:xtor data)))}
+        "stop!"
+        ]
+
+       [:li "results"]
        ]
 
-      [:li "results"]
+
+      ;"Hello, woof!"
+      [:code (pr-str data)]
+
+      ;;(<wf> (rum/cursor-in *STATE [:wf]))
       ]
-
-
-     ;"Hello, woof!"
-     [:code (pr-str data)]
-
-     ;;(<wf> (rum/cursor-in *STATE [:wf]))
      ]
+
     )
 
 
