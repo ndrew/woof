@@ -15,19 +15,19 @@
 
 
 (defonce status-classes-map {
-                             :woof.app/not-started ""
-                             :woof.app/done        "done"
-                             :woof.app/running     "pending"
-                             :woof.app/stopped     "error"
-                             :woof.app/error       "error"
+                             :not-started ""
+                             :done        "done"
+                             :running     "pending"
+                             :stopped     "error"
+                             :error       "error"
                              })
 
 (defonce status-caption-map {
-                             :woof.app/not-started "…"
-                             :woof.app/done        "done!"
-                             :woof.app/running     "running"
-                             :woof.app/stopped     "stopped!"
-                             :woof.app/error       "error!"
+                             :not-started "…"
+                             :done        "done!"
+                             :running     "running"
+                             :stopped     "stopped!"
+                             :error       "error!"
                              })
 
 
@@ -45,14 +45,16 @@
   [k step r]
 
   (let [ch? (u/channel? r)
-        status (if ch? ::running
-                       (get {nil ::not-started, :nil ::error} r ::done))]
+        status (if ch? :running
+                       (get {nil :not-started, :nil :error} r :done))]
     [:div.step
      [:div.result
       (if ch? "…" (pr-str r))]
      [:div.info
+
       [:span.k (pr-str k)]
       [:span.action (d/pretty step)]
+
 
       (<wf-status-ui> status)]]))
 

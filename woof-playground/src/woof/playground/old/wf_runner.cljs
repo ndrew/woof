@@ -182,7 +182,7 @@
 
 
                       ;; status of current workflow
-                      :status :woof.app/not-started
+                      :status :not-started
 
                       ;; workflow specific map
                       :wf nil
@@ -214,7 +214,7 @@
          {
           :wf nil
 
-          :status :woof.app/not-started
+          :status :not-started
           :history []
 
           :result {}
@@ -279,7 +279,7 @@
                              (let [proc (wf/->ResultProcessor xtor processing-opts)]
                                (wf/process-results! proc))
 
-                             (reset! (cursor [:status]) :woof.app/running))]
+                             (reset! (cursor [:status]) :running))]
 
                      (let [v (if wf-start-fn (wf-start-fn))]
                        (if (u/channel? v)
@@ -307,9 +307,9 @@
         stop-action ["stop" stop-fn]
 
         status-actions  {
-                         :woof.app/not-started [["start" start-fn]]
+                         :not-started [["start" start-fn]]
 
-                         :woof.app/done        [["finish" (fn[]
+                         :done        [["finish" (fn[]
                                                             (reset-fn)
                                                             (init!)
                                                             )]
@@ -319,9 +319,9 @@
                                                              )]
                                                 ]
 
-                         :woof.app/running     (into actions
+                         :running     (into actions
                                                      [[] ["stop" stop-fn]])
-                         :woof.app/error       [["start" start-fn]
+                         :error       [["start" start-fn]
                                                 ["restart" reset-fn]]
                          ; :woof.app/stopped     "error"
                          }
@@ -385,7 +385,7 @@
                    }
                   wf-actions)
 
-            :status :woof.app/not-started
+            :status :not-started
             :history []
 
             :rum-ui (apply ui-fn args)

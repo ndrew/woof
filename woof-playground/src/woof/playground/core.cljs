@@ -126,7 +126,7 @@
     (when (= :error status)
       (.warn js/console r)
 
-      (swap! *result assoc-in [::wf-status] ::error)
+      (swap! *result assoc-in [::wf-status] :error)
       (swap! *result assoc-in [::result] data))
 
 
@@ -179,7 +179,7 @@
 
 
     (when done?
-      (swap! *result assoc-in [::wf-status] ::done)
+      (swap! *result assoc-in [::wf-status] :done)
       (swap! *result assoc-in [::result] data))
 
     (swap! *result update-in [::history] conj r)
