@@ -4,9 +4,7 @@
 
     [rum.core :as rum]
 
-    [woof.ui :as ui]
-    [woof.u :as u]
-    [woof.data :as d]
+    [woof.playground.v1.ui :as ui]
 
     ;; ns for running wfs
 
@@ -20,6 +18,11 @@
 
 
 ;; -------------------------- ui-state
+
+
+(defn dummy-ui-fn [*wf]
+  [:div "dafuq"])
+
 
 (defonce
   *UI-STATE (atom
@@ -63,9 +66,6 @@
 
 ;; workflow configuration prototype
 
-
-(defn dummy-ui-fn [*wf]
-  [:div "dafuq"])
 
 
 

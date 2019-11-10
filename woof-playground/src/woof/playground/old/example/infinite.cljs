@@ -2,21 +2,8 @@
   (:require
     [cljs.core.async :as async]
 
-    [rum.core :as rum]
-
-    [woof.data :as d]
-    [woof.wf :as wf]
-
     [woof.utils :as u]
-    [woof.ui :as ui]
-
-    [woof.playground.old.wf-ui :as wf-ui]
-
-    [woof.playground.old.results :as r]
-
-
     [markdown.core :refer [md->html]]
-
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))

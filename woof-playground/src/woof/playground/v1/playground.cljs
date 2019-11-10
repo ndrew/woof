@@ -5,10 +5,6 @@
     ;; client core
     [woof.base :as base]
     [woof.wf :as wf]
-    [woof.ui :as ui]
-    [woof.u :as u]
-    [woof.data :as d]
-    [woof.utils :as utils]
 
     [woof.wfc :as wfc
      :refer [WoofWorkflow
@@ -16,9 +12,6 @@
              get-context-map
              get-steps]]
 
-
-    ;; core async
-    [cljs.core.async :as async]
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))

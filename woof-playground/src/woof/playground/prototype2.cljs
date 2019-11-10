@@ -7,7 +7,7 @@
     [woof.base :as base]
     [woof.core.runner :as runner]
     [woof.u :as u]
-    [woof.ui :as ui]
+    [woof.playground.v1.ui :as ui]
     [woof.playground.common :as cmn]
     [woof.utils :as utils]
   )

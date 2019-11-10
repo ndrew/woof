@@ -5,11 +5,8 @@
 
     ;; client core
     [woof.base :as base]
-    [woof.wf :as wf]
-    [woof.ui :as ui]
-    [woof.u :as u]
+    [woof.playground.v1.ui :as ui]
     [woof.data :as d]
-    [woof.utils :as utils]
 
     [woof.wfc :as wfc
      :refer [WoofWorkflow

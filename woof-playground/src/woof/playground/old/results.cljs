@@ -2,22 +2,16 @@
   (:require
     [cljs.core.async :as async]
 
-    [goog.string.format]
-
     [rum.core :as rum]
 
     [woof.data :as d]
     [woof.wf :as wf]
-    ;[woof.ws :as ws]
 
-    [woof.playground.old.ui :as ui]
+    [woof.playground.old.ui :as old-ui]
+    [woof.playground.v1.ui :as ui]
     [woof.playground.old.wf-ui :as wf-ui]
     [woof.utils :as u]
-
-    ; [woof.wf-tester-ui :as tester-ui]
     )
-
-
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]
     [woof.utils-macros :refer [put!?]]))
@@ -41,12 +35,12 @@
   (if-let [v @(::updated-v local)]
     [:.editor
      [:header header]
-     (ui/data-editor (fn[new-v]
+     (old-ui/data-editor (fn[new-v]
                        (reset! (::updated-v local) new-v)
                        (reset! (::manually-entered local) true)
                        (go
                          (async/put! editor-chan new-v)))
-                     v)])
+                         v)])
   )
 
 
@@ -111,7 +105,7 @@
                      (fn []
                        [:.preview
                         (ui/menubar "Preview"
-                                    [["ok" (fn[]
+                                        [["ok" (fn[]
                                              (go
                                                (async/>! preview-chan :ok))
                                              ;; TODO:

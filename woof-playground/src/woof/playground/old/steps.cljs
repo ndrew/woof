@@ -1,30 +1,11 @@
 (ns woof.playground.old.steps
   (:require
-    [cljs.core.async :as async]
-    [cljs.test :as test :refer-macros [deftest is testing run-tests async]]
-
-    [goog.string :as gstring]
-    [goog.string.format]
-
     [rum.core :as rum]
 
-    [woof.playground.old.app-data :as app-model]
-
     [woof.data :as d]
-    [woof.graph :as g]
-    [woof.wf :as wf]
-    ;[woof.ws :as ws]
 
-    [woof.ui :as ui]
-    [woof.playground.old.wf-ui :as wf-ui]
-    [woof.utils :as u]
-
-    )
-
-
-  (:require-macros
-    [cljs.core.async.macros :refer [go go-loop]]
-    [woof.utils-macros :refer [put!?]]))
+    [woof.playground.v1.ui :as ui]
+    ))
 
 
 (rum/defcs <steps> < rum/reactive

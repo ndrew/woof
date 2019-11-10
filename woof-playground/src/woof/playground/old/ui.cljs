@@ -1,6 +1,5 @@
 (ns woof.playground.old.ui
   (:require
-    [cljs.core.async :as async]
 
     [goog.string :as gstring]
     [goog.string.format]
@@ -8,15 +7,10 @@
     [rum.core :as rum]
 
     [woof.core :as c]
-    [woof.data :as d]
-    [woof.graph :as g]
-    [woof.wf :as wf]
-    [woof.utils :as u]
-    [woof.test-data :as test-data])
+    [woof.data :as d])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]
     [woof.utils-macros :refer [put!?]]))
-
 
 
 
@@ -59,35 +53,6 @@
 
 
 
-;;;;;;;;;;;
-;;
-;; MENU
-
-
-(rum/defc
-  menu-item          <   { :key-fn (fn [label _] (str label))}
-                         "menu item component"
-  [label action-fn]
-
-  [:a.menu-item
-   {:href "#" :on-click (fn [e]
-                          (action-fn)
-                          (.preventDefault e)
-                          false)}
-   label])
-
-
-(rum/defc menubar     <   rum/reactive     { :key-fn (fn [header items] (str header (count items)))}
-                          "generic menubar component. has header and buttons"
-  [menu-header menu-items]
-
-  (into [:span.menubar
-         [:.header menu-header]]
-        (map (fn [[label action]]
-               (if (and (nil? label) (nil? action))
-                 [:.separator]
-                 (menu-item label action)))
-             menu-items)))
 
 ;; todo: customizible menu input (next to a menu button)
 

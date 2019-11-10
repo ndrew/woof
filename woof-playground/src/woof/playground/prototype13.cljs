@@ -3,29 +3,14 @@
     [rum.core :as rum]
 
     ;; client core
-    [woof.base :as base]
-    [woof.wf :as wf]
-    [woof.ui :as ui]
-    [woof.u :as u]
-    [woof.data :as d]
-    [woof.utils :as utils]
-
-    [woof.wfc :as wfc
-     :refer [WoofWorkflow
-             get-params
-             get-context-map
-             get-steps]
-     ]
-
 
     ;; core async
     [cljs.core.async :as async]
 
+    [woof.playground.common :as cmn]
     [woof.playground.v1.playground :as pg]
     [woof.playground.v1.utils :refer [dstr kstr vstr]]
-    [woof.playground.v1.ui :as wfui]
-
-    [woof.playground.common :as cmn]
+    [woof.playground.v1.ui :as ui]
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -92,8 +77,8 @@
                     (if (js/confirm "delete?")
                       (pg/remove-wf! (:id wf)))))
       ]
-      ;(wfui/<debug> aspects)
-      (wfui/<debug> @*wf)
+      ;(ui/<debug> aspects)
+      (ui/<debug> @*wf)
     ]
     )
   )
@@ -117,7 +102,7 @@
 
 
    [:hr]
-   (wfui/<debug> @*STATE)
+   (ui/<debug> @*STATE)
   ])
 
 

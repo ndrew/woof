@@ -1,24 +1,6 @@
 (ns woof.playground.old.example.big-wf
   (:require
-    [cljs.core.async :as async]
-
-    [rum.core :as rum]
-
-    [woof.data :as d]
-    [woof.wf :as wf]
-
-    [woof.utils :as u]
-    [woof.ui :as ui]
-
-    [woof.playground.old.wf-ui :as wf-ui]
-
-    [woof.playground.old.results :as r]
-    [woof.test-data :as test-data]
-
-
-    )
-  (:require-macros
-    [cljs.core.async.macros :refer [go go-loop]]))
+    [woof.test-data :as test-data]))
 
 
 (defonce TEST-WF-STEP-COUNT 300)

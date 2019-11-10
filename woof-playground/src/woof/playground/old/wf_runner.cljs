@@ -13,7 +13,7 @@
     [woof.wf-data :as wdata]
     [woof.playground.old.wf-ui :as wf-ui]
 
-    [woof.ui :as ui]
+    [woof.playground.v1.ui :as ui]
 
     [woof.playground.old.context :as ctx-ui]
     [woof.playground.old.steps :as steps-ui]

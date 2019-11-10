@@ -6,16 +6,8 @@
     [woof.base :as base]
     [woof.data :as d]
     [woof.wf :as wf]
-    [woof.ui :as ui]
-    [woof.u :as u]
+    [woof.playground.v1.ui :as ui]
     [woof.utils :as utils]
-
-    [woof.wfc :as wfc
-     :refer [WoofWorkflow
-             get-params
-             get-context-map
-             get-steps]
-     ]
 
 
     ;; core async
@@ -23,13 +15,12 @@
 
     [woof.playground.v1.playground :as pg]
     [woof.playground.v1.utils :refer [dstr kstr vstr] :as v1_utils]
-    [woof.playground.v1.ui :as wfui]
 
     [woof.playground.common :as cmn]
 
     [clojure.data :as cd]
 
-    [woof.state.core :as state]
+    [woof.playground.state :as state]
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -119,7 +110,7 @@
 (defn crud-deps-init
   "inject dependencies for crud wf. Should be called prior to other init fns"
   [*STATE params]
-  (let [sf (state-factory     (rum/cursor-in *STATE [::dynamic-state]))
+  (let [sf (state/state-factory     (rum/cursor-in *STATE [::dynamic-state]))
         cf (base/chan-factory (rum/cursor-in *STATE [:chans]))
         ]
     {
@@ -130,7 +121,7 @@
      ::sf sf
 
      ;; provide an atom for storing watchers
-     ::watchers-map   (sub-state sf ::watchers-map {})
+     ::watchers-map   (state/sub-state sf ::watchers-map {})
      }
     )
   )
@@ -152,11 +143,11 @@
 
     {
      ;; crud data
-     ::crud           (sub-state sf ::crud
+     ::crud           (state/sub-state sf ::crud
                                  {:initial-data {:v "data before sync"}})
 
      ;;
-     ::crud-delta-map (sub-state sf ::crud-delta-map {})
+     ::crud-delta-map (state/sub-state sf ::crud-delta-map {})
 
      }
     )
@@ -211,7 +202,7 @@
 (defn crud-ui-init [params]
   {
 
-   ::selected-meta  (sub-state (::sf params) ::lb-meta { :selected-idx 0 })
+   ::selected-meta  (state/sub-state (::sf params) ::lb-meta { :selected-idx 0 })
    }
   )
 

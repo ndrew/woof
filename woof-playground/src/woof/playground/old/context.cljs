@@ -1,26 +1,11 @@
 (ns woof.playground.old.context
   (:require
-    [cljs.core.async :as async]
-    [cljs.test :as test :refer-macros [deftest is testing run-tests async]]
-
-    [goog.string :as gstring]
-    [goog.string.format]
-
     [rum.core :as rum]
 
-    [woof.playground.old.app-data :as app-model]
-
     [woof.data :as d]
-    [woof.graph :as g]
-    [woof.wf :as wf]
-
-    [woof.playground.old.ui :as ui]
-    [woof.playground.old.wf-ui :as wf-ui]
-    [woof.utils :as u]
-
+    [woof.playground.v1.ui :as ui]
+    [woof.playground.old.ui :as old-ui]
     )
-
-
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]
     [woof.utils-macros :refer [put!?]]))
@@ -43,7 +28,7 @@
    [:div
 
     [:div "args: "
-     (ui/data-editor (fn[new-v]
+     (old-ui/data-editor (fn[new-v]
                        ;; todo: handle channels
                        ;; todo: handle exceptions
                        (reset! (::args local) new-v)

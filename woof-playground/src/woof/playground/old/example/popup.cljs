@@ -6,14 +6,8 @@
 
     [woof.data :as d]
     [woof.wf :as wf]
-
     [woof.utils :as u]
-    [woof.ui :as ui]
-
     [woof.playground.old.wf-ui :as wf-ui]
-
-    [woof.playground.old.results :as r]
-
 
     [markdown.core :refer [md->html]]
 

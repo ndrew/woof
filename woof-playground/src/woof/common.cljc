@@ -36,6 +36,7 @@
 ;; for now - I use build- prefix to distinguish between higher order functions and already ready ones?
 ;;
 
+;; todo: duplicated in woof.playground.state
 ;; keep xtor in state as :xtor
 (defn build-opt-keep-xtor [*state]
   (fn [params]

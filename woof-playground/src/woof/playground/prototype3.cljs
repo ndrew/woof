@@ -1,39 +1,17 @@
 (ns ^:figwheel-hooks woof.playground.prototype3
   (:require
-    [rum.core :as rum]
-
-    [woof.ui :as ui]
-
-    [woof.u :as u]
-    [woof.data :as d]
-
-    ;; ns for running wfs
-
-    ; internal
-    ;[woof.wf :as wf]
-    ;[woof.core.processors :as p]
-
-    [woof.utils :as utils]
-    [woof.core.runner :as runner]
-
-    ;; higher level workflows
-    [woof.wfc :as wfc
-     :refer [WoofWorkflow
-             get-params
-             get-context-map
-             get-steps]
-     ]
-
-
-    ;; core async
     [cljs.core.async :as async]
 
-    [woof.base :as base]
+    [rum.core :as rum]
 
-    ;; client core
+    [woof.base :as base]
     [woof.client.ws :as ws]
-    [woof.wf :as wf]
+    [woof.core.runner :as runner]
+    [woof.data :as d]
     [woof.playground.common :as cmn]
+    [woof.playground.v1.ui :as ui]
+    [woof.u :as u]
+    [woof.wf :as wf]
 
     )
 

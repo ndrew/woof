@@ -10,6 +10,9 @@
     [woof.playground.common :as cmn]
     [woof.utils :as utils]
 
+    [woof.playground.v1.ui :as ui]
+
+    [woof.playground.state :as state]
     )
 
   (:require-macros
@@ -27,6 +30,9 @@
   *UI-STATE
   (atom
     {
+
+     :swf {}
+
      ;; workflow model atom
      :wf {
           :status :compile
@@ -327,7 +333,7 @@
 
 ;; ui
 
-(rum/defc <wf> < rum/reactive [*wf run-fn!]
+(rum/defc <wf> < rum/reactive [run-fn! *wf]
   (let [wf @*wf
         status (:status wf)]
     [:div
@@ -360,17 +366,57 @@
   [local *STATE]
 
   [:div
-   [:pre (pr-str @*STATE)]
+
+   (let [*swf (rum/cursor *STATE :swf)]
+     [:div
+      (ui/btn "init swf"
+              (fn []
+                (let [initial-wf (state/state-wf "test!")
+                      wf (merge initial-wf
+                                {
+                                 :ctx-fns [
+                                           (fn [params]
+                                             {
+                                              :v {
+                                                    :fn identity
+                                                    }
+                                              }
+                                             )
+                                           ]
+                                 :steps-fns [
+                                             (fn [params]
+                                               {
+                                                ::test [:v "this is a test"]
+                                                }
+                                               )
+                                             ]
+                                 }
+                                )
+                      ]
+                  ;; todo: add stuff
+                  (reset! *swf wf)
+                  )))
+      (ui/btn "run swf"
+              (fn []
+                (state/swf-run! *swf)
+                ))
+      [:pre (d/pretty (into (sorted-map) @*swf))]
+      ]
+
+
+     )
+
    [:hr]
+
 
    [:button {:on-click (fn [e] (reset! (::wf-n local) 1))} "1"]
    [:button {:on-click (fn [e] (reset! (::wf-n local) 2))} "2"]
    [:button {:on-click (fn [e] (reset! (::wf-n local) 3))} "3"]
 
    (condp = @(::wf-n local)
-     1 (<wf> (rum/cursor-in *STATE [:wf]) run-wf-1)
-     2 (<wf> (rum/cursor-in *STATE [:wf]) run-wf-2)
-     3 (<wf> (rum/cursor-in *STATE [:wf]) run-wf-3)
+     1 (<wf> run-wf-1 (rum/cursor-in *STATE [:wf]) )
+     2 (<wf> run-wf-2 (rum/cursor-in *STATE [:wf]) )
+     3 (<wf> run-wf-3 (rum/cursor-in *STATE [:wf]) )
      )
    ]
 
