@@ -48,13 +48,18 @@
   (build-handler id-fn {:expands? true} f))
 
 
+(def ^:dynamic *new-chan!* (fn []
+                             (async/chan)))
+
+
+
 (defn prepare-step-fns
   "builds a context map with step fns"
   [idx]
   (reduce
     (gen-step-fn #(str "s-" %) (fn [k i v] ;; todo: return metadata for fn
                                  (debug-out! "FN" k i v)
-                                 (let [c (async/chan)
+                                 (let [c (*new-chan!*)
                                        t (+ (int (rand 1000))
                                             (if (odd? i) (int (rand 3000)) 0))]
                                    (go
@@ -175,7 +180,7 @@
 
      :x-expand-async {:fn (fn [vs]
 
-                            (let [c (async/chan)]
+                            (let [c (*new-chan!*)]
                               (go-loop []
                                        (let [v (async/<! (u/timeout 1000))]
 

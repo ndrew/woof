@@ -15,6 +15,7 @@
 
 (def ^:dynamic *curr-ns* nil)
 
+;; keyword
 (defn kstr [v]
   (str (if (simple-keyword? v)
          ":"
@@ -28,6 +29,7 @@
        (name v)))
 
 
+;; value
 (defn vstr
   ([v]
    (vstr "" v))
@@ -52,6 +54,7 @@
        "<err>"
        )))
   )
+
 
 (defn dstr
   ([kv]

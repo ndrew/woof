@@ -7,13 +7,16 @@
 
     [woof.base :as base]
     [woof.data :as d]
-    [woof.playground.common :as cmn]
     [woof.utils :as utils]
 
-    [woof.playground.v1.ui :as ui]
-
+    [woof.playground.common :as cmn]
     [woof.playground.state :as state]
-    [woof.utils :as u])
+
+    [woof.playground.v1.ui :as ui]
+    [woof.playground.v1.utils :as v1u :refer [dstr kstr vstr]]
+
+    [woof.playground.wf.example :as test-wf]
+    )
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -360,24 +363,35 @@
      ]))
 
 
-(defn swf-ctx-fn [params]
-  {
-   :v    {
-          :fn identity
-          }
-   :wait {
-          :fn (fn [v]
-                (let [chan (async/chan 1)]
-                  (go
-                    (async/<! (utils/timeout 3000))
-                    (async/put! chan v)
-                    )
+; result ui
 
-                  chan)
-                )
+; a) inlined results
 
-          }
-   }
+;(wdata/inline-results v)
+
+(rum/defcs <wf-results> < rum/static
+                          (rum/local true ::inline-results?)
+                          (rum/local true ::sort-results?)
+  [local results]
+
+  (let [r1 (if @(::inline-results? local)
+            (base/inline-results results)
+            results)
+        r (if @(::sort-results? local)
+            (into (sorted-map) r1)
+            r1)]
+    [:div.result
+     (ui/menubar "Results:" [
+                             ["inline" (fn[] (swap! (::inline-results? local) not))]
+                             ["sort"   (fn[] (swap! (::sort-results? local) not))]
+                             ])
+     [:pre
+      (binding [v1u/*curr-ns* (str (namespace ::this))]
+        (vstr r))]
+     ]
+
+    )
+
   )
 
 (rum/defcs <ui> < rum/reactive
@@ -385,51 +399,52 @@
   [local *STATE]
 
   [:div
-
    (let [*swf (rum/cursor *STATE :swf)
 
-         init-swf (fn []
+         ;; actions should go separately
+         init-swf! (fn []
                     (let [initial-wf (state/state-wf "test!")
-                          updated-wf {
-                                      :ctx-fns   [swf-ctx-fn]
-                                      :steps-fns [(fn [params]
-                                                    {
-                                                     ::test [:v "this is a test"]
-                                                     ::wait [:wait "for testing ui state"]
-                                                     }
-                                                    )
-                                                  ]
-                                      }
+
+                          ;updated-wf {
+                          ;            :ctx-fns   [test-wf/swf-ctx-fn]
+                          ;            :steps-fns [test-wf/swf-steps-fn]
+                          ;            }
+                          updated-wf (test-wf/test-expand-wf 10)
+
                           wf (merge initial-wf updated-wf)
                           ]
                       ;; todo: add stuff to a wf
                       (reset! *swf wf)
                       ))
-         init-swf-action ["init swf" init-swf]
-         run-swf-action ["run!" (fn []
-                                  (state/swf-run! *swf))]
-         actions-map {
-                      :not-started [init-swf-action
-                                    run-swf-action]
-                      :running [["stop" (fn []
-                                          (state/swf-stop! *swf)
-                                          )]]
-                      :done        [["reset" (fn []
-                                               (reset! *swf (state/empty-swf "test"))
-                                               )]]
-                      }
          ]
+
      [:div
 
-      (let [wf @*swf]
-        [:div
-         (ui/<wf-menu-ui> (:id wf)
-                          (:status wf)
-                          actions-map
+      (let [wf @*swf
+            status (:status wf)
+            id (:id wf)
+            ]
+        [:div {:style {:outline "1px solid red"}}
+         (ui/btn "init swf!" init-swf!)
+         (ui/<wf-menu-ui> id status
+                          {
+                           :not-started [["run!" (fn []
+                                                   (state/swf-run! *swf))]]
+                           :running     [["stop" (fn []
+                                                   (state/swf-stop! *swf)
+                                                   )]]
+                           :done        [["reset" (fn []
+                                                    (reset! *swf (state/empty-swf "test"))
+                                                    (init-swf!))]]
+                           }
                           )
 
-
-         [:pre (d/pretty (into (sorted-map) @*swf))]
+         [:hr]
+         (if (= :done status)
+           (<wf-results> (:result @*swf))
+           [:pre (d/pretty (into (sorted-map) @*swf))]
+           )
+         ;
          ]
         )
 

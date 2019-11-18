@@ -6,8 +6,14 @@
     [rum.core :as rum]
 
     [woof.base :as base]
+    [woof.utils :as u]
 
-    [woof.utils :as u]))
+    [woof.wfc :as wfc
+     :refer [WoofWorkflow
+             get-params
+             get-context-map
+             get-steps]]
+    ))
 
 
 ;; statuses
@@ -27,6 +33,8 @@
    :runtime {
              :xtor nil
              :wf nil
+
+             :initial {}
              }
    ;; auto-combined functions
    :init-fns []
@@ -34,11 +42,6 @@
    :ctx-fns []
    :steps-fns []
    ;; or just single ones?
-
-
-   :actions {
-
-             }
 
    :result {
 
@@ -91,6 +94,24 @@
    })
 
 
+(defn swf-capturing-WF [*swf params context-map-fn steps-fn wf-params]
+  (swap! *swf assoc-in [:runtime :initial :params] params)
+  (reify WoofWorkflow
+    (get-params [this]
+      ;; is this really needed
+      params)
+    (get-context-map [this]
+      (let [ctx-map (context-map-fn params)]
+        (swap! *swf assoc-in [:runtime :initial :context-map] ctx-map)
+        ctx-map))
+    (get-steps [this]
+      (let [steps (steps-fn params)]
+        (swap! *swf assoc-in [:runtime :initial :steps] steps)
+        steps
+        )))
+  )
+
+
 (defn swf-run! [*swf]
   (let [st @*swf
 
@@ -106,7 +127,7 @@
     (if (= 0 (count steps-fns))
       (u/throw! "no steps functions provided!"))
 
-
+    ;; todo: add channel+state factory
     (let [wf (base/parametrized-wf!
                (base/combine-init-fns init-fns)
                identity
@@ -116,7 +137,9 @@
                        (partial swf-opt-fn *swf))
                  :merge-results base/merge-opts-maps)
                (base/combine-fns ctx-fns)
-               (base/combine-fns steps-fns))]
+               (base/combine-fns steps-fns)
+               (partial swf-capturing-WF *swf)
+               )]
 
       ;; store prepared wf
       (swap! *swf assoc-in [:runtime :wf] wf)

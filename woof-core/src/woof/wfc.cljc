@@ -163,7 +163,7 @@
                      }
                    wf-actions)
 
-             :status :woof.app/not-started
+             :status :not-started
              :history []
 
              :rum-ui (apply ui-fn args)
