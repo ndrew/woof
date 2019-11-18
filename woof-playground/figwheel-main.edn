@@ -5,7 +5,8 @@
  ;:ring-handler woof.server.core/app
  ;:server-ip "127.0.0.1"
 
- :open-url "http://localhost:8080"
+ :open-url "http://localhost:9500"
+ ;:open-url "http://localhost:8080"
  ; :ring-server-options { :port 8080 }
  ; :auto-testing true
 
