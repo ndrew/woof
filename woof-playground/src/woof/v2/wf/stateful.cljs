@@ -95,3 +95,14 @@
    })
 
 
+(defn &channel-map [wf]
+  (:woof.v2.wf.stateful/channel-map wf))
+
+(defn channel-map []
+  {
+   :woof.v2.wf.stateful/channel-map (rum/cursor-in *INTERNAL [::chans])
+   }
+  )
+
+
+

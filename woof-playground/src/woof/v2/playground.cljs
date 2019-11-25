@@ -22,6 +22,7 @@
 
 
     [woof.v2.wf.preview :as preview]
+    [woof.v2.wf.post :as post]
 
 
     [woof.wf :as wf])
@@ -34,15 +35,6 @@
 ;; this will be a project tree
 ;; each node is a separate workflow
 
-;; for now, it's a local storage example
-
-;; just storage
-(defonce *INTERNAL
-         (atom {
-                ::chans   {}
-                }))
-
-
 ;; updatable storage
 (defonce *TREE (atom {
                       ;; internal
@@ -50,7 +42,7 @@
 
                       ;; workflows
                       :preview  (preview/preview-wf-state!)
-
+                      :post     (post/post-wf-state!)
                       }))
 
 
@@ -77,6 +69,7 @@
          root? (= [] current-selector)]
 
      (if root?
+       ;; top menu
        (let [select-node! (fn [k]
                             (let [nu-tree (swap! *TREE assoc-in [::current] (conj current-selector k))
                                   nu-selector (::current nu-tree)]
@@ -87,8 +80,8 @@
                      (map (fn [k] [(name k) (partial select-node! k)])
                           (filter node-keyword? (keys @*TREE))))
           ])
+       ;; ui
        (let [*wf (rum/cursor-in *TREE current-selector)]
-
          [:div.woof
           (ui/menubar (pr-str current-selector)
                       [["←" (fn []
@@ -104,8 +97,9 @@
                        ;["global action" (fn [] (prn "boo!"))]
                        ])
           [:hr]
-          ;; todo: take from (::ui @*wf)
-          (preview/<example-node-ui> *wf)
+          (let [wf @*wf]
+            ((:ui-fn wf) *wf)
+            )
           ]
          )
        )

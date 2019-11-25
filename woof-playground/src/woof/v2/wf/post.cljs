@@ -1,4 +1,4 @@
-(ns woof.v2.wf.preview
+(ns woof.v2.wf.post
   (:require
     [cljs.core.async :as async]
 
@@ -23,19 +23,21 @@
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
+
+(defonce *STATE (atom {
+                       ::post "An example post"
+                       }))
+
 ;; ui
 
-(rum/defc <example-node-ui> < rum/reactive [*wf]
+(rum/defc <post-ui> < rum/reactive [*wf]
   (let [wf @*wf
         status (:status wf)
         title (:title wf) ;; (pr-str (:id wf))
         ]
 
     [:div
-     (ui/<wf-menu-ui>
-       title status
-       (:actions wf))
-
+     (ui/<wf-menu-ui> title status (:actions wf))
 
      (let [r (:result wf)]
        [:pre
@@ -51,19 +53,19 @@
 
 
 ;; function that initializes the specific workflow for the node
-(defn init-preview-wf! [*NODE CFG]
+(defn init-post-wf! [*NODE CFG]
   (let [node @*NODE
-
-        ;; collect in params from node
-        ;; _ (do (prn (keys node)))
 
         initial-wf (st-wf/wf (get node :id)
                              ;; re-use wf initialization
                              (st-wf/&wf-init-wf node))
 
+        ;; un-hardcode "PREVIEW"
         updated-wf {
 
-                    :ui-fn <example-node-ui>
+                    :title     "Write to Local Storage Workflow"
+
+                    :ui-fn     <post-ui>
 
                     :init-fns  [(fn [params]
                                   ;; this should prepare all stuff needed for ctx and steps
@@ -103,35 +105,35 @@
                     :opt-fns   [ls/ls-opts-fn
                                 st-wf/chan-factory-opts]
 
-                    ;; todo: is this a correct way of setting function that will run
-                    ; :woof.v2.wf.stateful/init-wf  (:woof.v2.wf.stateful/init-wf node)
-
-                    :title     "Local Storage Workflow"
 
                     :actions   (st-wf/default-actions-map (partial st-wf/wf-init! *NODE)
-                                                    (partial state/swf-run! *NODE)
-                                                    (partial state/swf-stop! *NODE)
-                                                    {
-                                                     ; :not-started []
-                                                     :running [
-                                                               ["dummy write " (fn []
+                                                          (partial state/swf-run! *NODE)
+                                                          (partial state/swf-stop! *NODE)
+                                                          {
+                                                           ; :not-started []
+                                                           :running [
+                                                                     ["dummy write " (fn []
 
-                                                                                 (let [loop-chan (st-wf/&wf-init-param *NODE ::evt-loop-chan)]
-                                                                                   (async/put! loop-chan
-                                                                                               {(wf/rand-sid "ui-") [:ls-write ["PREVIEW" (u/now)]]})
-                                                                                   )
-                                                                                 )]
+                                                                                       (let [loop-chan (st-wf/&wf-init-param *NODE ::evt-loop-chan)]
+                                                                                         (async/put! loop-chan
+                                                                                                     {(wf/rand-sid "ui-")
+                                                                                                      [:ls-write ["PREVIEW"
 
-                                                               #_["ui event" (fn []
-                                                                               (let [loop-chan (&wf-init-param *wf ::evt-loop-chan)]
-                                                                                 (async/put! loop-chan
-                                                                                             {(wf/rand-sid "ui-") [:test (u/now)]})
-                                                                                 )
-                                                                               )]
+                                                                                                                  (str "I am a post\n" (u/now))
+                                                                                                                  ]]})
+                                                                                         )
+                                                                                       )]
 
-                                                               ]
-                                                     ; :done        []
-                                                     })
+                                                                     #_["ui event" (fn []
+                                                                                     (let [loop-chan (&wf-init-param *wf ::evt-loop-chan)]
+                                                                                       (async/put! loop-chan
+                                                                                                   {(wf/rand-sid "ui-") [:test (u/now)]})
+                                                                                       )
+                                                                                     )]
+
+                                                                     ]
+                                                           ; :done        []
+                                                           })
 
                     }
         wf (merge initial-wf updated-wf)
@@ -141,11 +143,12 @@
   )
 
 
-(defn preview-wf-state! []
-  (st-wf/wf "local-storage-preview"
+(defn post-wf-state! []
+  (st-wf/wf "local-storage-post"
             (fn [*NODE]
-              (init-preview-wf! *NODE
-                                (st-wf/channel-map))))
+              (init-post-wf! *NODE
+                             (st-wf/channel-map)
+                             )))
   )
 
 

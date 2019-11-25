@@ -57,6 +57,7 @@
    }
   )
 
+;; FIXME: deprecated
 (defn state-wf [id]
   (empty-swf id)
   ;; todo: merge stuff
