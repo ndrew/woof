@@ -57,3 +57,41 @@
   )
 
 ;; should there be exposing channels via steps
+
+;; just storage
+(defonce *INTERNAL
+         (atom {
+                ::chans   {}
+                }))
+
+
+(defn &wf-init-param [*wf k]
+  (get-in @*wf [:runtime :initial :params k]))
+
+
+(defn &wf-init-wf [wf]
+  (get wf :woof.v2.wf.stateful/init-wf))
+
+(defn wf-init! [*NODE]
+  (let [f (&wf-init-wf @*NODE)]
+    (f *NODE)))
+
+
+(defn wf [id init-wf-fn]
+  (assoc
+    (state/empty-swf id )
+    :woof.v2.wf.stateful/init-wf init-wf-fn)
+  )
+
+
+(defn default-actions-map [init-wf! run-wf! stop-wf! wf-actions-map]
+  {
+   :not-started (conj (get wf-actions-map :not-started [])
+                      [] ["run!" run-wf!])
+   :running     (conj (get wf-actions-map :running [])
+                      [] ["stop!" stop-wf!])
+   :done        (conj (get wf-actions-map :done [])
+                      [] ["reset!" init-wf!])
+   })
+
+
