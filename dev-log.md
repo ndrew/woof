@@ -1,7 +1,24 @@
 # woof dev log
 
 --- 
+## 2020
+
+## February, 2020
+
+next iteration of woof alpha
+
+* figuring out how to define workflows both on server and ui
+* backend for woof  
+
 ## 2019
+
+## September, 2019
+
+* update steps with sid-list the same way as for single sid
+* working on small prototypes
+    - generic wf runner
+* defining wf as composition of maps containing init-fns/ctx..
+
 
 ## August, 2019
 

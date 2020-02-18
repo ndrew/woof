@@ -4,8 +4,8 @@
   (:require
     [rum.core :as rum]
 
-    [woof.v2.playground :as playground]
-    ; [woof.playground.prototype1 :as playground]
+    ;; testing alpha
+    [woof.alpha.playground :as playground]
 
     [woof.lib :as lib]
     ))

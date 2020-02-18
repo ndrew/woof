@@ -1,26 +1,4 @@
-(ns ^:figwheel-hooks woof.playground.common
-  (:require
-    [cljs.reader]
-    ;; core async
-    [cljs.core.async :as async]
-
-    [goog.string :as gstring]
-    [goog.string.format]
-
-    [rum.core :as rum]
-
-    ;[woof.u :as u]
-    [woof.utils :as u]
-    [woof.graph :as g]
-
-    [woof.playground.old.app-data :as app-model]
-    [woof.playground.old.wf-runner :as runner]
-
-    [woof.test-data :as test-data]
-    [woof.data :as d])
-
-  (:require-macros
-    [cljs.core.async.macros :refer [go go-loop]]))
+(ns ^:figwheel-hooks woof.playground.common)
 
 
 (defn default-init!  ;; ;; todo: re-implement as subscription

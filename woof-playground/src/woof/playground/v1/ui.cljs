@@ -35,7 +35,9 @@
   [menu-header menu-items]
 
   (into [:span.menubar
-         [:.header menu-header]]
+         (if-not (= "" menu-header)
+           [:.header menu-header])
+         ]
         (map (fn [[label action]]
                (if (and (nil? label) (nil? action))
                  [:.separator]
@@ -110,12 +112,18 @@
                              })
 
 
+(rum/defc <tag>  < rum/static
+  [class text]
+
+  [:span.tag
+   {:class class}  text])
+
+
 (rum/defc <wf-status-ui>  < rum/static
   [status]
 
-  [:span.tag
-   {:class (get status-classes-map status "")}
-   (get status-caption-map status "")])
+  (<tag> (get status-classes-map status "")
+         (get status-caption-map status "")))
 
 
 (rum/defc <wf-menu-ui> < rum/reactive

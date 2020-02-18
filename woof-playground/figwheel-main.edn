@@ -2,7 +2,7 @@
  :watch-dirs ["src"]
  :css-dirs ["resources/public/css"]
 
- ;:ring-handler woof.server.core/app
+ :ring-handler woof.alpha.server/app
  ;:server-ip "127.0.0.1"
 
  :open-url "http://localhost:9500"

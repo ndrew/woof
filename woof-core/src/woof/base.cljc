@@ -8,7 +8,7 @@
 
     ; internal
     [woof.wf :as wf]
-    ;[woof.core.processors :as p]
+    [woof.core.processors :as p]
 
     [woof.utils :as utils]
     [woof.core.runner :as runner]
@@ -22,6 +22,7 @@
      ]
 
     [woof.core.protocols :as protocols]
+
 
     ;; core async
     #?(:clj [clojure.core.async :as async :refer [go go-loop]])
@@ -256,29 +257,25 @@
 
 
 
-(defn process-wf! [xtor opts]
-  (wf/process-results! (wf/->ResultProcessor xtor opts))
-  )
-
-
 (defn end! [xtor]
   (protocols/end! xtor))
 
 
-(defn run-wf! [wf xtor-fn]
-  (let [channel (runner/run-wf
-                  (:init-fn wf)
-                  (:wf-fn wf)   ;; {:params {..}, :wf <wf-xtor>}
-                  (:opts-fn wf) ;; {:params {..}, :opts {..}}
-                  (fn [wf-impl opts]
-                    (let [xtor (wfc/wf-xtor wf-impl)]
-                      (process-wf! (xtor-fn xtor) opts))))
-        ]
-
-    ; (println "z" channel)
-
-    )
+(defn do-run-wf! [processor wf xtor-fn]
+  (runner/run-wf
+    (:init-fn wf)
+    (:wf-fn wf)   ;; {:params {..}, :wf <wf-xtor>}
+    (:opts-fn wf) ;; {:params {..}, :opts {..}}
+    (fn [wf-impl opts]
+      (let [xtor (wfc/wf-xtor wf-impl)
+            xtor-impl (xtor-fn xtor)]
+           (wf/process-results! (processor xtor-impl opts)))))
   )
+
+(def run-wf! (partial do-run-wf! wf/->ResultProcessor))
+
+#?(:clj
+   (def sync-run-wf! (partial do-run-wf! p/->FutureWF)))
 
 
 (def rand-sid wf/rand-sid)

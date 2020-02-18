@@ -1,17 +1,8 @@
 (ns woof.v2.wf.stateful
   (:require
-    [cljs.core.async :as async]
-
     [rum.core :as rum]
 
     [woof.base :as base]
-    [woof.data :as d]
-    [woof.playground.common :as cmn]
-    [woof.utils :as utils]
-
-    [woof.playground.v1.ui :as ui]
-    [woof.playground.v1.utils :as v1u :refer [dstr kstr vstr]]
-
     [woof.playground.state :as state]
 
     [woof.utils :as u])
@@ -59,10 +50,10 @@
 ;; should there be exposing channels via steps
 
 ;; just storage
-(defonce *INTERNAL
-         (atom {
-                ::chans   {}
-                }))
+(defonce *INTERNAL (atom
+                     {
+                      ::chans {}
+                      }))
 
 
 (defn &wf-init-param [*wf k]
@@ -72,9 +63,12 @@
 (defn &wf-init-wf [wf]
   (get wf :woof.v2.wf.stateful/init-wf))
 
+
 (defn wf-init! [*NODE]
-  (let [f (&wf-init-wf @*NODE)]
-    (f *NODE)))
+  (if-let [f (&wf-init-wf @*NODE)]
+    (f *NODE)
+    (u/throw! "NO STATEFUL INITIALIZER FUNCTION PROVIDED")
+    ))
 
 
 (defn wf [id init-wf-fn]
@@ -95,14 +89,15 @@
    })
 
 
+
 (defn &channel-map [wf]
   (:woof.v2.wf.stateful/channel-map wf))
+
 
 (defn channel-map []
   {
    :woof.v2.wf.stateful/channel-map (rum/cursor-in *INTERNAL [::chans])
-   }
-  )
+   })
 
 
 
