@@ -10,50 +10,96 @@
 
     [woof.playground.v1.ui :as ui]
     [woof.data :as d]
-    [woof.wf :as wf])
+    [woof.wf :as wf]
+    [cljs.core.async :as async]
+    [woof.utils :as u])
   (:import [goog.net.XhrIo ResponseType])
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
 
+;;
 ;; alpha workflow example
+
+
+;; here we test the idea of WF initializer function:
+;;   we need to return a WF map containing:
+;;    * necessary stuff: init-fn/ctx-fn/steps-fn
+;;    * optional stuff:
+;;        ui fn, wf actions, etc
+;;        also we pass WF atom where this map will live
+
+;; todo: come with better wf example
 
 (defn simplest-wf-initializer [*SWF]
   {
 
-   :init-fns  [(fn [params]
-                 {:IN :some-wf-parameters}
-                 )
-               ]
+   :init-fns   [(fn [params]
+                  {:IN :some-wf-parameters}
+                  )
+                ]
 
-   :ctx-fns   [(fn [params]
-                 {
-                  :test {:fn (fn [v] v)}
-                  }
-                 )]
+   :ctx-fns    [(fn [params]
+                  {
+                   :intro  {:fn (fn [v]
+                                  (prn "INTRO:" v)
+                                  v)
+                           }
+                   :wait {
+                           :fn       (fn [t]
+                                       (let [ch (async/chan)]
 
-   :steps-fns [(fn [params]
-                 {
-                  ::step [:test "Hello!"]
-                  })
+                                            (go
+                                              (async/<! (u/timeout t))
+                                              (async/put! ch "DONE")
+                                              )
 
-               ]
-   :opt-fns   []
+                                            ch
+                                            ))
+
+                           }
+                   }
+                  )]
+
+   :steps-fns  [(fn [params]
+                  {
+                   ::intro-1 [:intro "Example of the simplest WF possible"]
+                   ::intro-2 [:intro ""]
+
+                   ::wait [:wait 30000]
+                   })
+
+                ]
+   :opt-fns    []
 
 
-   ;; ui specific keys, optional
-   :title     "Simplest UI Workflow"
+   ;; ui specific keys, optional - TODO: make these namespaced
+   :title      "Finite WF with default UI"
+   :explanation [:div
+
+[:p {:style {:color "red"}} "This is a simplest workflow example. Finite!!!"]
+[:pre "ctx:\n
+:intro - displays a test message
+:wait - waits for some time
+"]
+[:pre "steps:\n
+  ::intro-1 [:intro \"Example of the simplest WF possible\"]
+  ::intro-2 [:intro \"\"]
+  ::wait [:wait 2000]"]
+]
    :wf-actions {
-                :done [["your wf is ready!" (fn []
-                                              (prn "dummy event"))]]}
+                :done [["custom action (on done) " (fn []
+                                                      (prn "Workflow is ready. WF state is:")
+                                                      (.log js/console @*SWF))
+                        ]]}
 
    }
   )
 
 
 ;;;;;
-
+;; more complex example
 
 (defn init-evt-loop [params]
   ;; this should prepare all stuff needed for ctx and steps
@@ -90,8 +136,6 @@
   ;; should these be passed to here?
   (let [CFG (st-wf/channel-map)]
     {
-
-     :title     "Write to Local Storage Workflow"
 
      :init-fns  [init-evt-loop
 
@@ -154,39 +198,40 @@
 
 (defn initialize-test-wf-w-state! [*NODE]
   {
-   ;; for now do not provide a ui fn
-   ;; :ui-fn   <example-node-ui>
+   ;; for we provide a ui fn
+   :ui-fn   <example-node-ui>
 
-   :actions (st-wf/default-actions-map
-              (partial st-wf/wf-init! *NODE)
-              (partial state/swf-run! *NODE)
-              (partial state/swf-stop! *NODE)
-              {
-               ; :not-started []
-               :running [
-                         ["dummy event " (fn []
-                                           (prn "dummy event")
 
-                                           #_(let [loop-chan (st-wf/&wf-init-param *NODE ::evt-loop-chan)]
+   :title     "More Complex Workflow"
+
+   :wf-actions {
+                ; :not-started []
+                :running [
+                          ["dummy event " (fn []
+                                            (prn "dummy event")
+
+                                            #_(let [loop-chan (st-wf/&wf-init-param *NODE ::evt-loop-chan)]
+                                                (async/put! loop-chan
+                                                            {(wf/rand-sid "ui-")
+                                                             [:ls-write ["PREVIEW"
+
+                                                                         (str "I am a post\n" (u/now))
+                                                                         ]]})
+                                                )
+                                            )]
+
+                          #_["ui event" (fn []
+                                          (let [loop-chan (&wf-init-param *wf ::evt-loop-chan)]
                                                (async/put! loop-chan
-                                                           {(wf/rand-sid "ui-")
-                                                            [:ls-write ["PREVIEW"
-
-                                                                        (str "I am a post\n" (u/now))
-                                                                        ]]})
+                                                           {(wf/rand-sid "ui-") [:test (u/now)]})
                                                )
-                                           )]
+                                          )]
 
-                         #_["ui event" (fn []
-                                         (let [loop-chan (&wf-init-param *wf ::evt-loop-chan)]
-                                              (async/put! loop-chan
-                                                          {(wf/rand-sid "ui-") [:test (u/now)]})
-                                              )
-                                         )]
+                          ]
+                ; :done        []
+                }
 
-                         ]
-               ; :done        []
-               })
+
    }
   )
 

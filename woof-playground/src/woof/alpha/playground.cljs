@@ -11,57 +11,41 @@
     [woof.alpha.ui.internal :as internal]
     [woof.alpha.ui.wf :as wf-ui]
 
+    [woof.alpha.wf :as awf]
+
     ;; alpha workflow
     [woof.v2.wf.stateful :as st-wf]
     ;; example of frontend ui
     [woof.alpha.wf.test :as test-wf]
-    [woof.playground.state :as state])
+    [woof.alpha.wf.page :as page-wf]
+    [woof.playground.state :as state]
+    [woof.base :as base]
+    [cljs.core.async :as async])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
 
-;;
-;; playground wf runner function
-;;
-(defn init-alpha-wf! [wf-id wf-init-fn]
-  (let [initial-state (state/empty-swf wf-id)]
-    (st-wf/wf wf-id
-              (fn [*SWF]
-                (let [nu-wf-state (wf-init-fn *SWF)
 
-                      updated-state (merge
-                                      initial-state
-                                      nu-wf-state
-                                      {
-                                       :title   (get nu-wf-state :title "Untitled WF")
-
-                                       :actions (st-wf/default-actions-map
-                                                  (partial st-wf/wf-init! *SWF)
-                                                  (partial state/swf-run! *SWF)
-                                                  (partial state/swf-stop! *SWF)
-                                                  (get nu-wf-state :wf-actions {}))
-
-                                       :ui-fn   (get nu-wf-state :ui-fn wf-ui/<default-wf-ui>)
-                                       })
-                      ]
-
-                     (swap! *SWF merge updated-state)
-                     )
-                ))
-    )
-  )
-
-;; updatable storage
+;; updatible storage
 
 ;; this will be a project tree
 ;; * each node starting with wf- is a separate workflow
 ;; * internal - internal woof stuff
 
-(defonce *TREE (atom {
-                      ;; workflow state (keywords that start with wf-...)
-                      :wf-a               (init-alpha-wf! "A" test-wf/simplest-wf-initializer)
+(defn init-test-wfs []
+  {
+   ;; workflow w state (keywords that start with wf-...)
+   :wf-simplest-wf     (awf/init-alpha-wf! "A" test-wf/simplest-wf-initializer)
+   :wf-dummy           (awf/init-alpha-wf! "dummy" test-wf/dummy-wf-initializer)
 
-                      :wf-dummy           (init-alpha-wf! "dummy" test-wf/dummy-wf-initializer)
+   :wf-page            (awf/init-alpha-wf! "file preview" page-wf/initialize!)
+   }
+  )
+
+(defonce *TREE (atom (merge
+                       (init-test-wfs)
+                       {
+                      ;; alpha
 
                       ;; internal
                       :internal           {
@@ -76,7 +60,7 @@
                       ::global-wf-actions {
                                            :wf-dummy [["wf specific action" (fn [] (prn "I am a global action for wf-dummy"))]
                                                       ]}
-                      }))
+                      })))
 
 
 (defonce *INTERNAL (rum/cursor-in *TREE [:internal]))
@@ -174,8 +158,38 @@
 (def <app> #(<project-ui> *TREE))
 
 
-(defn ^:after-load on-js-reload []
-  ;; TODO: update wfs in state here if needed
+(defn ^:after-load on-js-reload [d]
 
-  (prn "RELOADED")
+  (prn "FOR NOW: always RELOAD WFs:")
+  ; (.log js/console (:reloaded-namespaces d))
+
+
+  (let [tree @*TREE
+        curr (::current tree)]
+
+    (swap! *TREE merge (init-test-wfs) {::current []})
+
+    ; (.log js/console tree)
+
+    (if curr
+      (let [ch (if (= :running (get-in tree (conj curr :status)))
+                 (base/end! (get-in tree (concat curr [:runtime :xtor])))
+                 (let [dummy-ch (async/chan)]
+                   (async/put! dummy-ch "done")
+                   dummy-ch)
+             )]
+
+        (go
+          (async/<! ch)
+
+
+
+          ;(prn "upd")
+          ;; mimic selection of the wf
+          (==>workflow-selected (rum/cursor-in *TREE curr))
+          (swap! *TREE merge {::current curr})
+          )
+        )
+        )
+    )
   )
