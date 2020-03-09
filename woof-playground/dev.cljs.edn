@@ -1,11 +1,11 @@
-^{:watch-dirs ["src"
-               "test"
-               "../woof-core/src"
+^{
+  :watch-dirs ["test" "src"
+               ; "../woof-core/src"
                ]
-  :extra-main-files {:devcards {:main woof.devcards}}
-  }
-{:main woof.app
- :devcards true
- }
 
-;; woof.app/on-js-reload
+  :css-dirs ["resources/public/css"]
+
+  :auto-testing true
+
+  }
+{:main woof.app}

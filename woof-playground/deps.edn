@@ -2,9 +2,6 @@
  {
   woof-core {:local/root "../woof-core"}
 
-  com.bhauman/figwheel-main {:mvn/version "0.2.0"}
-  com.bhauman/rebel-readline-cljs {:mvn/version "0.1.4"}
-
   hiccup                     {:mvn/version "1.0.5"}
   ;; use same version as in rum
   sablono                    {:mvn/version "0.8.1"}
@@ -47,37 +44,35 @@
   markdown-clj               {:mvn/version "1.0.2"},
   ;  me.raynes/fs               {:mvn/version "1.4.6"},
   ;  org.clojure/data.json      {:mvn/version "0.2.6"},
-
-
   }
 
+
+ :aliases {
+
+           :run    {:main-opts ["-m" "woof.server.core"]}
+
+           :fig      {:extra-deps
+                                   {com.bhauman/figwheel-main       {:mvn/version "0.2.3"},
+                                    com.bhauman/rebel-readline-cljs {:mvn/version "0.1.4"}}
+                      :extra-paths ["target" "test"]
+                      }
+
+
+           :build    {
+                      :main-opts   ["-m" "figwheel.main" "-b" "dev" "-r"]
+                      }
+
+           :server {
+                    :main-opts ["-i" "scripts/server.clj"]
+                    }
+           ;; todo: dev-cards
+           }
+
  ;; setup some development paths
- :paths ["src" "target" "resources" "test"
+ :paths ["src" "resources" "test"
          ;"../woof-core/src"
          ]
  ;; setup target as a resource path
  :resource-paths ["target" "resources"]
 
- ;; setup a helpful alias to start the build
- ;;  :aliases {:fig {:main-opts ["-m" "figwheel.main"]}}
- :aliases {
-
-           :run        {:main-opts ["-m" "woof.server.core"]}
-
-           :dev {
-                       :main-opts [; run figwheel
-                                   "-m" "figwheel.main" "-b" "dev" "-r"]
-                 }
-
-           :server {
-                    :main-opts ["-i" "scripts/server.clj"]
-                    }
-
-
-
-           ; :extra-paths ["test"]
-           ; :extra-deps {woof-core {:local/root "../woof-core"}}
-
-           ;; todo: dev-cards
-           }
  }
