@@ -222,7 +222,7 @@
         ]
 
     (run-simple-wf ctx-map steps-map (fn [result]
-                                       (.log js/console result)
+                                       ;(.log js/console result)
                                        (is (= expected-result result)))))
   )
 
@@ -275,11 +275,203 @@
                                        (is (= expected-result result)))))
   )
 
+
+
+
+(deftest wf-01-sid-pipelines
+
+  ; split the collection and process each item by separate step handler
+  (let [ctx-map {
+                 :identity { :fn identity }
+
+                 :range { :fn (fn [N] (vec (range N))) } ;; produces N numbers
+
+                 ;; wrap each collection element into a new step
+                 :map-id*  (base/make-expand-steps-sbody :identity)
+
+                 ;;
+                 :map-element-transform* (base/make-expand-steps-sbody :element-transform)
+
+                 ;
+                 :element-transform { :fn (fn [n] {:n n })}
+
+                 ;; gathers sids back to a list
+                 :*collect            {
+                                       :fn       (fn [xs] xs)
+                                       :collect? true
+                                       }
+                 }
+        steps-map {
+                   ::numbers [:range 5]     ; [0 1 2 3 4]
+
+                   ::*numbers [:map-id* ::numbers]  ; [0] [1] [2] [3] [4]
+
+                   ::*transformed [:map-element-transform* ::*numbers]  ; [0] [1] [2] [3] [4]
+
+                   ::result [:*collect ::*transformed]
+                   }
+        ]
+
+    (run-simple-wf ctx-map steps-map (fn [result]
+                                       (is (= '({:n 0} {:n 1} {:n 2} {:n 3} {:n 4}) (::result result)))
+                                       )))
+
+  )
+
+(deftest wf-02-sid-pipelines
+
+  ; split the collection and process each item by separate step handler
+  (let [ctx-map {
+                 :identity { :fn identity }
+
+                 :range { :fn (fn [N] (vec (range N))) } ;; produces N numbers
+
+                 ;; wrap each collection element into a new step
+                 :map-id*  (base/make-expand-steps-sbody :identity)
+
+                 ;;
+                 :map-as-kv* (base/make-expand-steps-sbody :as-kv)
+
+                 ;
+                 :as-kv { :fn (fn [n] {:n n })}
+
+                 :map-add-t* (base/make-expand-steps-sbody :add-t)
+
+                 :add-t { :fn (fn [kv] (assoc kv :t (u/now)))}
+
+                 ;; gathers sids back to a list
+                 :*collect            {
+                                       :fn       (fn [xs] xs)
+                                       :collect? true
+                                       }
+                 }
+        steps-map {
+                   ::numbers [:range 3]     ; [0 1 2]
+
+                   ::*numbers [:map-id* ::numbers]  ; [0 1 2] -> [[0] [1] [2]]
+
+                   ::*kvs [:map-as-kv* ::*numbers]  ; [0->{:n 0}] [1->{:n 1}] [2->{:n 2}]
+
+                   ::*timed-kvs [:map-add-t* ::*kvs]
+                   ::result [:*collect ::*timed-kvs]
+                   }
+        ]
+
+    ;; map
+    (run-simple-wf ctx-map steps-map (fn [result]
+                                       (.log js/console (d/pretty (into (sorted-map) result)))
+                                       ;(is (= '({:n 0} {:n 1} {:n 2} {:n 3} {:n 4}) (::result result)))
+                                       )))
+
+  )
+
+
+(deftest wf-03-kv-zipping
+  ; kv-zipping is retrieving the sid and step value
+  ; example: map-filter-reduce
+  ;  we have a collection [0 1 2 3 4]
+  ;  process each number separately
+  ; -> 0
+  ; -> 1
+  ; ...
+  ; -> 4
+  ;
+
+  (let [ctx-map {
+                 :identity { :fn identity }
+
+                 :range { :fn (fn [N] (vec (range N))) }                    ;; produces N numbers
+
+                 :map*  (base/make-expand-steps-sbody :identity)  ;; splits each element in collection to a separate step
+
+                 ;; a way of memoizing the sid for kv zipping
+                 :mem-k* {
+                          :fn (fn [o] { (base/rand-sid "reduce-k") [:identity {:k o}] })
+                          :expands? true
+                          }
+
+                 ;; kv zipping - joins keys with values
+                 :*kv-zip {
+                           :fn       (fn [[[k] vs]]
+                                       (let [ks (:k k)] ;; todo: check for k and vs length, also flatten (at least for single el)
+                                            (apply assoc {}  (interleave ks vs))))
+                           :collect? true
+                           }
+                 }
+        steps-map {
+                   ::numbers [:range 5]     ; [0 1 2 3 4]
+
+                   ::map [:map* ::numbers]  ; [0] [1] [2] [3] [4]
+                   ::ks [:mem-k* ::map]     ; store keys
+
+                   ::kv [:*kv-zip [::ks ::map]] ; get map
+                   }
+        ]
+
+    (run-simple-wf ctx-map steps-map (fn [result]
+                                       (let [kv (::kv result)
+                                             ks (keys kv)
+
+                                             kv-from-results (reduce (fn [m k]
+                                                                       (assoc m k (get kv k))) {} (keys kv))
+                                             ]
+
+                                            (is (= [0 1 2 3 4] (sort (vals kv))))
+                                            (is (= kv-from-results kv))
+                                            )
+                                       )))
+
+  )
+
+
+
 ;; todo: add async examples
 ;; todo: add kv tests
 ;; todo: add map-filter-reduce
 
 
+
+
+#_{
+
+   ;; a way of memoizing the sid for kv zipping
+   :mem-k* {
+            :fn (fn [o] { (base/rand-sid "reduce-k") [:identity {:k o}] })
+            :expands? true
+            }
+
+   ;; kv zipping - joins keys with values
+   :*kv-zip {
+             :fn       (fn [[[k] vs]]
+                         (let [ks (:k k)] ;; todo: check for k and vs length, also flatten (at least for single el)
+                              (apply assoc {}  (interleave ks vs))))
+             :collect? true
+             }
+
+ ;; another way of doing kv zipping
+ :reduce-v             {
+                        :fn       (fn [o]
+                                    {
+                                     (base/rand-sid "V-") [:identity {:v o}]
+                                     }
+                                    )
+
+                        :expands? true
+                        :collect? true
+                        }
+
+ :zip-implicit {
+                :fn       (fn [[[k] [v]]]
+
+                            (let [ks (:k k)
+                                  vs (:v v)]
+                                 (apply assoc {}  (interleave ks vs))
+                                 )
+                            )
+                :collect? true
+                }
+
+ }
 
 #_(deftest simplest-wf-1
 

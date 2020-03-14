@@ -1,0 +1,12 @@
+^{
+  :watch-dirs ["test" "src"
+               ; "../woof-core/src"
+               ]
+
+  :css-dirs ["resources/public/css"]
+
+  :auto-testing true
+  :open-url "http://[[server-hostname]]:[[server-port]]/browser.html"
+
+  }
+{:main woof.browser}

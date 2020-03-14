@@ -60,23 +60,27 @@
   )
 
 
+(when (goog.object/get js/window "PLAYGROUND")
+  ;; try to init playground
+  (let [el (. js/document (getElementById "app"))
 
-(let [el (. js/document (getElementById "app"))
+        <app> playground/<app> ;; (fn [] .. a rum component .. )
+        init! playground/init! ;; (fn [mount-fn] .. initializer - call mount-fn to rebuild ui.. )
+        reload! playground/reload!
 
-      <app> playground/<app> ;; (fn [] .. a rum component .. )
-      init! playground/init! ;; (fn [mount-fn] .. initializer - call mount-fn to rebuild ui.. )
-      reload! playground/reload!
+        mount-app #(rum/mount (<app-ui> <app>) el)]
 
-      mount-app #(rum/mount (<app-ui> <app>) el)]
+    (init! mount-app)
 
-  (init! mount-app)
+    ;; will this be working?
+    (defn ^:after-load on-js-reload []
+      (reload!)
+      (mount-app)
+      ) ;; re-mount app on js reload
+    )
 
-  ;; will this be working?
-  (defn ^:after-load on-js-reload []
-    (reload!)
-    (mount-app)
-    ) ;; re-mount app on js reload
   )
+
 
 
 

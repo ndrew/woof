@@ -1,6 +1,8 @@
 (ns ^:figwheel-hooks woof.playground.prototype7
   (:require
     [cljs.core.async :as async]
+    [clojure.string]
+
     [rum.core :as rum]
 
 
@@ -126,7 +128,8 @@
 
 
 (defn short-key [k]
-  (clojure.string/replace-all (pr-str k) #":woof.playground.prototype7/" "::"))
+  ;; todo
+  (clojure.string/replace (pr-str k) #":woof.playground.prototype7/" "::"))
 
 
 (defn short-value [v]

@@ -154,6 +154,7 @@
                                    (bp2 wf-chan xtor))
                        )
      :after-process (comp ap1 ap2)
+     ;; todo: better way to combine opts
      :op-handlers-map (combine-ops op1 op2)
      }
     )
@@ -390,3 +391,24 @@
     (let [{tmp ::tmp} new-results]
       (apply dissoc new-results (conj (keys tmp) ::tmp))
       )))
+
+
+
+
+;;;
+
+
+(defn _expand-steps-fn [step-id els]
+  (reduce (fn [a e]
+            ;; todo: check for sid length
+            (assoc a (rand-sid (str (name step-id) "-")) [step-id e])) {} els)
+  )
+
+
+(defn make-expand-steps-sbody [step-id]
+  {
+   :fn       (partial _expand-steps-fn step-id)
+   :expands? true
+   }
+  )
+

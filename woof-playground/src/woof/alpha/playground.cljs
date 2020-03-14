@@ -157,39 +157,42 @@
 
 (def <app> #(<project-ui> *TREE))
 
+(when (goog.object/get js/window "PLAYGROUND")
 
-(defn ^:after-load on-js-reload [d]
+  (defn ^:after-load on-js-reload [d]
 
-  (prn "FOR NOW: always RELOAD WFs:")
-  ; (.log js/console (:reloaded-namespaces d))
-
-
-  (let [tree @*TREE
-        curr (::current tree)]
-
-    (swap! *TREE merge (init-test-wfs) {::current []})
-
-    ; (.log js/console tree)
-
-    (if curr
-      (let [ch (if (= :running (get-in tree (conj curr :status)))
-                 (base/end! (get-in tree (concat curr [:runtime :xtor])))
-                 (let [dummy-ch (async/chan)]
-                   (async/put! dummy-ch "done")
-                   dummy-ch)
-             )]
-
-        (go
-          (async/<! ch)
+    (prn "FOR NOW: always RELOAD WFs:")
+    ; (.log js/console (:reloaded-namespaces d))
 
 
+    (let [tree @*TREE
+          curr (::current tree)]
 
-          ;(prn "upd")
-          ;; mimic selection of the wf
-          (==>workflow-selected (rum/cursor-in *TREE curr))
-          (swap! *TREE merge {::current curr})
+      (swap! *TREE merge (init-test-wfs) {::current []})
+
+      ; (.log js/console tree)
+
+      (if curr
+        (let [ch (if (= :running (get-in tree (conj curr :status)))
+                   (base/end! (get-in tree (concat curr [:runtime :xtor])))
+                   (let [dummy-ch (async/chan)]
+                     (async/put! dummy-ch "done")
+                     dummy-ch)
+                   )]
+
+          (go
+            (async/<! ch)
+
+
+
+            ;(prn "upd")
+            ;; mimic selection of the wf
+            (==>workflow-selected (rum/cursor-in *TREE curr))
+            (swap! *TREE merge {::current curr})
+            )
           )
         )
-        )
+      )
     )
   )
+
