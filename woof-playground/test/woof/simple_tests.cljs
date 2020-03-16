@@ -287,10 +287,10 @@
                  :range { :fn (fn [N] (vec (range N))) } ;; produces N numbers
 
                  ;; wrap each collection element into a new step
-                 :map-id*  (base/make-expand-steps-sbody :identity)
+                 :map-id*  (base/expand-into :identity)
 
                  ;;
-                 :map-element-transform* (base/make-expand-steps-sbody :element-transform)
+                 :map-element-transform* (base/expand-into :element-transform)
 
                  ;
                  :element-transform { :fn (fn [n] {:n n })}
@@ -318,6 +318,7 @@
 
   )
 
+
 (deftest wf-02-sid-pipelines
 
   ; split the collection and process each item by separate step handler
@@ -327,43 +328,34 @@
                  :range { :fn (fn [N] (vec (range N))) } ;; produces N numbers
 
                  ;; wrap each collection element into a new step
-                 :map-id*  (base/make-expand-steps-sbody :identity)
+                 :map-id*  (base/expand-into :identity)
 
                  ;;
-                 :map-as-kv* (base/make-expand-steps-sbody :as-kv)
-
-                 ;
+                 :map-as-kv* (base/expand-into :as-kv)
                  :as-kv { :fn (fn [n] {:n n })}
-
-                 :map-add-t* (base/make-expand-steps-sbody :add-t)
-
-                 :add-t { :fn (fn [kv] (assoc kv :t (u/now)))}
 
                  ;; gathers sids back to a list
                  :*collect            {
                                        :fn       (fn [xs] xs)
                                        :collect? true
                                        }
+
                  }
         steps-map {
-                   ::numbers [:range 3]     ; [0 1 2]
-
+                   ::numbers [:range 4]     ; [0 1 2]
                    ::*numbers [:map-id* ::numbers]  ; [0 1 2] -> [[0] [1] [2]]
-
                    ::*kvs [:map-as-kv* ::*numbers]  ; [0->{:n 0}] [1->{:n 1}] [2->{:n 2}]
-
-                   ::*timed-kvs [:map-add-t* ::*kvs]
-                   ::result [:*collect ::*timed-kvs]
+                   ::result [:*collect ::*kvs]
                    }
         ]
 
     ;; map
     (run-simple-wf ctx-map steps-map (fn [result]
-                                       (.log js/console (d/pretty (into (sorted-map) result)))
-                                       ;(is (= '({:n 0} {:n 1} {:n 2} {:n 3} {:n 4}) (::result result)))
+                                       (is (= '({:n 0} {:n 1} {:n 2} {:n 3}) (::result result)))
                                        )))
 
   )
+
 
 
 (deftest wf-03-kv-zipping
@@ -378,11 +370,99 @@
   ;
 
   (let [ctx-map {
-                 :identity { :fn identity }
 
+                 ;; collection
                  :range { :fn (fn [N] (vec (range N))) }                    ;; produces N numbers
 
-                 :map*  (base/make-expand-steps-sbody :identity)  ;; splits each element in collection to a separate step
+
+                 ;; singe
+                 :identity { :fn identity }
+                 :as-kv { :fn (fn [n] {:n n })}
+
+                 ;;
+                 :map*  (base/expand-into :identity)  ;; splits each element in collection to a separate step
+                 :map-as-kv* (base/expand-into :as-kv)
+
+
+
+                 ;; a way of memoizing the sid for kv zipping
+                 :mem-k* {
+                          :fn (fn [o] { (base/rand-sid "reduce-k") [:identity {:k o}] })
+                          :expands? true
+                          }
+
+                 ;; kv zipping - joins keys with values
+                 :*kv-zip {
+                           :fn       (fn [[[k] vs]]
+                                       (let [ks (:k k)] ;; todo: check for k and vs length, also flatten (at least for single el)
+                                            (apply assoc {}  (interleave ks vs))))
+                           :collect? true
+                           }
+
+                 ;; expand filter
+                 :filter-odd {
+                          :fn (fn [kv]
+                                (reduce (fn [a [k v]]
+                                          (if (odd? (:n v))
+                                              (assoc a (base/rand-sid "filter-") [:identity k])
+                                              a
+                                              )) {} kv)
+                                )
+                          :expands? true
+                          }
+
+                 :*collect            {
+                                       :fn       (fn [xs] xs)
+                                       :collect? true
+                                       }
+                 }
+        steps-map {
+                   ::numbers [:range 5]     ; [0 1 2 3 4]
+
+                   ;; [0 1 2 3 4] -> [0] [1] [2] [3] [4]
+                   ::expanded-numbers [:map* ::numbers]
+                   ; [0->{:n 0}] [1->{:n 1}] [2->{:n 2}]
+                   ::items [:map-as-kv* ::expanded-numbers]
+                   ; kv-zip ::items
+                   ::ks-1 [:mem-k* ::items]                     ; store sids
+                   ::items-kvzipped [:*kv-zip [::ks-1 ::items]] ;
+
+                   ::filter [:filter-odd ::items-kvzipped]
+
+                   ::result [:*collect ::filter]
+                   }
+        ]
+
+    (run-simple-wf ctx-map steps-map (fn [result]
+                                       (is (= '({:n 1} {:n 3}) (::result result))))))
+
+  )
+
+
+
+;; todo: add async examples
+;; todo: add kv tests
+;; todo: add map-filter-reduce
+
+
+#_(deftest wf-04-nested-kv-zipping
+  ; kv-zipping is retrieving the sid and step value
+  ; example: map-filter-reduce
+  ;  we have a collection [0 1 2 3 4]
+  ;  process each number separately
+  ; -> 0
+  ; -> 1
+  ; ...
+  ; -> 4
+  ;
+
+  (let [ctx-map {
+                 :identity { :fn identity }
+                 ;; produces N numbers
+                 :range { :fn (fn [N] (vec (range N))) }
+
+                 ;; splits each element in collection to a separate step
+                 :map*  (base/expand-into :identity)
 
                  ;; a way of memoizing the sid for kv zipping
                  :mem-k* {
@@ -422,15 +502,6 @@
                                        )))
 
   )
-
-
-
-;; todo: add async examples
-;; todo: add kv tests
-;; todo: add map-filter-reduce
-
-
-
 
 #_{
 
@@ -519,7 +590,7 @@
 
 
 
-(defn simplest-wf-initializer [*SWF]
+#_(defn simplest-wf-initializer [*SWF]
 
   ;;
   (prn "initializer")

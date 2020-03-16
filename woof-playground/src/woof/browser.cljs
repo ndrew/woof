@@ -32,37 +32,33 @@
 
 (defn simple-ctx [params]
   {
-   ;; step-handler-id is a simple keyword
-   :step-handler {:fn (fn [v] v)}
-
-   :log {:fn (fn[v]
-               (.log js/console v)
-               v)}
-
    :identity {:fn identity }
 
-
+   :log {:fn (fn[v]
+               ;(prn v)
+               (.log js/console v)
+               v)}
+   :export-edn {:fn (fn[v]
+                      (prn v)
+               "")}
 
    }
   )
 
 
-(defn simple-steps [params]
-  {
-
-   }
-  )
 
 (defn simple-opt[params]
   {
    :op-handlers-map {
                      :done  (fn [result]
+
                               (.log js/console result)
 
                               (.log js/console
                                     "RESULT"
                                     (::RESULT result))
-                              ;(ready)
+
+
                               )
 
                      :error (fn [result]
@@ -73,7 +69,7 @@
    })
 
 
-(defn domik-ctx [params]
+(defn scraper-ctx [params]
   (let [*state (atom {})]
     {
 
@@ -84,7 +80,7 @@
                           }
 
      ;; splits elements to a separate step
-     :expand*            (base/make-expand-steps-sbody :identity)
+     :expand*            (base/expand-into :identity)
 
      :collect            {
                           :fn       (fn [xs]
@@ -94,71 +90,61 @@
                           }
 
      ;; splits sid-list into
-     :iterate*           (base/make-expand-steps-sbody :process)
-
-     :process-old        {
-                          :fn (fn [el]
-                                {:t (u/now)}
-                                )
-                          }
-
-     :process*            {
-                           :fn (fn [el]
-                                 ;; {:t (u/now)}
-
-                                 { (base/rand-sid "ppp-") [:process-old el]}
-
-                                 )
-                           :expands? true
-                           }
+     :process*           (base/expand-into :process)
 
      :process            {
-                              :fn (fn [el]
-                                    (scraper/parse-listing el)
+                          :fn (fn [el]
+                                (scraper/parse-listing el))
+                          }
 
-                                    )
-                              }
+     :listing-ui*        (base/expand-into :listing-ui)
+     :listing-ui         {
+                          :fn (fn [listing]
+                                (scraper/custom-ui listing)
+
+                                "ok"
+                                )
+                          }
+     :add-listing-css    {
+                          :fn (fn [rule]
+                                (let [style-el (.createElement js/document "style")]
+
+                                     (.appendChild (.-head js/document) style-el)
+
+                                     (let [sheet (.-sheet style-el)]
+                                       (.insertRule sheet rule)
+                                       )
+                                     )
+                                true
+                                )
+
+                          }
 
 
-     :reduce-k             {
-                            :fn       (fn [o]
-                                        { (base/rand-sid "K-") [:identity {:k o}] })
-                            :expands? true
-                            }
+     :mem-k*             {
+                          :fn       (fn [o]
+                                      {(base/rand-sid "mem-k-") [:identity {:k o}]})
+                          :expands? true
+                          }
 
      ;; kv zipping - joins keys with values
-     :zip {
-           :fn       (fn [[[k] vs]]
-                       (let [ks (:k k)]
-                            (apply assoc {}  (interleave ks vs))
-                            ))
-           :collect? true
-           }
+     :*kv-zip            {
+                          :fn       (fn [[[k] vs]]
+                                      (let [ks (:k k)]
+                                           (apply assoc {} (interleave ks vs))
+                                           ))
+                          :collect? true
+                          }
 
-     ;; another way of doing kv zipping
-     :reduce-v             {
-                            :fn       (fn [o]
-                                        {
-                                         (base/rand-sid "V-") [:identity {:v o}]
-                                         }
-                                        )
+     :post-process       {
+                          :fn (fn [listings]
+                                (sort-by
+                                  :uah
+                                  (map #(get % :price) listings)
+                                  )
 
-                            :expands? true
-                            :collect? true
-                            }
-
-     :zip-implicit {
-                    :fn       (fn [[[k] [v]]]
-
-                                (let [ks (:k k)
-                                      vs (:v v)]
-                                     (apply assoc {}  (interleave ks vs))
-                                     )
                                 )
-                    :collect? true
-                    }
-
-
+                          }
      ;; todo: convenience wrapper for working with collection with single
      }
     )
@@ -170,34 +156,35 @@
 ;; b) not including during kv-zipping
 
 
-(defn domik-steps [params]
+(defn scraper-steps [params]
   {
    ::all [:query-selector-all ".cnt .objava"]
 
-   ::expand-id [:expand* ::all]
+   ;::expand-id [:expand* ::all]
 
-   ::processed-elements [:iterate* ::expand-id]
-
+   ;::processed-elements [:process* ::expand-id]
+   ::processed-elements [:process* ::all]
    ::RESULT [:collect ::processed-elements]
 
+   ;;
+;   ::css-1 [:add-listing-css ".objava { background: #fff; }" ]
+   ::css-1 [:add-listing-css ".woof-custom-listing-ui { font-family: 'DejaVu Sans Mono'; font-size: 7pt; }" ]
+   ::css-2 [:add-listing-css ".woof-listing-hide { opacity: 0.25;}" ]
+   ::css-3 [:add-listing-css ".woof-listing-show { outline: 3px solid crimson;  }" ]
+
+   ::new-ui [:listing-ui* ::processed-elements]
 
 
 
    ;; hacky way to pass the key as a value
 
-;   ::k [:reduce-k ::processed-elements]
-;   ::KV [:zip [::k ::processed-elements]]
+   ::k [:mem-k* ::processed-elements]
+   ::KV [:*kv-zip [::k ::processed-elements]]
 
-   ;; ::v [:reduce-v ::processed-elements]
-   ;::KV [:zip-implicit [::k ::v]]
+   ;;::post-process [:post-process ::RESULT]
 
 
- ;!!! ::RESULT [:identity ::KV]
-
-   ;::collected [:collect ::processed-elements]
-
-   ;::RESULT [:identity ::collected]
-
+   ; ::export [:export-edn ::RESULT]
 
    }
   )
@@ -205,33 +192,11 @@
 
 
 (def init-fns   [])
-(def ctx-fns    [simple-ctx domik-ctx
-
-                 ;;
-                 (fn [params]
-                   {
-                    :post-process {
-                                   :fn (fn [listings]
-                                         (sort-by
-                                           :uah
-                                           (map #(get % :price) listings)
-                                           )
-
-                                         )
-                                   }
-                    }
-                   )
-
+(def ctx-fns    [simple-ctx scraper-ctx])
+(def steps-fns  [
+                 scraper-steps
                  ])
-(def steps-fns  [simple-steps domik-steps
 
-                 (fn [params]
-                   {
-                    ::post-process [:post-process ::RESULT]
-                    ::str-post-process [:log ::post-process]
-                    }
-                   )
-                 ])
 (def opt-fns    [simple-opt])
 
 
@@ -255,38 +220,7 @@
 
 
 
-(defn ^:export domik []
-  #_(let [;els (array-seq (dom/getElementsByClass "objava_content"))
-        els (array-seq (.querySelectorAll (.-body js/document) "#divListObjects .objava_content"))
-        ]
-    ;; iterate through each objava_content
-    (let [_data (map parse-objava els)
-          data (prepare-data _data)]
 
-      ;; enrich ui
-      (doseq [d data]
-        (when-let [existing-el (.querySelector (.-body js/document) (str "a[clickcntid='" (:id d) "']"))]
-          (let [parent (dom/getAncestorByClass existing-el "objava_content")]
-
-            (if-let [zzz (.querySelector parent "zzz")]
-              (dom/setTextContent zzz (d/pretty d))
-              (dom/insertChildAt parent (dom/createDom "pre" "zzz" (d/pretty d)) 0)
-              )
-
-            ;; set flexbox order
-            ;(if [z parent])
-            )
-          )
-        )
-      )
-    )
-  )
-
-
-(defn ^:export domik1 []
-
-  (.log js/console (d/pretty (domik)))
-  )
 
 ;; todo: add autoscroll
 
@@ -295,33 +229,7 @@
 
 (when-not (goog.object/get js/window "PLAYGROUND")
 
-  ;(.clear js/console)
-  ;(run_workflow)
+  (.clear js/console)
+  (run_workflow)
 
-  ; (.querySelectorAll (.-body js/document) "#divListObjects .objava_content")
-  ;;
-  #_(let [;els (array-seq (dom/getElementsByClass "objava_content"))
-        els (array-seq (.querySelectorAll (.-body js/document) "#divListObjects .objava_content"))
-        ]
-    ;; iterate through each objava_content
-
-    (let [data (map parse-objava els)]
-      (doseq [d data]
-        (when-let [existing-el (.querySelector (.-body js/document) (str "a[clickcntid='" (:id d) "']"))]
-          (let [parent (dom/getAncestorByClass existing-el "objava_content")]
-
-            (if-let [zzz (.querySelector parent "zzz")]
-              (dom/setTextContent zzz (d/pretty d))
-              (dom/insertChildAt parent (dom/createDom "pre" "zzz" (d/pretty d)) 0)
-              )
-
-            ;; set flexbox order
-            ;(if [z parent])
-            ;;
-            ;;; parent
-            )
-          )
-        )
-      )
-    )
   )

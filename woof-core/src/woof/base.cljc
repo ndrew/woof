@@ -405,10 +405,24 @@
   )
 
 
-(defn make-expand-steps-sbody [step-id]
+(defn expand-into-prefixed
+  [step-id]
   {
-   :fn       (partial _expand-steps-fn step-id)
+   :fn       (fn [els]
+               (reduce (fn [a e] (assoc a (rand-sid (str (name step-id) "-")) [step-id e])) {} els))
    :expands? true
    }
   )
 
+
+(defn expand-into-normal
+  [step-id]
+  {
+   :fn       (fn [els]
+               (reduce (fn [a e] (assoc a (rand-sid) [step-id e])) {} els))
+   :expands? true
+   }
+  )
+
+(defonce expand-into (if true expand-into-prefixed
+                          expand-into-normal))
