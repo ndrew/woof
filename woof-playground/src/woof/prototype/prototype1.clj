@@ -10,7 +10,7 @@
     [woof.data :as d]
     [woof.utils :as u]
 
-    [woof.common :as common]
+    [woof.common.core :as common]
 
     [clojure.core.async :as async]
 
@@ -100,7 +100,7 @@
         ctx-fns   [common-ctx-fn ctx-fn]
         steps-fns [steps-fn]
 
-        on-stop (fn []
+        on-stop (fn [_]
                   (prn "stopping filesystem watchers")
                   (let [stop-fns (get-in @*state [:fs-watchers])]
                     (doseq [stop-fn stop-fns]
@@ -110,7 +110,7 @@
                     )
                   )
 
-        opt-fns [(common/build-opt-keep-xtor *state)
+        opt-fns [(common/build-opt-state-fn *state)
                  (common/build-opt-on-done on-stop)
                  print-results-opts-fn]
 

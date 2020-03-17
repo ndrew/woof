@@ -20,47 +20,35 @@
     [org.httpkit.server :as httpkit]
 
     [woof.server.transport :as tr]
+
+
+    [woof.common.core :as common]
     ))
 
+;; scraping server is needed for storing scraped data on the filesystem.
+;; currently saving will be done via websockets
 
-;;
-;; channel factory
-;;
-(defn chan-factory-init-fn_ [cf params]
+
+(defn error-handling-opts [params]
   {
-   ::cf cf
+   ;; log errors
+   :op-handlers-map {
+                     :error   (fn [err] (error err))
+                     ;:process (fn [result] (info ::process "\n" (d/pretty result)))
+                     ;:done    (fn [result])
+                     }
    })
-(defn &chan-factory [params]
-  (if-let [cf (get params ::cf)]
-    cf
-    (u/throw! "no ::cf provided in params. Ensure that chan-factory-init-fn had been called" )
-    )
-  )
-(defn &chan [params chan-sid]
-  (base/make-chan (&chan-factory params) chan-sid))
-(defn chan-factory-opts [params]
-  (let [close! (fn [result]
-                 (base/close-chans! (&chan-factory params))
-                 result)]
-    {
-     :op-handlers-map {
-                       :done close!
-                       :error close!
-                       }
-     }
-    )
-  )
 
 ;;
-;; init loop
+;; init loop:
 ;;
-(defn init-evt-loop_ [evt-loop-chan params]
-  ;; this should prepare all stuff needed for ctx and steps
-  {
-   ;; keep the evt loop chan
-   ::evt-loop-chan evt-loop-chan
-   }
-  )
+(defn build-init-evt-loop-fn [evt-loop-chan]
+  (fn [_]
+    {
+     ;; keep the evt loop chan
+     ::evt-loop-chan evt-loop-chan
+     }))
+
 (defn &evt-loop [params]
   (if-let [evt-loop (get params ::evt-loop-chan)]
     evt-loop
@@ -69,10 +57,6 @@
   )
 (defn evt-loop-ctx-fn [params]
   {
-   :test     {:fn (fn [v]
-                    (prn v)
-                    v)}
-
    :evt-loop {
               :fn       (fn [in-chan] in-chan)
               :infinite true
@@ -80,42 +64,7 @@
               }
    }
   )
-(defn evt-loop-steps-fn [params]
-  {
-   ::hello [:test "yooooo!"]
-   ::evt-loop [:evt-loop (::evt-loop-chan params)]
-   }
-  )
 
-
-;;
-;; store xtor
-;;
-(defn store-xtor-opts [params]
-  {
-   :before-process  (fn [wf-chan xtor]
-                      ;
-                      (swap! (:state params) assoc :xtor xtor)
-                      :ok
-                      )
-   ;; convenience
-   :op-handlers-map {
-                     :process (fn [result]
-                                ; (info ::fs-results "\n" (d/pretty result))
-
-                                )
-
-                     :error   (fn [err]
-                                ;(swap! *ui-state assoc-in [:status] :error)
-                                (error err)
-                                )
-
-                     :done    (fn [result]
-                                ;; this will be called only if the cc request
-                                ;; will be stopped
-                                )
-                     }
-   })
 
 
 ;;
@@ -133,7 +82,7 @@
       request ch
 
       (let [ws-id (base/rand-sid "ws-")
-            msg-out (base/make-chan (&chan-factory params) ws-id)
+            msg-out (base/make-chan (common/&chan-factory params) ws-id)
             evt-loop (&evt-loop params)
             ]
 
@@ -173,7 +122,7 @@
 (defn ws-init-fn [params]
   ; provide initial config here, ignore the params
   {
-   :server {
+   ::server {
             :route (compojure/routes
                      ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
                      ;(route/resources "/" {:root "public"})
@@ -185,18 +134,24 @@
             }
    }
   )
+(defn &server [params]
+  (::server params))
+
 (defn ws-ctx-fn [params]
 
-  (let [cf (&chan-factory params)
-        state (:state params)
-        ]
+  (let [chan-factory (common/&chan-factory params)
+        *state (common/&state params)]
+
     {
+
+     ;; start server with the specified configuration
      :start-server {
                     :fn (fn [server]
                           (let [{route :route
-                                 port :port} server]
+                                 port  :port} server]
                             ;; port
-                            (httpkit/run-server (site route) {:port port})
+                            (let [shutdown-server (httpkit/run-server (site route) {:port port})]
+                              (swap! *state assoc :shutdown shutdown-server))
 
                             ::started
                             )
@@ -204,51 +159,52 @@
                           )
                     }
 
+     ;; step handler for stopping the wf from the wf
+     ;; TODO: is this needed???
+     :stop-server  {
+                    :fn (fn [_]
+                          (if-let [xtor (common/state-get-xtor *state)]
+                            (do
+                              ((:shutdown @*state))
 
-     :stop-server {
-                   :fn (fn [_]
-                         ;; todo: do we need it here?
-                         (if-let [xtor (get-in @state [:xtor])]
-                           (do
-                             ;; close channels?
-                             (base/end! xtor)
-                             ::stopped
-                             )
-                           (do
-                             (error ::no-wf-running)
-                             ::no-wf-running
-                             )
-                           )
-                         )
-                   }
+                              ;; close channels?
+                              (base/end! xtor)
+                              ::stopped
+                              )
+                            (do
+                              (error ::no-wf-running)
+                              ::no-wf-running
+                              )
+                            )
+                          )
+                    }
 
-     :ws-msg {
-              :fn (fn [ws-msg]
-                    (let [{ws-id :ws-id
-                           msg :msg} ws-msg
+     ;; wf message handling
 
-                          out-chan (base/get-chan cf ws-id)
-                          ]
+     :test         {:fn (fn [v]
+                          (prn v)
+                          v)}
 
-                      (async/put! out-chan ws-msg)
+     :ws-msg       {
+                    :fn       (fn [ws-msg]
+                                (let [{ws-id :ws-id
+                                       msg   :msg} ws-msg
 
-                      {
-                       (base/rand-sid) [:test (d/pretty ws-msg)]
-                       }
-                      )
-                    )
-              :expands? true
-              }
+                                      out-chan (base/get-chan chan-factory ws-id)
+                                      ]
+
+                                  (async/put! out-chan ws-msg)
+
+                                  {
+                                   (base/rand-sid) [:test (d/pretty ws-msg)]
+                                   }
+                                  )
+                                )
+                    :expands? true
+                    }
 
      }
     )
-  )
-(defn ws-steps-fn [params]
-  ;; get routes
-  {
-   ::start! [:start-server (:server params)]
-
-   }
   )
 
 
@@ -256,66 +212,67 @@
 ;; wf implementation
 ;;
 (defn scraper-wf! []
-
-  (let [*STATE (atom {})
+;; build-... vs
+  (let [; wf dependencies
+        *STATE (atom {})
         *CHAN-STORAGE (atom {})
 
         CHAN-FACTORY (base/chan-factory *CHAN-STORAGE)
         EVT-LOOP (base/make-chan CHAN-FACTORY (base/rand-sid "server-loop"))
 
+
+        init-fns [
+                  ws-init-fn
+                  (build-init-evt-loop-fn EVT-LOOP)
+                  (common/build-init-chan-factory-fn CHAN-FACTORY)
+                  (common/build-init-state-fn *STATE)
+                  ]
+        opt-fns [
+                 (common/build-opt-state-fn *STATE)
+                 (common/build-chan-factory-opts CHAN-FACTORY)
+                 error-handling-opts
+                 (common/build-opt-on-done (fn [_]
+                                             (info ::shutdown-server)
+                                             ((:shutdown @*STATE))
+                                             ))
+                 ]
+        ctx-fns [
+                 evt-loop-ctx-fn
+                 ws-ctx-fn
+                 ]
+        steps-fn [
+                  ;; although we can combine steps, but let's use single step for clarity
+
+                  (fn [params] ;; evt-loop-steps-fn + ws-steps-fn
+                      {
+                       ::evt-loop [:evt-loop (&evt-loop params)]
+                       ::start! [:start-server (&server params)]
+                       })
+                  ]
         wf (base/parametrized-wf!
-             (base/combine-init-fns [
-                                     ws-init-fn
-                                     (fn[_] { :state *STATE })
-                                     (partial init-evt-loop_ EVT-LOOP)
-                                     (partial chan-factory-init-fn_ CHAN-FACTORY)
-                                     ])
-             identity ; wf-params-fn
-             identity ; opt-params-fn
-             (base/combine-fns
-               [
-                store-xtor-opts
-                chan-factory-opts
-                ] :merge-results base/merge-opts-maps)
-             (base/combine-fns
-               [
-                evt-loop-ctx-fn
-                ws-ctx-fn
-                ])
-             (base/combine-fns
-               [
-                evt-loop-steps-fn
-                ws-steps-fn
-                ])
-             )]
+             (base/combine-init-fns init-fns)
+             identity                                       ; wf-params-fn
+             identity                                       ; opt-params-fn
+             (base/combine-fns opt-fns :merge-results base/merge-opts-maps)
+             (base/combine-fns ctx-fns)
+             (base/combine-fns steps-fn))]
 
-    {
-
-     :wf wf
-     :start-wf! (fn []
-                  (base/run-wf! wf identity))
-     :stop-wf! (fn []
-                 (if-let [xtor (get-in @*STATE [:xtor])]
-                   (do
-                     ;; close channels?
-                     (base/end! xtor)
-                     ::stopped
-                     )
-                   (error ::no-wf-running)
-                   ))
-     ;; other api
-
-     :state *STATE
-
-     :send-msg! (fn [msg]
-                  (go
-                    (async/put! EVT-LOOP {(base/rand-sid) [:test msg]})
+    (common/stateful-wf
+      *STATE wf
+      (fn []
+        (info ::wf-stopped))
+      {
+       :send-msg! (fn [msg]
+                    (go
+                      (async/put! EVT-LOOP {(base/rand-sid) [:test msg]})
+                      )
                     )
-                  )
 
-     :stop-server! (fn []
-                     (async/put! EVT-LOOP {(base/rand-sid) [:stop-server :nop]}))
-     }
+       :stop-server! (fn []
+                       (async/put! EVT-LOOP {(base/rand-sid) [:stop-server :nop]}))
+       }
+      )
+
     )
   )
 

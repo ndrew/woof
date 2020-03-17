@@ -31,7 +31,7 @@
 
     [woof.server.log :refer [init-logging!]]
 
-    [woof.common :as common-ctx]
+    [woof.common.core :as common-ctx]
 
     ; logging
     [taoensso.timbre :as timbre :refer [info error]]
@@ -135,7 +135,8 @@
                                             :ok)
 
                          :after-process (fn [exec-chann]
-                                          (.println *err* (str "\nAFTER PROCESS:\n"))
+
+                                          ; (.println *err* (str "\nAFTER PROCESS:\n"))
 
                                           exec-chann
                                           )
@@ -474,10 +475,10 @@
   )
 
 
-(defonce zzz (atom nil))
+#_(defonce zzz (atom nil))
 
 ;; start dev stuff and close it after 10 seconds
-(let [z (web-server-wf)]
+#_(let [z (web-server-wf)]
   (reset! zzz z)
 
   ((:start-wf! z))
