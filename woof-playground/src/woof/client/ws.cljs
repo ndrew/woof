@@ -30,9 +30,13 @@
 
 
 (defn ws-resolve-url [url]
-  (let [location (.-location js/window)
-        websocket-protocol (if (= (.-protocol location) "https:") "wss:" "ws:")]
-    (str websocket-protocol "//" (.-host location) url)))
+  (if (clojure.string/starts-with? url "ws")
+    url
+    (let [location (.-location js/window)
+          websocket-protocol (if (= (.-protocol location) "https:") "wss:" "ws:")]
+      (str websocket-protocol "//" (.-host location) url))
+    )
+  )
 
 ;; ws
 

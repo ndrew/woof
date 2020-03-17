@@ -300,6 +300,8 @@
 
   ; (make-mult [this id])
 
+  (get-chan [this id])
+
   (close-chans! [this])
   )
 
@@ -311,6 +313,9 @@
       (let [c (async/chan)]
         (swap! *state-map assoc id c)
         c))
+
+    (get-chan [this id]
+      (get @*state-map id))
 
     #_(make-mult [this id]
                  (let [reload-chan (async/chan)
