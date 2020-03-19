@@ -11,39 +11,25 @@
     [ring.util.response :as response]
     [ring.middleware.reload :as reload]
 
-    [woof.server.transport :as tr]
-
     [clojure.core.async :as async :refer [go go-loop]]
-
-    [woof.data :as d]
-    [woof.cc :as cc]
-
-    ; [woof.wf :as wf]
-    ; [woof.wf-data :as wdata]
-    ; [woof.test-data :as test-data]
-
-    ; [woof.server.utils :refer [read-transit-str write-transit-str]]
-    ; [woof.example.files :as files-wf]
-
-    [woof.server.log :refer [init-logging!]]
-
-    [woof.utils :as u]
 
     ; logging
     [taoensso.timbre :as timbre]
 
+    [woof.cc :as cc]
+
+    [woof.server.log :refer [init-logging!]]
+    [woof.server.transport :as tr]
 
     ;; prototypes
-
     [woof.prototype.preview :as preview]
     )
   (:gen-class))
 
 
+;; OLD CORE TODO: migrate core
 
 ;;
-
-
 
 ;; start command center
 (defonce *dev (atom true))
@@ -52,20 +38,27 @@
   "whether we are in dev mode, so there will be wrap-reload used"
   [] @*dev)
 
-(defonce *cc-wf (atom nil))
+
 ; server handle
-(defonce server (atom nil))
+(defonce *SERVER (atom nil))
+
+; woof command center workflow
+(defonce *cc-wf (atom nil))
 
 
-(defonce initialize-block
-  (do
-    (init-logging!)
-    (timbre/info ::init-server)
 
-    (reset! *cc-wf (cc/cc-wf!))
 
-    ::initialized
-    ))
+
+(defonce INITIALIZATION-BLOCK
+         (do
+            (init-logging!)
+            (timbre/info ::init-server)
+
+            ;; INIT WF
+            (reset! *cc-wf (cc/cc-wf!))
+
+            ::initialized
+            ))
 
 
 
@@ -77,7 +70,11 @@
   (route/resources "/" {:root "public"})
 
   ;; cc websocket api
+  ;; todo: wait for the wf
   (compojure/GET "/cc" [:as req] ((:response-handler @*cc-wf) req))
+  (compojure/GET "/reload-cc" [:as req] (do
+                                          (reset! *cc-wf (cc/cc-wf!)
+                                          )
 
   ;; websocket
   #_(compojure/GET "/api/files" [:as req]
@@ -87,17 +84,16 @@
 
   ;; testing ajax calls
   (compojure/GET "/test" [] (tr/write-transit-str "Hello from AJAX"))
-
   )
 
 
 
 (defn stop-server []
-  (when-not (nil? @server)
+  (when-not (nil? @*SERVER)
     ;; graceful shutdown: wait 100ms for existing requests to be finished
     ;; :timeout is optional, when no timeout, stop immediately
-    (@server :timeout 100)
-    (reset! server nil)))
+    (@*SERVER :timeout 100)
+    (reset! *SERVER nil)))
 
 
 (defn run-server [port]
@@ -105,15 +101,16 @@
                   (reload/wrap-reload (site #'app)) ;; only reload when dev
                   (site app))]
 
-    (reset! server (httpkit/run-server handler {:port port}))
+    (reset! *SERVER (httpkit/run-server handler {:port port}))
     (info ::started port)
 
     )
   )
 
 
-;; main entry point
+;; server entry point, for standalone running
 (defn -main [& args]
-  (reset! *dev false)
-  (run-server 8080))
 
+  (reset! *dev false)
+  (run-server 8080)
+  )

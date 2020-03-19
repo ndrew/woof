@@ -17,7 +17,11 @@
     [woof.playground.old.wf-runner :as runner]
 
     [woof.test-data :as test-data]
-    [woof.data :as d])
+    [woof.data :as d]
+
+    ;[viz.core :as viz]
+
+    )
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -216,10 +220,17 @@
   )
 
 
+
 (comment
+  (defn graph-to-svg [steps rfn]
+    (let [graphviz-edges (reduce rfn "" steps)]
+        (viz/image (str "digraph { " graphviz-edges " }")))
+    )
+
+
   [:div.graph
    {:dangerouslySetInnerHTML
-    {:__html (g/graph-to-svg steps (fn [gviz [k [action param]]]
+    {:__html (graph-to-svg steps (fn [gviz [k [action param]]]
                                      (if (wf/sid? param)
                                        (str gviz " "
                                             (clojure.string/replace (name param) #"-" "_")

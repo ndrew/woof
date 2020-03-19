@@ -13,17 +13,12 @@
     [compojure.route :as route]
     [compojure.handler :refer [site]]
 
+    [org.httpkit.server :as httpkit]
+
     [woof.base :as base]
     [woof.data :as d]
     [woof.utils :as u]
-
-    [org.httpkit.server :as httpkit]
-
-    [woof.server.transport :as tr]
-
-
-    [woof.common.core :as common]
-    ))
+    [woof.server.transport :as tr]))
 
 ;; scraping server is needed for storing scraped data on the filesystem.
 ;; currently saving will be done via websockets
@@ -71,6 +66,9 @@
 ;; ws
 ;;
 
+(defn ids-msg [*state]
+  [:ids (into #{} (keys (:listings @*state)))])
+
 (defn ws-request-fn [params request]
   ;; per each request
   (if-not (:websocket? request)
@@ -82,8 +80,9 @@
       request ch
 
       (let [ws-id (base/rand-sid "ws-")
-            msg-out (base/make-chan (common/&chan-factory params) ws-id)
+            msg-out (base/make-chan (base/&chan-factory params) ws-id)
             evt-loop (&evt-loop params)
+            *state (base/&state params)
             ]
 
         ;; re-route out msg from wf onto a websocket
@@ -109,10 +108,11 @@
                                (async/close! msg-out)
                                ))
 
-        ;; send initial message to client
 
+        ;; send stored ids as initial message to client
         (httpkit/send! ch (tr/write-transit-str {:ws-id ws-id
-                                                 :msg :hello}))
+                                                 :msg (ids-msg *state)
+                                                 }))
 
 
         )
@@ -138,12 +138,9 @@
   (::server params))
 
 (defn ws-ctx-fn [params]
-
-  (let [chan-factory (common/&chan-factory params)
-        *state (common/&state params)]
-
+  (let [chan-factory (base/&chan-factory params)
+        *state (base/&state params)]
     {
-
      ;; start server with the specified configuration
      :start-server {
                     :fn (fn [server]
@@ -155,27 +152,6 @@
 
                             ::started
                             )
-
-                          )
-                    }
-
-     ;; step handler for stopping the wf from the wf
-     ;; TODO: is this needed???
-     :stop-server  {
-                    :fn (fn [_]
-                          (if-let [xtor (common/state-get-xtor *state)]
-                            (do
-                              ((:shutdown @*state))
-
-                              ;; close channels?
-                              (base/end! xtor)
-                              ::stopped
-                              )
-                            (do
-                              (error ::no-wf-running)
-                              ::no-wf-running
-                              )
-                            )
                           )
                     }
 
@@ -185,6 +161,16 @@
                           (prn v)
                           v)}
 
+     :send-ids {
+                :fn (fn [server]
+
+                      #_(async/put! out-chan
+                                  [:ids (keys (:listings @*state))]
+                                  )
+
+                      )
+                }
+
      :ws-msg       {
                     :fn       (fn [ws-msg]
                                 (let [{ws-id :ws-id
@@ -193,11 +179,32 @@
                                       out-chan (base/get-chan chan-factory ws-id)
                                       ]
 
-                                  (async/put! out-chan ws-msg)
 
-                                  {
-                                   (base/rand-sid) [:test (d/pretty ws-msg)]
-                                   }
+                                  (let [[t body] msg]
+                                    (cond
+                                      (= :listings t) (do
+                                                        (swap! *state update-in [:listings] #(merge % body))
+
+                                                        (spit "/Users/ndrw/m/woof/woof-playground/listings.edn"
+                                                              (pr-str (:listings @*state)))
+
+                                                        (async/put! out-chan {:ws-id ws-id
+                                                                              :msg (ids-msg *state)})
+                                                        {
+                                                         (base/rand-sid) [:test (d/pretty (:listings @*state))]
+                                                         }
+                                                        )
+
+                                      :else
+                                      {
+                                       (base/rand-sid) [:test (str "uknown message" (d/pretty ws-msg))]
+                                       }
+                                      )
+
+                                    )
+
+
+
                                   )
                                 )
                     :expands? true
@@ -214,7 +221,9 @@
 (defn scraper-wf! []
 ;; build-... vs
   (let [; wf dependencies
-        *STATE (atom {})
+        *STATE (atom {
+                      :listings {}
+                      })
         *CHAN-STORAGE (atom {})
 
         CHAN-FACTORY (base/chan-factory *CHAN-STORAGE)
@@ -224,14 +233,14 @@
         init-fns [
                   ws-init-fn
                   (build-init-evt-loop-fn EVT-LOOP)
-                  (common/build-init-chan-factory-fn CHAN-FACTORY)
-                  (common/build-init-state-fn *STATE)
+                  (base/build-init-chan-factory-fn CHAN-FACTORY)
+                  (base/build-init-state-fn *STATE)
                   ]
         opt-fns [
-                 (common/build-opt-state-fn *STATE)
-                 (common/build-chan-factory-opts CHAN-FACTORY)
+                 (base/build-opt-state-fn *STATE)
+                 (base/build-chan-factory-opts CHAN-FACTORY)
                  error-handling-opts
-                 (common/build-opt-on-done (fn [_]
+                 (base/build-opt-on-done (fn [_]
                                              (info ::shutdown-server)
                                              ((:shutdown @*STATE))
                                              ))
@@ -262,14 +271,12 @@
       (fn []
         (info ::wf-stopped))
       {
+
        :send-msg! (fn [msg]
                     (go
                       (async/put! EVT-LOOP {(base/rand-sid) [:test msg]})
                       )
                     )
-
-       :stop-server! (fn []
-                       (async/put! EVT-LOOP {(base/rand-sid) [:stop-server :nop]}))
        }
       )
 

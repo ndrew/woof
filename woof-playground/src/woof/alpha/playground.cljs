@@ -1,6 +1,7 @@
 (ns ^:figwheel-hooks woof.alpha.playground
   (:require
 
+    [cljs.core.async :as async]
     [rum.core :as rum]
 
     ;; common workflow stuff and ui
@@ -11,20 +12,57 @@
     [woof.alpha.ui.internal :as internal]
     [woof.alpha.ui.wf :as wf-ui]
 
-    [woof.alpha.wf :as awf]
 
     ;; alpha workflow
     [woof.v2.wf.stateful :as st-wf]
     ;; example of frontend ui
     [woof.alpha.wf.test :as test-wf]
     [woof.alpha.wf.page :as page-wf]
+    [woof.alpha.wf.listing :as listing-wf]
+
     [woof.playground.state :as state]
+
     [woof.base :as base]
-    [cljs.core.async :as async])
+
+    [woof.client.ws :as ws]
+
+    [woof.utils :as u])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
 
+;;
+;; playground wf runner function
+;;
+
+(defn init-alpha-wf! [wf-id wf-init-fn]
+  (let [initial-state (state/empty-swf wf-id)]
+    (st-wf/wf wf-id
+              (fn [*SWF]
+                (let [nu-wf-state (wf-init-fn *SWF)
+
+                      updated-state (merge
+                                      initial-state
+                                      nu-wf-state
+                                      {
+                                       :title   (get nu-wf-state :title "Untitled WF")
+
+                                       :actions (st-wf/default-actions-map
+                                                  (partial st-wf/wf-init! *SWF)
+                                                  (partial state/swf-run! *SWF)
+                                                  (partial state/swf-stop! *SWF)
+                                                  (get nu-wf-state :wf-actions {}))
+
+                                       :ui-fn   (get nu-wf-state :ui-fn (partial wf-ui/<default-wf-ui>
+                                                                                 wf-ui/<default-body>))
+                                       })
+                      ]
+
+                     (swap! *SWF merge updated-state)
+                     )
+                ))
+    )
+  )
 
 ;; updatible storage
 
@@ -35,11 +73,38 @@
 (defn init-test-wfs []
   {
    ;; workflow w state (keywords that start with wf-...)
-   :wf-simplest-wf     (awf/init-alpha-wf! "A" test-wf/simplest-wf-initializer)
-   :wf-dummy           (awf/init-alpha-wf! "dummy" test-wf/dummy-wf-initializer)
+   :wf-simplest-wf     (init-alpha-wf! "A" test-wf/simplest-wf-initializer)
+   :wf-dummy           (init-alpha-wf! "dummy" test-wf/dummy-wf-initializer)
 
-   :wf-page            (awf/init-alpha-wf! "file preview" page-wf/initialize!)
+   :wf-page            (init-alpha-wf! "file preview" page-wf/initialize!)
+
+   :wf-listings        (init-alpha-wf! "listings" listing-wf/initialize!)
    }
+  )
+
+(defn global-action []
+  ;(prn "I am a configurable global action")
+
+
+  (let [socket (ws/connect "ws:localhost:8081/ws"
+                           :on-open (fn []
+                                      (.log js/console "opened")
+                                      )
+                           :on-message (fn [payload]
+                                         (.log js/console "PAYLOAD" payload)
+                                         )
+                           )]
+
+
+    (let [msg {:hello :woof!
+               :t     (u/now)}]
+      (js/setTimeout (fn [] (ws/send! socket msg) ) 1000)
+      )
+
+    ;; send a message
+
+    )
+
   )
 
 (defonce *TREE (atom (merge
@@ -55,7 +120,7 @@
                       ;; alpha ui stuff
                       ::current           []
 
-                      ::global-actions    [["global action" (fn [] (prn "I am a configurable global action"))]]
+                      ::global-actions    [["global action" global-action]]
 
                       ::global-wf-actions {
                                            :wf-dummy [["wf specific action" (fn [] (prn "I am a global action for wf-dummy"))]
@@ -157,7 +222,9 @@
 
 (def <app> #(<project-ui> *TREE))
 
-(when (goog.object/get js/window "PLAYGROUND")
+;; uncomment for wf reloading
+
+#_(when (goog.object/get js/window "PLAYGROUND")
 
   (defn ^:after-load on-js-reload [d]
 

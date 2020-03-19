@@ -431,3 +431,97 @@
 
 (defonce expand-into (if true expand-into-prefixed
                           expand-into-normal))
+
+
+;;
+
+;; run on-done when wf is stopped (done/error)
+(defn build-opt-on-done [on-done]
+  (fn [params]
+    {:op-handlers-map {
+                       :done  (fn [result] (on-done result))
+                       :error (fn [result] (on-done result))
+                       }}))
+
+
+;;
+;; state wf aspect - injects atom into workflow
+;;
+
+(defn build-init-state-fn [*STATE]
+  (fn [_] {::state *STATE}))
+
+;; keep xtor in state as ::xtor
+(defn build-opt-state-fn [*state]
+  (fn [params]
+    {:before-process  (fn [wf-chan xtor]
+                        (swap! *state assoc ::xtor xtor)
+
+                        :ok)})
+  )
+
+;; state accessor
+(defn &state [params]
+  (::state params))
+
+;; xtor accessor
+(defn state-get-xtor [*state]
+  (get-in @*state [::xtor]))
+
+
+
+
+(defn stateful-wf
+  ([*state wf on-stop]
+   (stateful-wf *state wf on-stop {}))
+  ([*state wf on-stop api-map]
+   (merge api-map
+          {
+           :wf        wf
+
+           :state     *state
+
+           :start-wf! (fn [] (run-wf! wf identity))
+
+           :stop-wf!  (fn []
+                        (if-let [xtor (state-get-xtor *state)]
+                                (do
+                                  (end! xtor)
+                                  (on-stop)
+                                  ::stopped)
+                                (do
+                                  ;;(prn ::no-wf-running)
+                                  ::no-wf-running)))
+           }
+          )
+   )
+  )
+
+
+;;
+
+
+;;
+;; channel factory
+;;
+
+(defn build-init-chan-factory-fn [cf]
+  (fn [_]
+    {
+     ::channel-factory cf
+     }))
+
+(defn &chan-factory [params]
+  (if-let [cf (get params ::channel-factory)]
+    cf
+    (utils/throw! "no ::cf provided in params. Ensure that chan-factory-init-fn had been called" )
+    ))
+
+
+(defn build-chan-factory-opts [channel-factory]
+  (build-opt-on-done
+    (fn [result]
+      (close-chans! channel-factory)
+      result)))
+
+

@@ -3,19 +3,9 @@
     [cljs.core.async :as async]
     [cljs.test :refer-macros [use-fixtures deftest is testing async]]
 
-
-    [woof.alpha.wf :as awf]
-    [woof.v2.wf.stateful :as st-wf]
-    [woof.playground.state :as state]
-
-    [woof.utils :as u]
-
-    [woof.base :as base]
-    [woof.data :as d]
-    [woof.wf :as wf])
+    [woof.base :as base])
   (:require-macros
-    [cljs.core.async.macros :refer [go go-loop]])
-  )
+    [cljs.core.async.macros :refer [go go-loop]]))
 
 
 ;; way to run a wf as an async test

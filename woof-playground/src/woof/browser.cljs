@@ -1,7 +1,6 @@
 (ns ^:figwheel-hooks ^:figwheel-always
   woof.browser
   (:require
-    [woof.lib :as lib]
     [goog.object]
     [goog.dom :as dom]
     [goog.object]
@@ -11,10 +10,13 @@
     [woof.data :as d]
 
     [woof.base :as base]
-    [woof.wf :as wf]
+
+    [woof.client.ws :as ws]
     [woof.utils :as u]
 
     [woof.scraper :as scraper]
+    [clojure.core.async :as async]
+
     ))
 
 
@@ -27,6 +29,13 @@
 
 
 (enable-console-print!)
+
+
+;; use global state for now
+(def *STATE (atom {
+                   ::ids #{}
+                   ::socket nil
+                   }))
 
 
 
@@ -70,7 +79,6 @@
 
 
 (defn scraper-ctx [params]
-  (let [*state (atom {})]
     {
 
      ;; gets html elements
@@ -136,6 +144,23 @@
                           :collect? true
                           }
 
+
+     :filter-scraped {
+                  :fn (fn [kv]
+                        (let [ids (::ids *STATE)]
+                             (reduce (fn [a [k v]]
+                                       (if-not (get ids (:id v))
+                                           (assoc a (base/rand-sid "filter-") [:identity k])
+                                           a
+                                           )) {} kv)
+                             )
+
+                        )
+                  :expands? true
+                  }
+
+
+
      :post-process       {
                           :fn (fn [listings]
                                 (sort-by
@@ -146,6 +171,91 @@
                                 )
                           }
      ;; todo: convenience wrapper for working with collection with single
+     }
+  )
+
+(defn ws-ctx-fn [params]
+  ;; "ws:localhost:8081/ws"
+  (let [*state (atom {
+                      ::socket nil
+                      ::ids #{}
+                      ::listings {}
+                      })
+
+        ]
+    {
+     :init-socket    {
+                      :fn (fn [url]
+
+                            (let [ch (async/chan)
+                                  first-ids (volatile! false)
+                                  socket (ws/connect url
+                                                     :on-open (fn []
+                                                                (.log js/console "opened")
+                                                                ;; strange, but working
+                                                                (async/put! ch (::socket @*state))
+                                                                )
+                                                     :on-message (fn [payload]
+
+                                                                   (let [[t body] (:msg payload)]
+                                                                        (when (= t :ids)
+                                                                          (swap! *state assoc :ids body)
+                                                                          (when-not @first-ids
+                                                                            (async/put! (:start-chan params) true)
+                                                                            (vswap! first-ids not)
+                                                                            )
+
+                                                                          )
+
+                                                                        (.log js/console "PAYLOAD" payload)
+                                                                        )
+
+                                                                   )
+                                                     )]
+
+                                 (swap! *state assoc ::socket socket)
+                                 ;{:socket socket}
+                                 ch
+                                 )
+                            )
+                      }
+
+
+     :wait-rest      {
+                      :fn       (fn [[v & rest]]
+                                  v)
+                      :collect? true
+                      }
+
+     :send-msg!      {
+                      :fn (fn [msg]
+                            (ws/send! (:socket msg) (:msg msg))
+                            ::sent
+                            )
+                      }
+
+     :store-listings {
+                      :fn       (fn [[socket listings]]
+
+                                  (let [ids (::ids @*state)
+                                        kv-listings (reduce (fn [a o]
+                                                              (if-not (ids (:id o))
+                                                                      (assoc a (:id o) o)
+                                                                      a)
+                                                              ) {} listings)
+
+                                        ]
+                                       {
+                                        (base/rand-sid "store-") [:send-msg! {:socket socket
+                                                                              :msg    [:listings kv-listings]
+                                                                              }
+                                                                  ]
+                                        })
+                                  )
+                      :collect? true
+                      :expands? true
+                      }
+
      }
     )
 
@@ -158,7 +268,13 @@
 
 (defn scraper-steps [params]
   {
-   ::all [:query-selector-all ".cnt .objava"]
+   ::ws [:init-socket "ws:localhost:8081/ws"]
+
+
+   ::got-ids [:identity (:start-chan params)]
+
+   ::selector [:query-selector-all ".cnt .objava"]
+   ::all [:wait-rest [::selector ::got-ids]]
 
    ;::expand-id [:expand* ::all]
 
@@ -172,7 +288,6 @@
    ::css-2 [:add-listing-css ".woof-listing-hide { opacity: 0.25;}" ]
    ::css-3 [:add-listing-css ".woof-listing-show { outline: 3px solid crimson;  }" ]
 
-   ::new-ui [:listing-ui* ::processed-elements]
 
 
 
@@ -181,23 +296,31 @@
    ::k [:mem-k* ::processed-elements]
    ::KV [:*kv-zip [::k ::processed-elements]]
 
-   ;;::post-process [:post-process ::RESULT]
+   ::new-listings [:filter-scraped ::KV]
 
+   ::new-ui [:listing-ui* ::new-listings]
 
-   ; ::export [:export-edn ::RESULT]
+   ::save-results [:store-listings [::ws ::new-listings]]
+
+   ;; ::export2console [:export-edn ::new-listings]
+
+   ;; ::post-process [:post-process ::RESULT]
 
    }
   )
 
 
 
-(def init-fns   [])
-(def ctx-fns    [simple-ctx scraper-ctx])
+(def init-fns   [(fn [params]
+                   {:start-chan (async/chan)}
+                   )])
+(def ctx-fns    [simple-ctx scraper-ctx ws-ctx-fn])
 (def steps-fns  [
                  scraper-steps
                  ])
 
 (def opt-fns    [simple-opt])
+
 
 
 

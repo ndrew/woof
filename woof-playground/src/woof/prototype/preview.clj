@@ -31,7 +31,6 @@
 
     [woof.server.log :refer [init-logging!]]
 
-    [woof.common.core :as common-ctx]
 
     ; logging
     [taoensso.timbre :as timbre :refer [info error]]
@@ -101,6 +100,37 @@
              :scheme         :http
              :headers        (or params {})
              :request-method method})))
+
+
+(defn map-ctx
+  ":kv [[k v]]
+   :map [kv..]"
+  []
+  {
+   ;; build map by combining kv
+   :kv  {
+         :fn (fn [[k v]]
+               {k v})
+         }
+
+   :map {
+         :fn       (fn [maps]
+                     (apply merge maps))
+         :collect? true
+         }
+
+   }
+  )
+(defn edn-ctx
+  ":EDN - returns data that had been passed to it"
+  []
+  {
+   ;; just return the edn data
+   :EDN  {
+          :fn identity
+          }
+   }
+  )
 
 
 
@@ -184,8 +214,8 @@
 
         common-ctx-fn (fn [params]
                         (merge
-                          (common-ctx/edn-ctx)
-                          (common-ctx/map-ctx)
+                          (edn-ctx)
+                          (map-ctx)
                           ))
 
         hiccup-ctx-fn (fn [params]

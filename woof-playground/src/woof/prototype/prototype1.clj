@@ -10,7 +10,6 @@
     [woof.data :as d]
     [woof.utils :as u]
 
-    [woof.common.core :as common]
 
     [clojure.core.async :as async]
 
@@ -110,8 +109,8 @@
                     )
                   )
 
-        opt-fns [(common/build-opt-state-fn *state)
-                 (common/build-opt-on-done on-stop)
+        opt-fns [(base/build-opt-state-fn *state)
+                 (base/build-opt-on-done on-stop)
                  print-results-opts-fn]
 
 
@@ -126,7 +125,7 @@
 
         ]
 
-    (common/stateful-wf *state wf on-stop)
+    (base/stateful-wf *state wf on-stop)
     )
   )
 

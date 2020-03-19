@@ -1,7 +1,6 @@
 (ns ^:figwheel-hooks ^:figwheel-always
   woof.scraper
   (:require
-    [woof.lib :as lib]
     [goog.object]
     [goog.dom :as dom]
     [goog.object]

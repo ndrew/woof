@@ -3,8 +3,7 @@
   (:require
     [woof.data :as d]
     [woof.utils :as u]
-
-    [viz.core :as viz]))
+    ))
 
 
 (defn tarjan
@@ -85,10 +84,3 @@
           (concat out in)
           (recur z (concat out in)))
         ))))
-
-
-
-(defn graph-to-svg [steps rfn]
-  (let [graphviz-edges (reduce rfn "" steps)]
-    (viz/image (str "digraph { " graphviz-edges " }"))))
-
