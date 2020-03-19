@@ -266,7 +266,7 @@
              (base/combine-fns ctx-fns)
              (base/combine-fns steps-fn))]
 
-    (common/stateful-wf
+    (base/stateful-wf
       *STATE wf
       (fn []
         (info ::wf-stopped))

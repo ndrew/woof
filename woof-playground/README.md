@@ -1,8 +1,57 @@
 # playground for woof
 
-WIP
+sandbox for running woof workflows
 
-clj -Abuild-dev
+ 
+
+## playground
+
+Allows run workflows with react UI and server backend
+
+    clojure -A:fig:playground
+
+## Browser playground
+
+copy the contents of the webpage to resources/public/browser.html
+
+    clojure -A:fig:browser 
+
+### In page running: 
+
+build the js for browser
+
+    clojure -A:fig:browser-min
+
+inject the script on the web page
+
+    (function() { var $script = document.createElement('script'); $script.setAttribute("type","text/javascript"); $script.setAttribute("src", "http://localhost:9500/cljs-out/browser-main.js"); document.body.appendChild($script); })()
+
+run in dev tools 
+
+    woof.browser.run_workflow()
+
+### server workflow
+
+WIP: start a server as. For now — use REPL
+
+    clojure -A:server 
+
+
+### REPL
+
+launch server workflows from REPL
+
+    Loading src/woof/server/scraper.clj... done
+
+    (in-ns 'woof.server.scraper)
+    
+    (def wf-instance (scraper-wf!))
+
+    ; start wf 
+    ((:start-wf! wf-instance))
+
+    ; stop wf
+    ((:start-wf! wf-instance))
 
 ## tests
 
@@ -13,35 +62,3 @@ http://localhost:9500/figwheel-extra-main/auto-testing
 http://localhost:9500/figwheel-extra-main/devcards
 
 
--- 
-## example 
-
-You need an website:
-
-What does this mean: 
-
-There will be some html and resources will served from %domainname%.
-(https://developer.mozilla.org/en-US/docs/Learn/Common_questions/What_is_a_web_server)
-
-Usually, somebody else runs %domainname% server, so we need to figure out 
-how to deliver website to server.
-
-if its a **static web server** we need to deliver html files + resources 
- 
-if its a **dynamic web server** we need to deliver other deliverables:
- like also files (php, js), etc.
- 
- 
-so step 1 is  
-    
-    sync deliverables to server (somehow) 
-    
- 
- --
- 08.06.2019
- 
- example
- 
-website -> choose hosting provider & deployment fmt => github
-
-github -> sync via fs folder (via git)
