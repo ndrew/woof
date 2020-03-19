@@ -1,6 +1,6 @@
 (ns ^:figwheel-hooks
     ^:figwheel-always
-  woof.app
+  woof.playground
   (:require
     [rum.core :as rum]
 
@@ -31,34 +31,7 @@
 
 
 
-;;
-;; mount the correct application
-
-#_(if-not [(goog.object/get js/window "PREVIEW")]
-  (let [el (. js/document (getElementById "app"))
-
-        <app> playground/<app> ;; (fn [] .. a rum component .. )
-        init! playground/init! ;; (fn [mount-fn] .. initializer - call mount-fn to rebuild ui.. )
-
-        reload! playground/reload!
-
-        mount-app #(rum/mount (<app-ui> <app>) el)]
-
-    (init! mount-app)
-
-    ;; will this be working?
-    (defn ^:after-load on-js-reload []
-      (reload!)
-      (mount-app)
-      ) ;; re-mount app on js reload
-    )
-  (do
-
-
-    (println "in preview")
-    )
-  )
-
+;; for now use js variables on pages
 
 (when (goog.object/get js/window "PLAYGROUND")
   ;; try to init playground

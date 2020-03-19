@@ -1,11 +1,14 @@
 ^{
-  :watch-dirs ["test" "src"
+  :watch-dirs [
+               "test"
+               "src"
                ; "../woof-core/src"
                ]
 
   :css-dirs ["resources/public/css"]
 
   :auto-testing true
+  :open-url "http://[[server-hostname]]:[[server-port]]/playground.html"
 
   }
-{:main woof.app}
+{:main woof.playground}

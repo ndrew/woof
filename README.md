@@ -14,7 +14,7 @@ Woof consists from two parts:
 
 core library for workflows 
 
-## [woof-playground](woof-core/README.md)
+## [woof-playground](woof-playground/README.md)
 playground for working running woof workflows
 
 ## License
