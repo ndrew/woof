@@ -14,3 +14,4 @@ pom.xml
 .idea
 .cpcache
 .lein-failures
+woof-playground/target/public/cljs-out
