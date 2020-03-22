@@ -1,0 +1,830 @@
+/** {
+    outline: 1px solid rgba(0,0,0,.0187777);
+}*/
+
+header {
+    font-weight: bold;
+}
+
+
+.menubar {
+    box-sizing: content-box;
+
+    display: inline-flex;
+    align-content: flex-end;
+    align-items: baseline;
+
+}
+
+.menubar .menu-item {
+    font-weight: 100;
+
+    padding: .1rem .33rem 0 .33rem;
+
+    color: rgb(220,20,60);
+    text-decoration: none;
+    border: 1px solid crimson;
+    margin-left: .5rem;
+
+}
+
+.menubar .menu-item:hover,
+.menubar .menu-item.selected {
+    color: #fff;
+    background-color: rgba(255,128,128,.75);
+}
+
+.menubar > .header {
+    font-weight: bolder;
+}
+
+.menubar .separator {
+    width: 1rem;
+}
+
+.wf {
+    outline: 1px solid rgba(0,0,255,0.1333);
+    padding: .5rem;
+    margin-bottom: .5rem;
+}
+
+
+
+
+.context, .workflow {
+    margin: auto 1rem;
+}
+
+.project > div {
+
+    margin-bottom: 1rem;
+    margin-left: .1rem;
+}
+
+.context > span {
+    margin-right: .33rem;
+}
+
+
+ul.listbox {
+    margin: 0;
+    margin-right: 1rem;
+}
+
+.listbox {
+    min-height: 2rem;
+    padding: 0;
+    background: white;
+    outline: 1px solid #aaa;
+    display: block;
+}
+
+
+.listbox > li {
+    display: block;
+    padding: 0rem .5rem;
+    position: relative;
+    line-height: 1.5rem;
+}
+
+
+.listbox > li.selected {
+    color: red;
+}
+
+
+/* proto6 */
+
+.kv {
+    display: flex;
+    flex: 0 1 auto;
+
+    margin-bottom: 0.333rem;
+}
+
+.kv:hover {
+    outline: 1px solid lightsalmon;
+
+}
+
+.proto6-results {
+
+}
+
+.proto6-results > header {
+    margin-top: 1.5rem;
+    margin-bottom: .5rem;
+}
+
+.proto6-results .kv {
+    font-size: 6.5pt;
+    line-height: 1.33;
+}
+
+
+/* proto7 */
+
+
+.proto7 .flex > div {
+    outline: 1px solid darkolivegreen;
+    padding: .333rem;
+}
+
+.proto7 header {
+    margin-bottom: 1rem;
+}
+
+.proto7 .kv {
+    font-size: 6.5pt;
+    line-height: 1.33;
+}
+
+.proto7 .k {
+    margin-right: .5rem;
+}
+
+
+.proto8 .tabs > ul {
+    display: flex;
+    flex: 0 1 auto;
+}
+
+.proto8 .tabs > ul {
+    list-style: none;
+
+    -webkit-margin-before:0em;
+    -webkit-margin-after:0em;
+
+    -webkit-margin-start: 0px;
+    -webkit-margin-end: 0px;
+    -webkit-padding-start: 0;
+
+
+}
+
+.proto8 .tabs ul > li {
+    padding: 0 .25rem 0 .25rem;
+
+    box-sizing: content-box;
+
+    line-height: 1.5;
+
+    align-self: flex-end;
+    /*line-height: 1;*/
+    border-bottom: 1px solid gray;
+    border-top: 1px solid gray;
+    border-top-right-radius: 3px;
+    border-top-left-radius: 3px;
+    border-right: 1px solid gray;
+}
+
+.proto8 .tabs ul > li:hover {
+    background-color: rgba(128,32,32,.05);
+    cursor: pointer;
+}
+
+.proto8 .tabs ul > li > header {
+    padding: 0;
+    line-height: 2;
+}
+
+.proto8 .tabs ul > li > header > .menu-item {
+    text-decoration: none;
+
+    border: 1px solid rgba(0,0,0,.1333);
+    box-sizing: content-box;
+    border-radius: 3px;
+    /*display: inline-block;*/
+    min-width: 1rem;
+    margin: 0;
+    padding: 0 .5rem;
+}
+
+.proto8 .tabs ul > li > header > .menu-item:hover {
+    background-color: indianred;
+}
+
+.proto8 .tabs ul > li.selected {
+    border: 1px solid red;
+    border-bottom: none;
+}
+
+
+.proto8 .t-body {
+    padding: 1rem;
+
+    border: 1px solid gray;
+    box-sizing: content-box;
+
+    margin-top: -1px;
+    border-collapse: collapse;
+
+}
+
+.proto8 .select-row > a {
+    outline: 1px solid lightgray;
+    padding: 0 .33rem;
+    text-decoration: none;
+    margin-left: .33rem;
+}
+
+
+.flex {
+    display: flex;
+    flex: 0 1 auto;
+}
+
+.proto8 label {
+    margin-right: .5rem;
+}
+
+
+
+body {
+    font-family: -apple-system,BlinkMacSystemFont,"avenir next",avenir,helvetica,"helvetica neue",ubuntu,roboto,noto,"segoe ui",arial,sans-serif
+
+
+}
+
+.proto9 .container {
+    background-color: rgba(0,0,0,.05);
+    margin: .33rem;
+
+}
+
+/* top level container */
+.proto9 > .container {
+    width: 80%;
+    margin-left: 10%;
+    margin-right: 20%;
+}
+
+
+.proto9 .wf {
+    background-color: #ffffff;
+    /*flex-grow: 1;*/
+
+    display: flex;
+    flex: 1 1 auto;
+}
+
+.proto9 .wf > .wf-body {
+    flex-grow: 1;
+}
+
+.proto9 .wf .result {
+    background-color: royalblue;
+    color: red;
+
+}
+
+.proto9 .container:hover {
+    outline: 1px solid #000;
+}
+
+
+.proto9 .container-body {
+    display: flex;
+    flex: 0 1 auto;
+}
+
+
+.proto9 .container {
+    display: flex;
+    flex: 1 1 auto;
+
+}
+
+.proto9 .container > .container {
+    outline: 1px solid crimson;
+
+}
+
+.proto9 .container .container > .container-body {
+    flex-direction: column;
+    justify-content: space-around;
+    align-self: stretch;
+}
+
+.proto9 .container > .container > .wf {
+
+}
+
+
+.proto10 .example {
+    outline: 1px solid rgba(0,0,0,.1333);
+
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+
+    width: 100%;
+}
+
+.proto10 .row {
+    width: 100%;
+    display: flex;
+    flex: 0 1 auto;
+
+    padding: 0.1rem 0;
+}
+
+.proto10 .row .gutter {
+    width: 2rem;
+    flex-shrink: 1;
+    margin-right: .5rem;
+    margin-left: .1rem  ;
+
+
+    font-family: Monaco, "Courier New", "DejaVu Sans Mono", "Bitstream Vera Sans Mono", monospace;
+    font-size: smaller;
+    font-weight: bold;
+    color: darkslategray;
+
+
+    /*display: flex;*/
+    /*flex: 0 1 auto;*/
+    /*align-items: center;*/
+
+    border-right: 1px solid royalblue;
+}
+
+.proto10 .row:hover {
+    background-color: rgba(0,0,0,.01333);
+}
+
+.proto10 .nfo {
+
+    font-size: smaller;
+}
+
+.proto10 .status {
+    margin-left: .33rem;
+}
+
+pre {
+    font-family: "DejaVu Sans Mono";
+    font-size: 7pt;
+    line-height: 1.2;
+}
+
+.row > .in {
+
+}
+
+.row > .in label {
+    padding-right: .5rem;
+}
+
+
+.debug {
+    outline: 1px solid rgba(0,0,0,0.0555);
+    padding: .333rem;
+}
+
+
+
+.wf-description td {
+    border: 1px solid black;
+    border-collapse: collapse;
+
+
+    vertical-align: top;
+}
+
+
+
+
+
+/* old ui stuff */
+
+.context-ui {
+    margin-right: 1rem;
+}
+
+.tip {
+    opacity: 0.66667;
+    margin: .5rem 0;
+    font-size: smaller;
+}
+
+.tag {
+    border-radius: 3px;
+    padding: 3px 5px;
+    margin-right: .5rem;
+
+    font-weight: 900;
+}
+
+.tag.done {
+    background-color: aquamarine;
+    color: #000;
+}
+
+.tag.pending {
+    background-color: peachpuff;
+    color: #000;
+}
+
+.tag.error {
+    background-color: orangered;
+    color: #fff;
+}
+
+
+.hbox {
+    display: flex;
+}
+
+
+.menubar {
+    box-sizing: content-box;
+
+    display: inline-flex;
+    align-content: flex-end;
+    align-items: baseline;
+
+}
+
+.menubar .menu-item {
+    font-weight: 100;
+
+    padding: .1rem .33rem 0 .33rem;
+
+    color: rgb(220,20,60);
+    text-decoration: none;
+    border: 1px solid crimson;
+    margin-left: .5rem;
+
+}
+
+.menubar .menu-item:hover,
+.menubar .menu-item.selected {
+    color: #fff;
+    background-color: rgba(255,128,128,.75);
+}
+
+.menubar > .header {
+    font-weight: bolder;
+}
+
+.menubar .separator {
+    width: 1rem;
+}
+
+.edn.data {
+    border-bottom: 1px solid red;
+    display: inline-flex;
+}
+
+.edn.data.edit {
+    border-bottom: 1px solid rgba(255,0,0,.13333);
+}
+
+
+
+
+
+
+
+
+
+.steps {
+    display: flex;
+    flex-flow: column;
+}
+
+#app .steps {
+    margin-top: 1rem;
+
+}
+
+.steps .step-ui {
+    box-sizing: content-box;
+    display: flex;
+    flex-direction: column;
+
+    padding: .2rem;
+
+    border-bottom: 1px dotted rgba(0,0,0,.133);
+}
+
+.steps .step-ui:hover {
+    border-bottom: 1px dotted rgba(0,0,0,.433);
+
+    background-color: rgba(0,255,255,.08111)
+}
+
+
+.step-ui > .step {
+    display: flex;
+
+    align-self: baseline;
+}
+
+.step-ui > .step > .result {
+    min-width: 200px;
+    margin-right: 1.5rem;
+}
+
+
+.step-ui > .step .info {
+    min-width: 350px;
+}
+
+
+.step-ui > .step .k {
+    min-width: 100px;
+    margin-right: .5rem;
+    opacity: .5;
+}
+
+.step-ui > .step .action {
+
+}
+
+
+.step-ui > .editor header,
+.step-ui > .preview header {
+    display: inline-flex;
+    font-weight: bolder;
+}
+
+.step-ui > .editor header {
+    margin-right: .5rem;
+    margin-bottom: .5rem;
+}
+
+
+
+.step-ui.edit,
+.step-ui.prev
+{
+
+    margin-top: 1.5rem;
+    padding-bottom: 1.5rem;
+}
+
+
+.step-ui > .preview {
+    background-color: rgba(133,127,127,.07333);
+    margin-bottom: .5rem;
+
+    min-height: 10rem;
+    padding: .5rem;
+}
+
+.preview > .preview-content {
+
+    margin: 1rem;
+
+}
+
+
+.step-ui > .dbg-k {
+    color: gray;
+    font-size: smaller;
+}
+
+
+
+
+.wfui .main-menu {
+    margin-top: 1rem;
+}
+
+
+
+.context-ui {
+    background-color: rgba(200,0,0,.03333);
+}
+
+.steps-map-ui {
+    background-color: rgba(0,200,0,.03333);
+}
+
+.context-ui,
+.steps-map-ui {
+    padding: .75rem;
+
+}
+
+.context-ui .edn.data {
+    min-width: 15rem;
+    background-color: rgba(133,127,127,.07333);
+    margin: .75rem 0rem .75rem 1rem;
+}
+
+.context-ui .edn.result {
+    display: inline-block;
+    min-width: 7rem;
+    outline: 1px solid rgba(133,127,127,.1333);
+}
+
+
+.flex {
+
+    margin-top: 1rem;
+
+    display: flex;
+
+    justify-content: flex-start;
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: center;
+
+
+
+}
+
+.flex > div {
+    /*   outline: 1px solid crimson; */
+
+    width: auto;
+    flex: 1;
+
+    margin-right: 1.5rem;
+
+    min-height: 30vh;
+}
+
+.flex > div > header {
+
+    width: 100%;
+    font-weight: bolder;
+    margin-bottom: 1rem;
+}
+
+
+.popup textarea {
+    display: flex;
+    width: 100%;
+    font-size: .8rem;
+    line-height: 1rem;
+
+    min-height: 50vh;
+}
+
+
+.files {
+    background-color: rgba(222,255,111,0.1);
+}
+
+.files > * {
+    padding: .5rem;
+}
+
+.files header {
+    border-bottom: 1px solid black;
+}
+
+.files .folder {
+    font-weight: bold;
+}
+
+.files .folder > a:hover {
+    background-color: rgba(0,0,100,.3);
+
+
+}
+
+.files .file {
+    opacity: 0.9;
+}
+
+
+
+/* visualizing client server communication */
+
+.communication {
+    width: 100%;
+    margin: .5rem;
+}
+
+.communication > div {
+    /*   width: 100%; */
+    margin-right: 1rem;
+}
+
+.communication header {
+    font-weight: bolder;
+}
+
+.communication .log {
+    overflow-x: scroll;
+}
+
+.communication .hbox > div {
+    /*   outline: 1px solid red; */
+    margin-bottom: .5rem;
+
+}
+
+.communication .hbox > div:nth-of-type(1)
+{
+    width: 75%;
+    text-align: right;
+    flex-grow: 5;
+}
+
+.communication .hbox > div:nth-of-type(2)
+{
+    /*   width: 20%; */
+    text-align: center;
+    flex-shrink: 1;
+    width: 100px;
+}
+
+
+.communication .hbox > div:nth-of-type(3) {
+    width: 75%;
+    flex-grow: 5;
+}
+
+
+/* end old ui stuff */
+
+/* woof header */
+
+.woof-header > img {
+    cursor: pointer;
+}
+
+.woof-header > img:hover {
+    filter: sepia(1) hue-rotate(-70deg) saturate(5) contrast(5);
+}
+
+.woof-header > .woof-menu {
+    margin-top: 1.3333rem;
+
+}
+
+.woof-header > .woof-menu > code {
+    margin: 1rem;
+}
+
+
+.woof-header  .menubar {
+    align-items: flex-end;
+    display: flex;
+    flex: 0 1 auto;
+    margin-top: 1rem;
+}
+
+.woof-header > .menubar .menu-item {
+    /*display: block;*/
+}
+
+.woof-header > .menubar .menu-item + .menu-item {
+    margin-top: .333rem;
+}
+
+
+/* folder preview wf */
+
+.page-tree {
+    outline: 1px solid cadetblue;
+}
+
+.page-item {
+    margin-left: 1rem;
+
+    margin-bottom: 0.5rem;
+}
+
+.page-item > header,
+.page-tree > header
+{
+    border-bottom: 1px solid darkslategray;
+    background-color: rgba(0,0,0,.123);
+
+    padding-top: .25rem;
+    margin-bottom: .25rem;
+
+}
+
+.page-tree > .t-folder {
+    color: red;
+}
+
+.page-tree .page-tree {
+
+    margin-left: 1rem;
+}
+
+.t-gallery {
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+}
+
+.t-gallery > header {
+    width: 100%;
+    flex-flow: row wrap;
+}
+
+.t-gallery > .t-img {
+    outline: 1px solid rgba(0,0,0,0.33333);
+    width: 25vw;
+}
+

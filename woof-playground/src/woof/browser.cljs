@@ -2,7 +2,9 @@
   woof.browser
   (:require
     [woof.base :as base]
-    [woof.client.browser.scraper :as scraper]
+    ;[woof.client.browser.scraper :as scraper]
+    [woof.client.browser.dom :as dom]
+    [woof.client.browser.scraper2 :as scraper2]
     ))
 
 
@@ -23,10 +25,10 @@
 ;; configure your browser wf here
 ;;
 
-(def init-fns   [scraper/scraper-init])
-(def ctx-fns    [scraper/common-ctx scraper/scraper-ctx scraper/ws-ctx-fn])
-(def steps-fns  [scraper/scraper-steps])
-(def opt-fns    [scraper/common-opt])
+(def init-fns   [])  ;; [scraper/scraper-init]
+(def ctx-fns    [dom/dom-ctx scraper2/ctx-fn])  ;; [dom/dom-ctx scraper/common-ctx scraper/scraper-ctx scraper/ws-ctx-fn]
+(def steps-fns  [scraper2/steps-fn])  ;; [scraper/scraper-steps]
+(def opt-fns    [scraper2/opt-fn])  ;; [scraper/common-opt]
 
 
 (defn ^:export run_workflow []
@@ -49,7 +51,7 @@
 ;; for now - auto-run wf, if we are not in the playground
 (when-not (goog.object/get js/window "PLAYGROUND")
 
-  (.clear js/console)
+  ; (.clear js/console)
   (run_workflow)
 
   )

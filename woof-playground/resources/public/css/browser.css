@@ -1,0 +1,47 @@
+
+/* browser playground styles */
+
+body {
+
+    font-size: 8pt;
+}
+
+svg {
+    display: none;
+}
+
+
+#root > div > div > main {
+
+    outline: 5px solid crimson;
+}
+
+
+#root > div > div > main > section > article {
+
+    outline: 5px solid blue;
+
+}
+
+#root > div > div > main > section > article > div {
+    display: flex;
+
+    background: beige;
+}
+
+
+
+#root > div > div > main > section > article > div > * {
+
+    outline: 1px solid blue;
+}
+
+#root > div > div > main > section > article > div > div:first-child {
+    /*background: red;*/
+
+    width: 200px;
+}
+
+#root > div > div > main > section > article > div > div:last-child {
+    /*background: blue;*/
+}

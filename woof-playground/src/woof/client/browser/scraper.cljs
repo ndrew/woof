@@ -213,8 +213,6 @@
 
 (defn common-ctx [params]
   {
-   :identity {:fn identity }
-
    :log {:fn (fn[v]
                ;(prn v)
                (.log js/console v)
@@ -258,21 +256,9 @@
 (defn scraper-ctx [params]
   {
 
-   ;; gets html elements
-   :query-selector-all {
-                        :fn (fn [selector]
-                              (array-seq (.querySelectorAll (.-body js/document) selector)))
-                        }
-
    ;; splits elements to a separate step
    :expand*            (base/expand-into :identity)
 
-   :collect            {
-                        :fn       (fn [xs]
-                                    ; (.warn js/console xs)
-                                    xs)
-                        :collect? true
-                        }
 
    ;; splits sid-list into
    :process*           (base/expand-into :process)
@@ -289,36 +275,6 @@
 
                               "ok"
                               )
-                        }
-   :add-listing-css    {
-                        :fn (fn [rule]
-                              (let [style-el (.createElement js/document "style")]
-
-                                   (.appendChild (.-head js/document) style-el)
-
-                                   (let [sheet (.-sheet style-el)]
-                                     (.insertRule sheet rule)
-                                     )
-                                   )
-                              true
-                              )
-
-                        }
-
-
-   :mem-k*             {
-                        :fn       (fn [o]
-                                    {(base/rand-sid "mem-k-") [:identity {:k o}]})
-                        :expands? true
-                        }
-
-   ;; kv zipping - joins keys with values
-   :*kv-zip            {
-                        :fn       (fn [[[k] vs]]
-                                    (let [ks (:k k)]
-                                         (apply assoc {} (interleave ks vs))
-                                         ))
-                        :collect? true
                         }
 
 
@@ -461,10 +417,10 @@
    ::RESULT [:collect ::processed-elements]
 
    ;;
-   ;   ::css-1 [:add-listing-css ".objava { background: #fff; }" ]
-   ::css-1 [:add-listing-css ".woof-custom-listing-ui { font-family: 'DejaVu Sans Mono'; font-size: 7pt; }" ]
-   ::css-2 [:add-listing-css ".woof-listing-hide { opacity: 0.25;}" ]
-   ::css-3 [:add-listing-css ".woof-listing-show { outline: 3px solid crimson;  }" ]
+   ;   ::css-1 [:css-rule ".objava { background: #fff; }" ]
+   ::css-1 [:css-rule ".woof-custom-listing-ui { font-family: 'DejaVu Sans Mono'; font-size: 7pt; }" ]
+   ::css-2 [:css-rule ".woof-listing-hide { opacity: 0.25;}" ]
+   ::css-3 [:css-rule ".woof-listing-show { outline: 3px solid crimson;  }" ]
 
 
 
