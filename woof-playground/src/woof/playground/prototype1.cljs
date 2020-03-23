@@ -10,7 +10,7 @@
     [woof.utils :as utils]
 
     [woof.playground.common :as cmn]
-    [woof.playground.state :as state]
+    [woof.client.stateful :as state]
 
     [woof.playground.v1.ui :as ui]
     [woof.playground.v1.utils :as v1u :refer [dstr kstr vstr]]
@@ -403,7 +403,7 @@
 
          ;; actions should go separately
          init-swf! (fn []
-                    (let [initial-wf (state/state-wf "test!")
+                    (let [initial-wf (empty-swf "test!")
 
                           ;updated-wf {
                           ;            :ctx-fns   [test-wf/swf-ctx-fn]

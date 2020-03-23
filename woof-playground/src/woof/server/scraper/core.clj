@@ -1,4 +1,4 @@
-(ns woof.server.scraper
+(ns woof.server.scraper.core
   "woof scraper server"
   (:require
     [clojure.core.async :as async :refer [go go-loop]]

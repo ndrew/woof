@@ -16,7 +16,7 @@
     ; logging
     [taoensso.timbre :as timbre]
 
-    [woof.server.cc :as cc]
+    [woof.server.blog.cc :as cc]
 
     [woof.server.log :refer [init-logging!]]
     [woof.server.transport :as tr]
@@ -72,6 +72,7 @@
   ;; cc websocket api
   ;; todo: wait for the wf
   (compojure/GET "/cc" [:as req] ((:response-handler @*cc-wf) req))
+
   (compojure/GET "/reload-cc" [:as req] (do
                                           (reset! *cc-wf (cc/cc-wf!)
                                           )

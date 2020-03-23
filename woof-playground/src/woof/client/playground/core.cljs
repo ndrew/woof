@@ -22,7 +22,7 @@
     [woof.client.playground.wf.post :as post-wf]
     [woof.client.playground.wf.preview :as preview-wf]
 
-    [woof.playground.state :as state]
+    [woof.client.stateful :as state]
 
     [woof.client.ws :as ws]
 

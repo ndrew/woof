@@ -1,21 +1,6 @@
 (ns woof.server.log
   "woof client/server communication endpoint."
   (:require
-
-    [clojure.core.async :as async :refer [go go-loop]]
-
-    [woof.data :as d]
-    [woof.server.cc :as cc]
-
-    ; [woof.wf :as wf]
-    ; [woof.wf-data :as wdata]
-    ; [woof.test-data :as test-data]
-
-    ; [woof.server.utils :refer [read-transit-str write-transit-str]]
-    ; [woof.example.files :as files-wf]
-
-    [woof.utils :as u]
-
     ; logging
     [clojure.java.io :as io]
     [taoensso.timbre :as timbre]

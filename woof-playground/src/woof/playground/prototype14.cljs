@@ -20,7 +20,7 @@
 
     [clojure.data :as cd]
 
-    [woof.playground.state :as state]
+    [woof.client.stateful :as state]
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))

@@ -1,4 +1,4 @@
-(ns woof.server.cc
+(ns woof.server.blog.cc
   "woof command center"
   (:require
     [clojure.core.async :as async :refer [go go-loop]]

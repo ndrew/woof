@@ -19,7 +19,7 @@
 
     [woof.base :as base]
     [woof.data :as d]
-    [woof.server.cc :as cc]
+    [woof.server.blog.cc :as cc]
     [woof.utils :as u]
 
     ; [woof.wf :as wf]
