@@ -1,16 +1,11 @@
-(ns woof.v2.wf.local-storage
+(ns woof.client.browser.local-storage
   (:require
     [cljs.core.async :as async]
 
-    [woof.base :as base]
-    [woof.data :as d]
-    [woof.playground.common :as cmn]
-    [woof.utils :as utils]
-
-    [woof.v2.wf.stateful :as st-wf]
-
     [woof.utils :as u]
     [woof.wf :as wf]
+    [woof.client.stateful :as st-wf]
+
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -24,8 +19,7 @@
 
 (defn ls-init-fn [params]
   (let [watch-map* (atom {})
-        POOL-INTERVAL 1000
-        ]
+        POOL-INTERVAL 1000]
     {::watcher-id (js/setInterval (fn[]
                                     (let [watchers @watch-map*]
                                       (doseq [[k [v ch]] watchers]
@@ -59,7 +53,7 @@
                               (swap! (&ls-watcher-map params) assoc k [@current-v watcher-chan])
                               (if-not (nil? @current-v)
                                 (go
-                                  ;; todo: will this always work?
+                                  ;; todo: will this timeout be enough?
                                   (async/<! (u/timeout 1))
                                   (async/>! watcher-chan @current-v))
                                 )

@@ -17,8 +17,52 @@
     ))
 
 
+(defn add-script [src on-load-fn]
+  "dynamically adds script to the body"
+
+  (let [el (dom/createElement "script")]
+    (set! (.-type el) "text/javascript")
+    (set! (.-src el) src)
+    (set! (.-onload el) on-load-fn)
+
+    (dom/appendChild (.-body js/document) el)))
+
+
+(defn add-stylesheet [src]
+
+  (let [el (dom/createElement "link")]
+    (set! (.-href el) src)
+    (set! (.-rel el) "stylesheet")
+    (set! (.-type el) "text/css")
+
+    (set! (.-onload el) (fn []
+                          (js-debugger)
+                          ))
+
+
+    (dom/appendChild (.-head js/document) el)
+
+    )
+  )
+
+
+
 (defn dom-ctx [params]
   {
+
+   :add-script {
+                :fn (fn [src]
+                      (let [chan-factory (base/&chan-factory params)
+                            ch (base/make-chan chan-factory (base/rand-sid))]
+
+                           (add-script src (fn []
+                                             (async/put! ch {:loaded src})
+                                             ))
+
+                           ch
+                           )
+                      )
+                }
 
    ;; gets html elements
    :query-selector-all {

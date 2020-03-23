@@ -14,15 +14,16 @@
 
 
     ;; alpha workflow
-    [woof.v2.wf.stateful :as st-wf]
+    [woof.client.stateful :as st-wf]
+
     ;; example of frontend ui
     [woof.alpha.wf.test :as test-wf]
     [woof.alpha.wf.page :as page-wf]
     [woof.alpha.wf.listing :as listing-wf]
+    [woof.alpha.wf.post :as post-wf]
+    [woof.alpha.wf.preview :as preview-wf]
 
     [woof.playground.state :as state]
-
-    [woof.base :as base]
 
     [woof.client.ws :as ws]
 
@@ -79,6 +80,9 @@
    :wf-page            (init-alpha-wf! "file preview" page-wf/initialize!)
 
    :wf-listings        (init-alpha-wf! "listings" listing-wf/initialize!)
+
+   :wf-local-storage-post (init-alpha-wf! "local storage: post" post-wf/init-post-wf! )
+   :wf-local-storage-preview (init-alpha-wf! "local storage: preview" preview-wf/init-preview-wf!)
    }
   )
 

@@ -1,4 +1,4 @@
-(ns woof.prototype.preview
+(ns blog.preview
   "example of the the dynamic preview"
   (:require
 

@@ -3,16 +3,14 @@
     [rum.core :as rum]
 
     ;; v2 deps
-    [woof.v2.wf.stateful :as st-wf]
-    [woof.playground.state :as state]
-
-    [woof.alpha.ui.wf :as wf-ui]
+    [woof.client.stateful :as st-wf]
 
     [woof.playground.v1.ui :as ui]
     [woof.data :as d]
     [woof.wf :as wf]
     [cljs.core.async :as async]
-    [woof.utils :as u])
+    [woof.utils :as u]
+    )
   (:import [goog.net.XhrIo ResponseType])
 
   (:require-macros
@@ -67,7 +65,7 @@
                    ::intro-1 [:intro "Example of the simplest WF possible"]
                    ::intro-2 [:intro ""]
 
-                   ::wait [:wait 30000]
+                   ::wait [:wait 2000]
                    })
 
                 ]
@@ -83,6 +81,7 @@
 :intro - displays a test message
 :wait - waits for some time
 "]
+
 [:pre "steps:\n
   ::intro-1 [:intro \"Example of the simplest WF possible\"]
   ::intro-2 [:intro \"\"]
@@ -133,39 +132,35 @@
 
 
 (defn initialize-test-wf! []
-  ;; should these be passed to here?
-  (let [CFG (st-wf/channel-map)]
-    {
+  {
 
-     :init-fns  [init-evt-loop
+   :init-fns  [init-evt-loop
+               st-wf/chan-factory-init-fn
+               ]
 
-                 (partial st-wf/chan-factory-init-fn_ (st-wf/&channel-map CFG))
-                 ]
+   :ctx-fns   [ctx-evt-fn
 
-     :ctx-fns   [ctx-evt-fn
+               (fn [params]
+                 {
+                  :test {:fn (fn [v] v)}
 
-                 (fn [params]
-                   {
-                    :test {:fn (fn [v] v)}
+                  }
+                 )]
 
-                    }
-                   )]
+   :steps-fns [steps-evt-fn
 
-     :steps-fns [steps-evt-fn
+               (fn [params]
+                 {
+                  ::YO [:test "YO"]
+                  })
 
-                 (fn [params]
-                   {
-                    ::YO [:test "YO"]
-                    })
+               ]
 
-                 ]
+   :opt-fns   [;; ls/ls-opts-fn
+               st-wf/chan-factory-opts-fn
+               ]
 
-     :opt-fns   [;; ls/ls-opts-fn
-                 st-wf/chan-factory-opts]
-
-     }
-    )
-  ;;
+   }
   )
 
 

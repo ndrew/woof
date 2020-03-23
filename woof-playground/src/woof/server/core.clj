@@ -22,7 +22,7 @@
     [woof.server.transport :as tr]
 
     ;; prototypes
-    [woof.prototype.preview :as preview]
+    ;[blog.preview :as preview]
     )
   (:gen-class))
 

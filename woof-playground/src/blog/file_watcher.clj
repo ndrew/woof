@@ -1,4 +1,4 @@
-(ns woof.prototype.prototype1
+(ns blog.file-watcher
   (:require
     ; fs
     [clojure-watch.core :refer [start-watch]]

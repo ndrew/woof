@@ -238,7 +238,7 @@
                   ]
         opt-fns [
                  (base/build-opt-state-fn *STATE)
-                 (base/build-chan-factory-opts CHAN-FACTORY)
+                 (base/build-opts-chan-factory-fn CHAN-FACTORY)
                  error-handling-opts
                  (base/build-opt-on-done (fn [_]
                                              (info ::shutdown-server)

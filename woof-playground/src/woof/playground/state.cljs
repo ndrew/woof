@@ -1,7 +1,6 @@
 (ns woof.playground.state
   "woof state mgmt"
   (:require
-    [cljs.pprint :as cljs-pprint]
     [cljs.reader]
     [rum.core :as rum]
 

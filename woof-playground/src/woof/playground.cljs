@@ -7,7 +7,6 @@
     ;; testing alpha
     [woof.alpha.playground :as playground]
 
-    [woof.lib :as lib]
     ))
 
 
@@ -20,13 +19,7 @@
 (rum/defcs <app-ui>
   < rum/reactive [local <ui>]
 
-  [:div#app
-   (<ui>)
-
-   ;; test that woof lib is working
-   ; [:hr]
-   ; (lib/foo)
-   ]
+  [:div#app (<ui>)]
 )
 
 
@@ -51,7 +44,6 @@
       (mount-app)
       ) ;; re-mount app on js reload
     )
-
   )
 
 
