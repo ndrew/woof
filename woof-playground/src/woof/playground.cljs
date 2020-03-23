@@ -5,8 +5,7 @@
     [rum.core :as rum]
 
     ;; testing alpha
-    [woof.alpha.playground :as playground]
-
+    [woof.client.playground.core :as playground]
     ))
 
 

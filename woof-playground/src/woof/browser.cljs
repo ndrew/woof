@@ -2,8 +2,8 @@
   woof.browser
   (:require
     [woof.base :as base]
+    [woof.client.dom :as dom]
     ;[woof.client.browser.scraper :as scraper]
-    [woof.client.browser.dom :as dom]
     [woof.client.browser.scraper2 :as scraper2]
     ))
 

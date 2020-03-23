@@ -5,7 +5,7 @@
     [clojure.core.async :as async :refer [go go-loop]]
 
     [woof.data :as d]
-    [woof.cc :as cc]
+    [woof.server.cc :as cc]
 
     ; [woof.wf :as wf]
     ; [woof.wf-data :as wdata]

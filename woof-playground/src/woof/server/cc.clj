@@ -1,4 +1,4 @@
-(ns woof.cc
+(ns woof.server.cc
   "woof command center"
   (:require
     [clojure.core.async :as async :refer [go go-loop]]
@@ -31,6 +31,7 @@
 
 
 ;; helpers for accessing state
+;; TODO: migrate to channel factory
 
 (defn get-chan [id]
   (get-in @STATE [:channels id]))
@@ -50,7 +51,7 @@
 
 ;; CC wf
 
-;;
+;; TODO: migrate to new way of launching workflows -
 (defn init-and-run-cc-wf!
   [& {:keys [init-fn
              opts-fn ctx-fn steps-fn

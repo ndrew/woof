@@ -16,7 +16,7 @@
     ; logging
     [taoensso.timbre :as timbre]
 
-    [woof.cc :as cc]
+    [woof.server.cc :as cc]
 
     [woof.server.log :refer [init-logging!]]
     [woof.server.transport :as tr]

@@ -1,16 +1,16 @@
-(ns ^:figwheel-hooks woof.alpha.wf.page
+(ns ^:figwheel-hooks woof.client.playground.wf.page
   (:require
+    [cljs.core.async :as async]
     [rum.core :as rum]
 
     ;; v2 deps
     [woof.client.stateful :as st-wf]
-
-    [woof.alpha.ui.wf :as wf-ui]
+    [woof.client.playground.ui.wf :as wf-ui]
 
     [woof.data :as d]
+    [woof.utils :as u]
     [woof.wf :as wf]
-    [cljs.core.async :as async]
-    [woof.utils :as u])
+    )
   (:import [goog.net.XhrIo ResponseType])
 
   (:require-macros

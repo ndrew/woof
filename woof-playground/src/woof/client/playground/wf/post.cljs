@@ -1,4 +1,4 @@
-(ns woof.alpha.wf.post
+(ns woof.client.playground.wf.post
   (:require
     [cljs.core.async :as async]
 
@@ -8,7 +8,7 @@
 
     [woof.playground.v1.ui :as ui]
     [woof.client.stateful :as st-wf]
-    [woof.client.browser.local-storage :as ls]
+    [woof.client.local-storage :as ls]
 
     [woof.utils :as u]
     [woof.wf :as wf]

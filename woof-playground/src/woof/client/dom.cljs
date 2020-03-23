@@ -1,5 +1,5 @@
 (ns ^:figwheel-hooks ^:figwheel-always
-  woof.client.browser.dom
+  woof.client.dom
   (:require
     [goog.object]
     [goog.dom :as dom]
@@ -36,7 +36,8 @@
     (set! (.-type el) "text/css")
 
     (set! (.-onload el) (fn []
-                          (js-debugger)
+                          ; todo: check
+                          ;(js-debugger)
                           ))
 
 

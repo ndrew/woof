@@ -1,4 +1,4 @@
-(ns woof.alpha.wf.ping
+(ns woof.server.playground.wf.ping
   "simplest workflow example"
   (:require
     [clojure.core.async :as async :refer [go go-loop]]

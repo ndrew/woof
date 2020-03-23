@@ -1,4 +1,4 @@
-(ns woof.client.browser.local-storage
+(ns woof.client.local-storage
   (:require
     [cljs.core.async :as async]
 

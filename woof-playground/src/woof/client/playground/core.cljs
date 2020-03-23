@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.alpha.playground
+(ns ^:figwheel-hooks woof.client.playground.core
   (:require
 
     [cljs.core.async :as async]
@@ -8,20 +8,19 @@
     [woof.playground.common :as cmn]
     [woof.playground.v1.ui :as ui]
 
-    ;; alpha ui
-    [woof.alpha.ui.internal :as internal]
-    [woof.alpha.ui.wf :as wf-ui]
 
 
     ;; alpha workflow
     [woof.client.stateful :as st-wf]
-
     ;; example of frontend ui
-    [woof.alpha.wf.test :as test-wf]
-    [woof.alpha.wf.page :as page-wf]
-    [woof.alpha.wf.listing :as listing-wf]
-    [woof.alpha.wf.post :as post-wf]
-    [woof.alpha.wf.preview :as preview-wf]
+    [woof.client.playground.ui.internal :as internal]
+    [woof.client.playground.ui.wf :as wf-ui]
+
+    [woof.client.playground.wf.simple :as test-wf]
+    [woof.client.playground.wf.page :as page-wf]
+    [woof.client.playground.wf.listing :as listing-wf]
+    [woof.client.playground.wf.post :as post-wf]
+    [woof.client.playground.wf.preview :as preview-wf]
 
     [woof.playground.state :as state]
 
@@ -174,7 +173,7 @@
         global-actions (get-in WF-TREE [::global-actions] [])
         ]
 
-    (ui/menubar (if-not (seq menu-items) "W O O F _ A L P H A — go configure some workflows ! ! !" "W O O F _ A L P H A")
+    (ui/menubar (if-not (seq menu-items) "W O O F — go configure some workflows ! ! !" "W O O F")
                 (concat
                   menu-items
                   (global-menu-items global-actions) ;; just add some actions to add new workflow

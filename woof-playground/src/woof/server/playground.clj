@@ -1,4 +1,4 @@
-(ns woof.alpha.server
+(ns woof.server.playground
   "woof alpha backend"
   (:require
 
@@ -11,7 +11,7 @@
     [clojure.core.async :as async :refer [go go-loop]]
 
     ;; woof
-    [woof.alpha.wf.ping :as ping]
+    [woof.server.playground.wf.ping :as ping]
     )
   (:gen-class))
 

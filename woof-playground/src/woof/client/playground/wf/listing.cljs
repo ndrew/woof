@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.alpha.wf.listing
+(ns ^:figwheel-hooks woof.client.playground.wf.listing
   (:require
     [cljs.core.async :as async]
     [cljs.reader]
@@ -7,10 +7,11 @@
 
     [rum.core :as rum]
 
-    [woof.alpha.ui.wf :as wf-ui]
+    [woof.client.stateful :as st-wf]
+    [woof.client.playground.ui.wf :as wf-ui]
+
     [woof.base :as base]
     [woof.utils :as u]
-    [woof.client.stateful :as st-wf]
     [woof.wf :as wf]
     )
   (:import [goog.net.XhrIo ResponseType])

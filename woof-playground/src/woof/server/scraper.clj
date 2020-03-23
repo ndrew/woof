@@ -20,6 +20,8 @@
     [woof.utils :as u]
     [woof.server.transport :as tr]))
 
+;; browser workflow
+
 ;; scraping server is needed for storing scraped data on the filesystem.
 ;; currently saving will be done via websockets
 

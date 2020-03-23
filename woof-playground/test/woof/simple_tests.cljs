@@ -640,6 +640,8 @@
 ;; test runner based on async
 
 
+;; fixme add test for stateful wf
+
 #_(deftest alpha_wf_test__1
 
   (testing "stateful representation of the wf"

@@ -1,5 +1,4 @@
-(ns ^:figwheel-hooks woof.alpha.ui.wf
-
+(ns ^:figwheel-hooks woof.client.playground.ui.wf
   (:require
     [rum.core :as rum]
 

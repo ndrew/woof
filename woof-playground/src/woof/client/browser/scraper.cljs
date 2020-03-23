@@ -12,7 +12,6 @@
 
     [woof.base :as base]
     [woof.data :as d]
-    [woof.utils :as u]
 
     [woof.client.ws :as ws]
     ))
