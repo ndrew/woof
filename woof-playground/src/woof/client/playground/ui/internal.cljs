@@ -19,6 +19,19 @@
                   )))
 
 
+(rum/defc <checkbox> < rum/static
+  [change-fn v & {:keys [attrs] :or {attrs {}}}]
+  [:input (merge attrs
+                 {:type      "checkbox"
+                  :checked   v
+                  :on-change (fn [e]
+                               (change-fn (not v)))
+
+                  })
+   ]
+  )
+
+
 (rum/defc <menu> < rum/reactive
   [*SETTINGS]
 
@@ -29,20 +42,37 @@
                   :float "right"}
           :on-click (fn [e] (swap! *SETTINGS update-in [:show-menu?] not))
           }]
-   (when (:show-menu? @*SETTINGS)
-     [:div.woof-menu
-      [:code "last ping: " (pr-str (:ping @*SETTINGS))]
-      (ui/menubar ""
-                  [["ping" (fn []
-                             (GET "/ping" (fn [response]
-                                            ;; todo: parse ping properly
-                                            (swap! *SETTINGS assoc :ping response)))
-                             )]
-                   #_["boo" (fn []
+   (let [settings @*SETTINGS
+         {show-menu? :show-menu?
+          last-ping :ping
+          stop-wf-on-reload? :stop-wf-on-reload?} settings
+         ]
+     (when show-menu?
+       [:div.woof-menu
 
-                            )]
-                   ])
-      ]
+        [:div
+         "stop wf on reload"
+         (<checkbox> (fn [v]
+                       (swap! *SETTINGS assoc :stop-wf-on-reload? v))
+
+                     stop-wf-on-reload?)
+         ]
+
+        ; [:pre (pr-str @*SETTINGS)]
+        [:div "last ping: " (pr-str last-ping)]
+        (ui/menubar ""
+                    [["ping" (fn []
+                               (GET "/ping" (fn [response]
+                                              ;; todo: parse ping properly
+                                              (swap! *SETTINGS assoc :ping response)))
+                               )]
+                     #_["boo" (fn []
+
+                                )]
+                     ])
+        ]
+       )
      )
+
    ])
 

@@ -4,6 +4,8 @@
     [cljs.core.async :as async]
     [rum.core :as rum]
 
+    [goog.log :as glog]
+
     ;; common workflow stuff and ui
     [woof.playground.common :as cmn]
     [woof.playground.v1.ui :as ui]
@@ -26,7 +28,8 @@
 
     [woof.client.ws :as ws]
 
-    [woof.utils :as u])
+    [woof.utils :as u]
+    [woof.base :as base])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -71,17 +74,20 @@
 ;; * internal - internal woof stuff
 
 (defn init-test-wfs []
+
+  ;; todo: is it needed to call init-alpha-wf! here?
+  ;; or it should be called if the button is pressed
   {
    ;; workflow w state (keywords that start with wf-...)
-   :wf-simplest-wf     (init-alpha-wf! "A" test-wf/simplest-wf-initializer)
-   :wf-dummy           (init-alpha-wf! "dummy" test-wf/dummy-wf-initializer)
+   :wf-simplest-wf     (init-alpha-wf! :wf-simplest-wf test-wf/simplest-wf-initializer)
+   :wf-dummy           (init-alpha-wf! :wf-dummy test-wf/dummy-wf-initializer)
 
-   :wf-page            (init-alpha-wf! "file preview" page-wf/initialize!)
+   :wf-page            (init-alpha-wf! :wf-page page-wf/initialize!)
 
-   :wf-listings        (init-alpha-wf! "listings" listing-wf/initialize!)
+   :wf-listings        (init-alpha-wf! :wf-listings listing-wf/initialize!)
 
-   :wf-local-storage-post (init-alpha-wf! "local storage: post" post-wf/init-post-wf! )
-   :wf-local-storage-preview (init-alpha-wf! "local storage: preview" preview-wf/init-preview-wf!)
+   :wf-local-storage-post (init-alpha-wf! :wf-local-storage-post post-wf/init-post-wf!)
+   :wf-local-storage-preview (init-alpha-wf! :wf-local-storage-preview preview-wf/init-preview-wf!)
    }
   )
 
@@ -113,17 +119,20 @@
 (defonce *TREE (atom (merge
                        (init-test-wfs)
                        {
-                      ;; alpha
-
                       ;; internal
                       :internal           {
                                            :ping       0
                                            :show-menu? false
+
+                                           :stop-wf-on-reload? false
+
                                            }
                       ;; alpha ui stuff
                       ::current           []
 
-                      ::global-actions    [["global action" global-action]]
+                      ::global-actions    [
+                                           ["global action" global-action]
+                                           ]
 
                       ::global-wf-actions {
                                            :wf-dummy [["wf specific action" (fn [] (prn "I am a global action for wf-dummy"))]
@@ -163,7 +172,14 @@
         select-node! (fn [k]
                        (let [nu-tree (swap! *WF-TREE assoc-in [::current] (conj current-selector k))
                              *wf-state (rum/cursor-in *WF-TREE (::current nu-tree))]
-                            (==>workflow-selected *wf-state)))
+
+                            (==>workflow-selected *wf-state)
+
+                            ;; todo: maybe call init-alpha-wf! should be done here
+                            ;; (swap! *WF-TREE assoc k (init-alpha-wf! (str k) (get nu-tree k)))
+                            ;; (==>workflow-selected (rum/cursor-in *WF-TREE (::current nu-tree)))
+
+                            ))
 
         WF-TREE @*WF-TREE
 
@@ -180,10 +196,64 @@
                   ))))
 
 
-(defn back-to-project-selector [*TREE]
-  ;; TODO: if wf is running then prompt about ending
-  ;; (when (js/confirm "delete wf?") ...)
-  (swap! *TREE assoc-in [::current] []))
+(defn stop-current-wf! [tree curr new-curr]
+  (let [wf-running? (= :running (get-in tree (conj curr :status)))
+        ch (if wf-running?
+             (do
+               (prn "stopping the " (first curr))
+               (base/end! (get-in tree (concat curr [:runtime :xtor])))
+               )
+             (let [dummy-ch (async/chan)]
+               (async/put! dummy-ch "done")
+               dummy-ch)
+             )]
+
+    (go
+      (async/<! ch)
+      (let [updated-wfs (init-test-wfs)]
+        (swap! *TREE merge updated-wfs {::current []})
+
+        (when-not (empty? new-curr)
+          (prn "restarting " new-curr)
+          (==>workflow-selected (rum/cursor-in *TREE new-curr))
+          (swap! *TREE merge {::current new-curr})
+          )
+
+        )
+      )
+    ))
+
+(defn update-current-wf! [tree curr]
+
+  (let [[wf-id] curr
+        updated-wfs (init-test-wfs)
+        updated-wf (get-in updated-wfs curr)
+
+        other-wfs (dissoc updated-wfs wf-id)
+        ]
+    ;; update other workflows
+    (swap! *TREE merge other-wfs)
+
+    (let [*dummy-state (atom updated-wf)]
+      (==>workflow-selected *dummy-state)
+
+      (let [nu-wf-map @*dummy-state]
+        ;; what of wf map can be updated for running workflow
+        (prn "keeping the " wf-id "running")
+        (swap! *TREE update-in curr
+               merge (select-keys nu-wf-map [:ui-fn :actions :title :wf-actions]))
+
+        ;(.log js/console "PREV" (get-in tree curr))
+        ;(.log js/console "NU" nu-wf-map)
+        )
+      )
+    )
+  )
+
+
+(defn back-to-project-selector [*TREE current-selector]
+  (stop-current-wf! @*TREE current-selector [])
+  )
 
 
 (rum/defc <wf-ui> < rum/reactive [*TREE current-selector wf-actions]
@@ -191,7 +261,7 @@
     [:div
      (ui/menubar (pr-str current-selector)
                  (concat
-                   [["←" (partial back-to-project-selector *TREE)]]
+                   [["←" (partial back-to-project-selector *TREE current-selector)]]
                    (global-menu-items wf-actions)))
      [:hr]
 
@@ -225,44 +295,48 @@
 
 (def <app> #(<project-ui> *TREE))
 
-;; uncomment for wf reloading
 
-#_(when (goog.object/get js/window "PLAYGROUND")
+;;
+;; WORKFLOW RELOADING
+;;
+;; figwheel reloading doesn't propagate changes into already defined/running workflows.
+;;
+;; we can either stop the running wf, update the wf and restart it
+;; or try updating the parts of workflow that can be updated, like ui
+;;
+
+
+
+
+(when (goog.object/get js/window "PLAYGROUND")
+
+  ;; DISABLE FIGWHEEL LOGGING, for now
+
+  (let [logger (glog/getLogger "Figwheel")]
+    (.setLevel logger goog.debug.Logger.Level.WARNING))
+
+
 
   (defn ^:after-load on-js-reload [d]
-
-    (prn "FOR NOW: always RELOAD WFs:")
-    ; (.log js/console (:reloaded-namespaces d))
-
 
     (let [tree @*TREE
           curr (::current tree)]
 
-      (swap! *TREE merge (init-test-wfs) {::current []})
-
-      ; (.log js/console tree)
-
-      (if curr
-        (let [ch (if (= :running (get-in tree (conj curr :status)))
-                   (base/end! (get-in tree (concat curr [:runtime :xtor])))
-                   (let [dummy-ch (async/chan)]
-                     (async/put! dummy-ch "done")
-                     dummy-ch)
-                   )]
-
-          (go
-            (async/<! ch)
-
-
-
-            ;(prn "upd")
-            ;; mimic selection of the wf
-            (==>workflow-selected (rum/cursor-in *TREE curr))
-            (swap! *TREE merge {::current curr})
-            )
+      (if-let [curr-wf-id (first curr)]
+        (do
+          (prn "WF " curr-wf-id "is working - updating")
+          (if-not (:stop-wf-on-reload? @*INTERNAL)
+            (update-current-wf! tree curr)
+            ;; else
+            (stop-current-wf! tree curr curr)))
+        (do
+          (prn "NO WF is working - updating all workflows")
+          (swap! *TREE merge (init-test-wfs) {::current []})
           )
         )
       )
+
+
     )
   )
 

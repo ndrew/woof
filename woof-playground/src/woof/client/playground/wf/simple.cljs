@@ -10,7 +10,7 @@
     [woof.wf :as wf]
     [cljs.core.async :as async]
     [woof.utils :as u]
-    )
+    [woof.client.playground.ui.wf :as wf-ui])
   (:import [goog.net.XhrIo ResponseType])
 
   (:require-macros
@@ -33,65 +33,62 @@
 (defn simplest-wf-initializer [*SWF]
   {
 
-   :init-fns   [(fn [params]
-                  {:IN :some-wf-parameters}
-                  )
-                ]
+   :init-fns    [(fn [params]
+                   {:IN :some-wf-parameters})]
 
-   :ctx-fns    [(fn [params]
-                  {
-                   :intro  {:fn (fn [v]
+   :ctx-fns     [(fn [params]
+                   {
+                    :intro {:fn (fn [v]
                                   (prn "INTRO:" v)
                                   v)
-                           }
-                   :wait {
-                           :fn       (fn [t]
-                                       (let [ch (async/chan)]
+                            }
+                    :wait  {
+                            :fn (fn [t]
+                                  (let [ch (async/chan)]
 
-                                            (go
-                                              (async/<! (u/timeout t))
-                                              (async/put! ch "DONE")
-                                              )
+                                       (go
+                                         (async/<! (u/timeout t))
+                                         (async/put! ch "DONE")
+                                         )
 
-                                            ch
-                                            ))
+                                       ch))
+                            }
+                    }
+                   )]
 
-                           }
-                   }
-                  )]
+   :steps-fns   [(fn [params]
+                   {
+                    ::intro-1 [:intro "Example of the simplest WF possible"]
+                    ::intro-2 [:intro ""]
 
-   :steps-fns  [(fn [params]
-                  {
-                   ::intro-1 [:intro "Example of the simplest WF possible"]
-                   ::intro-2 [:intro ""]
+                    ::wait    [:wait 2000]
+                    })
 
-                   ::wait [:wait 2000]
-                   })
-
-                ]
-   :opt-fns    []
+                 ]
+   :opt-fns     []
 
 
    ;; ui specific keys, optional - TODO: make these namespaced
-   :title      "Finite WF with default UI"
+   :title       "Finite WF with default UI"
+
    :explanation [:div
 
-[:p {:style {:color "red"}} "This is a simplest workflow example. Finite!!!"]
-[:pre "ctx:\n
+                 [:p {:style {:color "red"}} "This is a simplest workflow example. Finite!!!"]
+                 [:pre "ctx:\n
 :intro - displays a test message
 :wait - waits for some time
 "]
 
-[:pre "steps:\n
+                 [:pre "steps:\n
   ::intro-1 [:intro \"Example of the simplest WF possible\"]
   ::intro-2 [:intro \"\"]
   ::wait [:wait 2000]"]
-]
-   :wf-actions {
-                :done [["custom action (on done) " (fn []
+                 ]
+   :wf-actions  {
+                 :done [["custom action (on done) " (fn []
                                                       (prn "Workflow is ready. WF state is:")
                                                       (.log js/console @*SWF))
-                        ]]}
+                         ]]}
 
    }
   )
@@ -164,16 +161,26 @@
   )
 
 
-(rum/defc <example-node-ui> < rum/reactive [*wf]
-  (let [wf @*wf
-        status (:status wf)
-        title (:title wf) ;; (pr-str (:id wf))
-        ]
+(rum/defcs <example-node-ui> < rum/reactive
+                               (rum/local true ::inline-results?)
+                               (rum/local true ::sort-results?)
+  [local wf]
+  (let [status (:status wf)
+        title (:title wf)]
 
     [:div
-     (ui/<wf-menu-ui>
-       title status
-       (:actions wf))
+
+     (ui/menubar "Results:" [
+                             ["inline" (fn [] (swap! (::inline-results? local) not))]
+                             ["sort" (fn [] (swap! (::sort-results? local) not))]
+                             ])
+
+     [:pre
+      (str
+        "Inline: " @(::inline-results? local) "\n"
+        "Sort: " @(::sort-results? local) "\n"
+        )
+      ]
 
 
      (let [r (:result wf)]
@@ -189,15 +196,12 @@
   )
 
 
-
-
 (defn initialize-test-wf-w-state! [*NODE]
   {
    ;; for we provide a ui fn
-   :ui-fn   <example-node-ui>
+   :ui-fn      (partial wf-ui/<default-wf-ui> <example-node-ui>)
 
-
-   :title     "More Complex Workflow"
+   :title      "More Complex Workflow"
 
    :wf-actions {
                 ; :not-started []
@@ -225,7 +229,6 @@
                           ]
                 ; :done        []
                 }
-
 
    }
   )
