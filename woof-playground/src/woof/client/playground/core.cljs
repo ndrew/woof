@@ -258,7 +258,7 @@
 
 (rum/defc <wf-ui> < rum/reactive [*TREE current-selector wf-actions]
   (let [*wf (rum/cursor-in *TREE current-selector)]
-    [:div
+    [:div.woof-playground
      (ui/menubar (pr-str current-selector)
                  (concat
                    [["←" (partial back-to-project-selector *TREE current-selector)]]
@@ -296,6 +296,17 @@
 (def <app> #(<project-ui> *TREE))
 
 
+
+;; Global key listener
+
+(defn global-keydown [chord]
+  (when (and (:meta chord) (= (:code chord) 191))
+    ;(prn "shift+? pressed")
+    (swap! *INTERNAL update-in [:show-menu?] not)
+    )
+  )
+
+
 ;;
 ;; WORKFLOW RELOADING
 ;;
@@ -307,14 +318,31 @@
 
 
 
+(defonce *initialized (atom false))
+
 
 (when (goog.object/get js/window "PLAYGROUND")
 
+
   ;; DISABLE FIGWHEEL LOGGING, for now
 
-  (let [logger (glog/getLogger "Figwheel")]
-    (.setLevel logger goog.debug.Logger.Level.WARNING))
+  (when-not @*initialized
+    (prn "initialing playground")
 
+    (let [logger (glog/getLogger "Figwheel")]
+      (.setLevel logger goog.debug.Logger.Level.WARNING))
+
+    (js/addEventListener "keydown"
+                         (fn [e]
+                           (let [chord (into {} (for [[key attr] {:shift "shiftKey" :ctrl "ctrlKey" :alt "altKey" :meta "metaKey"
+                                                                  :code "keyCode"}]
+                                                  [key (aget e attr)]))]
+                                (global-keydown chord)
+                                ))
+                         false)
+
+    (reset! *initialized true)
+    )
 
 
   (defn ^:after-load on-js-reload [d]

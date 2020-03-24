@@ -35,7 +35,7 @@
 (rum/defc <menu> < rum/reactive
   [*SETTINGS]
 
-  [:div.woof-header {:style {:float "right"}}
+  [:div.woof-internal {:style {:float "right"}}
 
    [:img {:src "/favicon.png"
           :style {:height "1rem"
@@ -48,7 +48,18 @@
           stop-wf-on-reload? :stop-wf-on-reload?} settings
          ]
      (when show-menu?
-       [:div.woof-menu
+       [:div.woof-internal-popup
+
+        (ui/menubar "Internal"
+                    [["ping" (fn []
+                               (GET "/ping" (fn [response]
+                                              ;; todo: parse ping properly
+                                              (swap! *SETTINGS assoc :ping response)))
+                               )]
+                     ;["boo" (fn [])]
+                     ;["yoo" (fn [])]
+                     ])
+        ; [:pre (pr-str @*SETTINGS)]
 
         [:div
          "stop wf on reload"
@@ -57,19 +68,9 @@
 
                      stop-wf-on-reload?)
          ]
-
-        ; [:pre (pr-str @*SETTINGS)]
+        [:hr]
         [:div "last ping: " (pr-str last-ping)]
-        (ui/menubar ""
-                    [["ping" (fn []
-                               (GET "/ping" (fn [response]
-                                              ;; todo: parse ping properly
-                                              (swap! *SETTINGS assoc :ping response)))
-                               )]
-                     #_["boo" (fn []
 
-                                )]
-                     ])
         ]
        )
      )

@@ -10,7 +10,8 @@
     [woof.wf :as wf]
     [cljs.core.async :as async]
     [woof.utils :as u]
-    [woof.client.playground.ui.wf :as wf-ui])
+    [woof.client.playground.ui.wf :as wf-ui]
+    [woof.base :as base])
   (:import [goog.net.XhrIo ResponseType])
 
   (:require-macros
@@ -165,38 +166,20 @@
                                (rum/local true ::inline-results?)
                                (rum/local true ::sort-results?)
   [local wf]
-  (let [status (:status wf)
-        title (:title wf)]
 
-    [:div
+  [:div
 
-     (ui/menubar "Results:" [
-                             ["inline" (fn [] (swap! (::inline-results? local) not))]
-                             ["sort" (fn [] (swap! (::sort-results? local) not))]
-                             ])
+   [:pre "↓ this is the default UI for displaying wf results ↓"]
 
-     [:pre
-      (str
-        "Inline: " @(::inline-results? local) "\n"
-        "Sort: " @(::sort-results? local) "\n"
-        )
-      ]
+   (wf-ui/<default-wf-body-ui> wf)
 
-
-     (let [r (:result wf)]
-       [:pre
-        (pr-str r)
-        ]
-       )
-
-     [:hr]
-     [:pre (d/pretty (into (sorted-map) wf))]
-     ]
-    )
+   ;[:hr]
+   ;[:pre (d/pretty (into (sorted-map) wf))]
+   ]
   )
 
 
-(defn initialize-test-wf-w-state! [*NODE]
+(defn initialize-test-wf-w-state! [*wf]
   {
    ;; for we provide a ui fn
    :ui-fn      (partial wf-ui/<default-wf-ui> <example-node-ui>)
@@ -206,21 +189,9 @@
    :wf-actions {
                 ; :not-started []
                 :running [
-                          ["dummy event " (fn []
-                                            (prn "dummy event")
 
-                                            #_(let [loop-chan (st-wf/&wf-init-param *NODE ::evt-loop-chan)]
-                                                (async/put! loop-chan
-                                                            {(wf/rand-sid "ui-")
-                                                             [:ls-write ["PREVIEW"
-
-                                                                         (str "I am a post\n" (u/now))
-                                                                         ]]})
-                                                )
-                                            )]
-
-                          #_["ui event" (fn []
-                                          (let [loop-chan (&wf-init-param *wf ::evt-loop-chan)]
+                          ["ui event" (fn []
+                                          (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
                                                (async/put! loop-chan
                                                            {(wf/rand-sid "ui-") [:test (u/now)]})
                                                )

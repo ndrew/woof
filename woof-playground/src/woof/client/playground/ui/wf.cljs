@@ -4,7 +4,8 @@
 
     ;; common workflow stuff and ui
     [woof.playground.v1.ui :as ui]
-    [woof.data :as d])
+    [woof.data :as d]
+    [woof.base :as base])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -36,6 +37,50 @@
    ]
   )
 
+
+(rum/defcs <default-wf-body-ui> < rum/reactive
+                               (rum/local true ::inline-results?)
+                               (rum/local true ::sort-results?)
+  [local wf]
+
+  [:div.wf-body
+
+   ;; this should be the easiest way to display wf results
+
+   #_[:pre
+    (str
+      "Inline: " @(::inline-results? local) "\n"
+      "Sort: " @(::sort-results? local) "\n"
+      )
+    ]
+
+   [:div.wf-body-menu
+    (ui/menubar "Display results as:" [
+                                       ["inline" (fn [] (swap! (::inline-results? local) not))]
+                                       ["sort" (fn [] (swap! (::sort-results? local) not))]
+                                       ])
+    ]
+
+   (if @(::inline-results? local)
+     [:pre
+      "Results (inlined)\n"
+      (d/pretty (base/inline-results (:result wf)))
+      ]
+     )
+
+   (if @(::sort-results? local)
+     [:pre
+      "Results (sorted)\n"
+      (d/pretty (into (sorted-map) (:result wf)))
+      ]
+     )
+
+
+
+   ]
+
+  )
+
 ;; default ui for wf runner
 (rum/defc <default-wf-ui> < rum/reactive
   [<body-fn> *wf]
@@ -45,7 +90,7 @@
         explanation (:explanation wf)
         ]
 
-    [:div
+    [:div.default-wf-ui
      (ui/<wf-menu-ui> title status (:actions wf))
 
      (cond

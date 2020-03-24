@@ -7,6 +7,8 @@ header {
 }
 
 
+/* menu bar */
+
 .menubar {
     box-sizing: content-box;
 
@@ -42,13 +44,13 @@ header {
     width: 1rem;
 }
 
+
+
 .wf {
     outline: 1px solid rgba(0,0,255,0.1333);
     padding: .5rem;
     margin-bottom: .5rem;
 }
-
-
 
 
 .context, .workflow {
@@ -744,38 +746,31 @@ pre {
 
 /* end old ui stuff */
 
-/* woof header */
+/* woof internal header */
 
-.woof-header > img {
+.woof-internal > img {
     cursor: pointer;
 }
 
-.woof-header > img:hover {
+.woof-internal > img:hover {
     filter: sepia(1) hue-rotate(-70deg) saturate(5) contrast(5);
 }
 
-.woof-header > .woof-menu {
-    margin-top: 1.3333rem;
+.woof-internal > .woof-internal-popup {
+    border: 1px solid rgba(0,0,0,.5);
+    padding: 1px 1.5rem .5rem .5rem;
+
 
 }
 
-.woof-header > .woof-menu > code {
-    margin: 1rem;
-}
-
-
-.woof-header  .menubar {
+.woof-internal  .menubar {
     align-items: flex-end;
     display: flex;
     flex: 0 1 auto;
-    margin-top: 1rem;
+    margin-bottom: .5rem;
 }
 
-.woof-header > .menubar .menu-item {
-    /*display: block;*/
-}
-
-.woof-header > .menubar .menu-item + .menu-item {
+.woof-internal > .menubar .menu-item + .menu-item {
     margin-top: .333rem;
 }
 
@@ -828,3 +823,22 @@ pre {
     width: 25vw;
 }
 
+
+
+
+
+/* default workflow ui */
+
+.default-wf-ui {}
+
+.default-wf-ui .wf-body {
+
+    border: 1px solid lightblue;
+
+}
+
+.wf-body .wf-body-menu {
+    display: flex;
+    flex: 0 0 auto;
+    flex-flow: row-reverse;
+}
