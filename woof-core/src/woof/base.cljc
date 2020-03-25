@@ -64,6 +64,7 @@
            {state-key state*})))
 
 
+;; todo: check whether we need this here. if so - add the metadata merging function
 (defn meta-init-fn []
   (fn [params]
     (merge params
@@ -71,6 +72,7 @@
                          :OUT #{}})})))
 
 
+;; do we need this here?
 (defn combine-init-fns [init-fns]
   (let [merge-fn (fn [{params :params} nu-params]
                    {:params (merge params nu-params)})]
@@ -518,7 +520,7 @@
     ))
 
 
-(defn build-chan-factory-opts [channel-factory]
+(defn build-opts-chan-factory-fn [channel-factory]
   (build-opt-on-done
     (fn [result]
       (close-chans! channel-factory)

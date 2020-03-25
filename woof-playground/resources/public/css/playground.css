@@ -831,6 +831,10 @@ pre {
 
 .default-wf-ui {}
 
+.default-wf-ui .main-menu + * {
+    margin: 1rem;
+}
+
 .default-wf-ui .wf-body {
 
     border: 1px solid lightblue;
@@ -842,3 +846,4 @@ pre {
     flex: 0 0 auto;
     flex-flow: row-reverse;
 }
+

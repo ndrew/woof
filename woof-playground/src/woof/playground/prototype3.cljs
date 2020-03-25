@@ -9,7 +9,7 @@
     [woof.core.runner :as runner]
     [woof.data :as d]
     [woof.playground.common :as cmn]
-    [woof.playground.v1.ui :as ui]
+    [woof.client.playground.ui :as ui]
     [woof.u :as u]
     [woof.wf :as wf]
 

@@ -6,7 +6,7 @@
 
     [woof.data :as d]
 
-    [woof.playground.v1.ui :as ui]
+    [woof.client.playground.ui :as ui]
     [woof.client.stateful :as st-wf]
     [woof.client.local-storage :as ls]
 

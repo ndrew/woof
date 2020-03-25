@@ -2,7 +2,7 @@
   (:require
     [rum.core :as rum]
 
-    [woof.playground.v1.ui :as ui]
+    [woof.client.playground.ui :as ui]
     [goog.net.XhrIo :as xhr]
     )
   (:import [goog.net.XhrIo ResponseType])

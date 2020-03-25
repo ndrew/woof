@@ -13,7 +13,7 @@
     [woof.wf-data :as wdata]
     [woof.playground.old.wf-ui :as wf-ui]
 
-    [woof.playground.v1.ui :as ui]
+    [woof.client.playground.ui :as ui]
 
     [woof.playground.old.context :as ctx-ui]
     [woof.playground.old.steps :as steps-ui]
@@ -33,7 +33,7 @@
     [woof.playground.old.example.infinite :as infinite]
     [woof.playground.old.example.big-wf :as big-wf]
 
-    [woof.playground.v1.ui :as new-ui]
+    [woof.client.playground.ui :as new-ui]
 
 
     )

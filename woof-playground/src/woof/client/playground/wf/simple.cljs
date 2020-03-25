@@ -5,8 +5,7 @@
     ;; v2 deps
     [woof.client.stateful :as st-wf]
 
-    [woof.playground.v1.ui :as ui]
-    [woof.data :as d]
+    [woof.client.playground.ui :as ui]
     [woof.wf :as wf]
     [cljs.core.async :as async]
     [woof.utils :as u]
@@ -181,10 +180,16 @@
 
 (defn initialize-test-wf-w-state! [*wf]
   {
-   ;; for we provide a ui fn
+
+
+   ;; how to provide a custom ui for actions - we need to pass state here
    :ui-fn      (partial wf-ui/<default-wf-ui> <example-node-ui>)
 
-   :title      "More Complex Workflow"
+   :title      "Workflow with Event Loop and custom UI"
+
+   :explanation [:div
+                 "this is the explanation for the workflow"
+                 ]
 
    :wf-actions {
                 ; :not-started []
@@ -206,7 +211,7 @@
 
 
 
-(defn dummy-wf-initializer [*NODE]
+(defn wf-with-ui-initializer [*NODE]
   (merge
     (initialize-test-wf!)
     (initialize-test-wf-w-state! *NODE))

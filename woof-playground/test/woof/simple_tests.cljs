@@ -634,3 +634,44 @@
                            (ready)
                            ) 3000))))))
 
+
+
+
+(deftest combining-with-meta
+
+  (let [fn-1 (fn [params]
+               (with-meta {:fn-1 :1}
+                          {:meta-1 :meta})
+               )
+        fn-2 (fn [params]
+               {:fn-2 :2})
+
+
+        combined-fn-1 (base/combine-fns [fn-1]
+                                        :merge-results (fn [a b]
+                                                         (let [m-1 (meta a)
+                                                               m-2 (meta b)]
+                                                              (with-meta
+                                                                (merge a b)
+                                                                (merge {} m-1 m-2)
+                                                                )
+                                                              )
+
+                                                         ))
+        combined-fn-2 (base/combine-fns [fn-1 fn-2])
+        ]
+
+    (let [r-1 (combined-fn-1 {})
+          r-2 (combined-fn-2 {})
+          ]
+
+      (is (nil? (meta r-2)))
+      (is (= {:meta-1 :meta} (meta r-1)))
+      ;(.log js/console (meta r-1))
+      ;(.log js/console (meta r-2))
+      )
+    )
+
+
+
+  )

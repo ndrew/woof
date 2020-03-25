@@ -3,7 +3,7 @@
     [rum.core :as rum]
 
     [woof.data :as d]
-    [woof.playground.v1.ui :as ui]
+    [woof.client.playground.ui :as ui]
     [woof.playground.old.ui :as old-ui]
     )
   (:require-macros

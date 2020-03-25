@@ -147,6 +147,9 @@
         ctx-fns (get st :ctx-fns [])
         steps-fns (get st :steps-fns [])
         opt-fns (get st :opt-fns [])
+
+        merge-results-fn (get st :merge-results-fn merge)
+
         ]
 
     (if (= 0 (count ctx-fns))
@@ -155,7 +158,8 @@
     (if (= 0 (count steps-fns))
       (u/throw! "no steps functions provided!"))
 
-    ;; todo: add channel+state factory
+    ;; todo: handle in-out merge - provide the merge function for steps
+
     (let [wf (base/parametrized-wf!
                (base/combine-init-fns init-fns)
                identity
@@ -164,8 +168,8 @@
                  (conj opt-fns
                        (partial swf-opt-fn *swf))
                  :merge-results base/merge-opts-maps)
-               (base/combine-fns ctx-fns)
-               (base/combine-fns steps-fns)
+               (base/combine-fns ctx-fns     :merge-results merge-results-fn)
+               (base/combine-fns steps-fns   :merge-results merge-results-fn)
                (partial swf-capturing-WF *swf)
                )]
 

@@ -3,9 +3,10 @@
     [rum.core :as rum]
 
     ;; common workflow stuff and ui
-    [woof.playground.v1.ui :as ui]
+    [woof.client.playground.ui :as ui]
     [woof.data :as d]
-    [woof.base :as base])
+    [woof.base :as base]
+    [woof.playground.v1.utils :as v1u])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -75,6 +76,13 @@
       ]
      )
 
+   [:pre
+    "Results (vstr)\n"
+
+    ;; fixme: how to substitute fully qualified keywords with shorter ones?
+    ;; ugly way to shorten the fully qualified keywords
+    (binding [v1u/*curr-ns* (.substr (.replace (str :woof.client.playground.wf.simple/test) "/test" "") 1)]
+      (v1u/vstr (:result wf)))]
 
 
    ]

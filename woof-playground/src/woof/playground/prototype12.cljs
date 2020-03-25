@@ -3,7 +3,7 @@
     [rum.core :as rum]
 
     ;; client core
-    [woof.playground.v1.ui :as ui]
+    [woof.client.playground.ui :as ui]
     [woof.data :as d]
     [woof.utils :as utils]
 

@@ -10,7 +10,7 @@
     [woof.playground.common :as cmn]
     [woof.playground.v1.playground :as pg]
     [woof.playground.v1.utils :refer [dstr kstr vstr]]
-    [woof.playground.v1.ui :as ui]
+    [woof.client.playground.ui :as ui]
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))

@@ -6,7 +6,7 @@
 
     [woof.base :as base]
     [woof.playground.common :as cmn]
-    [woof.playground.v1.ui :as ui]
+    [woof.client.playground.ui :as ui]
     [woof.utils :as utils]
     [woof.wf :as wf]
     )

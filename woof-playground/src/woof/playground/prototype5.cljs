@@ -4,7 +4,7 @@
 
     [rum.core :as rum]
 
-    [woof.playground.v1.ui :as ui]
+    [woof.client.playground.ui :as ui]
 
     ;; ns for running wfs
 

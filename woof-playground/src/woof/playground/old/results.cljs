@@ -8,7 +8,7 @@
     [woof.wf :as wf]
 
     [woof.playground.old.ui :as old-ui]
-    [woof.playground.v1.ui :as ui]
+    [woof.client.playground.ui :as ui]
     [woof.playground.old.wf-ui :as wf-ui]
     [woof.utils :as u]
     )

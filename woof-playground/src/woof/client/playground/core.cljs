@@ -8,8 +8,7 @@
 
     ;; common workflow stuff and ui
     [woof.playground.common :as cmn]
-    [woof.playground.v1.ui :as ui]
-
+    [woof.client.playground.ui :as ui]
 
 
     ;; alpha workflow
@@ -23,6 +22,7 @@
     [woof.client.playground.wf.listing :as listing-wf]
     [woof.client.playground.wf.post :as post-wf]
     [woof.client.playground.wf.preview :as preview-wf]
+    [woof.client.playground.wf.in-out :as in-out-wf]
 
     [woof.client.stateful :as state]
 
@@ -49,6 +49,8 @@
                                       nu-wf-state
                                       {
                                        :title   (get nu-wf-state :title "Untitled WF")
+
+                                       ;; todo: should run/stop fn be exposed
 
                                        :actions (st-wf/default-actions-map
                                                   (partial st-wf/wf-init! *SWF)
@@ -79,15 +81,17 @@
   ;; or it should be called if the button is pressed
   {
    ;; workflow w state (keywords that start with wf-...)
-   :wf-simplest-wf     (init-alpha-wf! :wf-simplest-wf test-wf/simplest-wf-initializer)
-   :wf-dummy           (init-alpha-wf! :wf-dummy test-wf/dummy-wf-initializer)
+   :wf-simplest-wf           (init-alpha-wf! :wf-simplest-wf test-wf/simplest-wf-initializer)
+   :wf-with-ui               (init-alpha-wf! :wf-with-ui test-wf/wf-with-ui-initializer)
 
-   :wf-page            (init-alpha-wf! :wf-page page-wf/initialize!)
+   :wf-page                  (init-alpha-wf! :wf-page page-wf/initialize!)
 
-   :wf-listings        (init-alpha-wf! :wf-listings listing-wf/initialize!)
+   :wf-listings              (init-alpha-wf! :wf-listings listing-wf/initialize!)
 
-   :wf-local-storage-post (init-alpha-wf! :wf-local-storage-post post-wf/init-post-wf!)
+   :wf-local-storage-post    (init-alpha-wf! :wf-local-storage-post post-wf/init-post-wf!)
    :wf-local-storage-preview (init-alpha-wf! :wf-local-storage-preview preview-wf/init-preview-wf!)
+
+   :wf-IN-OUT                (init-alpha-wf! :wf-IN-OUT in-out-wf/initialize-in-out-wf)
    }
   )
 
@@ -235,13 +239,15 @@
     (swap! *TREE merge other-wfs)
 
     (let [*dummy-state (atom updated-wf)]
+
+      ;; wf is not res
       (==>workflow-selected *dummy-state)
 
       (let [nu-wf-map @*dummy-state]
         ;; what of wf map can be updated for running workflow
         (prn "keeping the " wf-id "running")
         (swap! *TREE update-in curr
-               merge (select-keys nu-wf-map [:ui-fn :actions :title :wf-actions]))
+               merge (select-keys nu-wf-map [:ui-fn :actions :title :wf-actions :explanation]))
 
         ;(.log js/console "PREV" (get-in tree curr))
         ;(.log js/console "NU" nu-wf-map)
