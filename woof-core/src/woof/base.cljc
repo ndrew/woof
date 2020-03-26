@@ -65,7 +65,7 @@
 
 
 ;; todo: check whether we need this here. if so - add the metadata merging function
-(defn meta-init-fn []
+(defn build-init-meta-fn []
   (fn [params]
     (merge params
            {:META (atom {:IN  #{}
@@ -441,10 +441,9 @@
 (defn build-opt-on-done [on-done]
   (fn [params]
     {:op-handlers-map {
-                       :done  (fn [result] (on-done result))
-                       :error (fn [result] (on-done result))
+                       :done  (fn [result] (on-done params result))
+                       :error (fn [result] (on-done params result))
                        }}))
-
 
 ;;
 ;; state wf aspect - injects atom into workflow
@@ -522,7 +521,7 @@
 
 (defn build-opts-chan-factory-fn [channel-factory]
   (build-opt-on-done
-    (fn [result]
+    (fn [params result] ;; TODO: channel factory can be retrieved here
       (close-chans! channel-factory)
       result)))
 

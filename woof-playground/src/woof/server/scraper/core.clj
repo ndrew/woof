@@ -242,7 +242,7 @@
                  (base/build-opt-state-fn *STATE)
                  (base/build-opts-chan-factory-fn CHAN-FACTORY)
                  error-handling-opts
-                 (base/build-opt-on-done (fn [_]
+                 (base/build-opt-on-done (fn [_ _]
                                              (info ::shutdown-server)
                                              ((:shutdown @*STATE))
                                              ))

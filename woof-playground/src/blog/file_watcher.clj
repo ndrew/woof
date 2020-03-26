@@ -99,7 +99,7 @@
         ctx-fns   [common-ctx-fn ctx-fn]
         steps-fns [steps-fn]
 
-        on-stop (fn [_]
+        on-stop (fn [params result]
                   (prn "stopping filesystem watchers")
                   (let [stop-fns (get-in @*state [:fs-watchers])]
                     (doseq [stop-fn stop-fns]

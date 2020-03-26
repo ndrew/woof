@@ -79,24 +79,34 @@
 (rum/defc <in-out-wf> < rum/reactive
   [wf]
 
-  [:div
 
-   (let [captured-wf (get-in wf [:runtime :initial])]
+   (let [result (:result wf)
+         in-out-map (meta result)
+         IN (:IN in-out-map)
+         OUT (:OUT in-out-map)
+
+         captured-wf (get-in wf [:runtime :initial])
+         params (get captured-wf :params)
+         ]
      [:div
 
-      (<kv> :params (get captured-wf :params))
-      (<kv> :context-map (get captured-wf :context-map))
-      (<kv> :steps (get captured-wf :steps))
-      ;(<kv> )
+
+      (<kv> :IN (select-keys params IN))
+      (<kv> :OUT (select-keys result OUT))
+
+      ;(<kv> :full-params params)
+
+      ;(<kv> :context-map (get captured-wf :context-map))
+      ;(<kv> :steps (get captured-wf :steps))
+
+      ;[:pre (d/pretty result)]
+      ;[:pre (d/pretty in-out-map)]
+
+      ;(wf-ui/<default-wf-body-ui> wf)
       ]
      )
 
 
-   [:pre (d/pretty (:result wf))]
-   [:pre (d/pretty (meta (:result wf)))]
-
-   ;(wf-ui/<default-wf-body-ui> wf)
-   ]
   )
 
 
@@ -107,88 +117,120 @@
 
 
 (defn initialize-in-out-wf [*wf]
-  (let [META (in-out-meta-atom)]
     {
 
-     :init-fns  [; init-evt-loop
-                 (fn [params]
-                   (let [IN (with-meta
-                              {:data "woof"}
-                              ; how to distinguish between step and opt param??
-                              {:IN #{:data}})]
-                        (in-out-merge META IN)
-                        ; or always use all in keys
-                        ;(swap! META update :IN into (keys IN))
-                        IN)
-                   )
-                 st-wf/chan-factory-init-fn
-                 ]
+     :init-fns         [; init-evt-loop
+                        (fn [params]
+                          (let [params-map {:some-numbers [1 2 3 4 5]}]
 
-     ;; this will merge the
-     :merge-results-fn merge-with-IN-OUT-meta
+                              ;; store in meta params IN metadata
+                               (swap! (:META params) update :IN conj :some-numbers)
 
-     :ctx-fns   [;ctx-evt-fn
+                               params-map
+                               )
+                          )
+                        (base/build-init-meta-fn)
+                        st-wf/chan-factory-init-fn
+                        ]
 
-                 ;; (in-out-merge META steps)
+     :ctx-fns          [;ctx-evt-fn
+                        ;; (in-out-merge META steps)
+                        (fn [params]
+                          {
+                           :test {:fn (fn [v] v)}
 
-                 (fn [params]
-                   {
-                    :test {:fn (fn [v] v)}
+                           ;; math
 
-                    }
-                   )]
+                           :+<   {:fn       (fn [xs]
+                                              (into (array-map)
+                                                    (map-indexed (fn [i x]
+                                                                   [(wf/rand-sid) [:v x]]) xs)))
+                                  :expands? true
+                                  }
 
-     :steps-fns [;
-                 ;; combine that will preserve meta
-                 (fn [params]
-                   (with-meta
-                   {
-                    ::step-1 [:test "step-1"]
-                    ::hidden-step-1 [:test "hidden-step"]
-                    }
-                   {:OUT #{::step-1}}))
+                           :v    {:fn (fn [x] x)}
 
-                 (fn [params]
-                   (with-meta
-                     {
-                      ::step-2 [:test "step-2"]
-                      }
-                     {:OUT #{::step-2}}))
+                           :+>   {
+                                  :fn       (fn [xs]
 
-                 ]
+                                              (reduce + xs))
+                                  :collect? true
+                                  }
 
-     :opt-fns   [;; ls/ls-opts-fn
+                           }
+                          )
 
-                 (base/build-opt-on-done (fn [result]
-                                           (with-meta result @META)))
+                        ]
 
-                 st-wf/chan-factory-opts-fn
-                 ]
+     :steps-fns        [;
+                        ;; combine that will preserve meta
+                        (fn [params]
+                          (swap! (:META params) update :OUT conj ::step-1)
+                            {
+                             ::step-1        [:test "step-1"]
+                             ::hidden-step-1 [:test "hidden-step"]
+                             }
+                            )
+
+                        (fn [params]
+                          (swap! (:META params) update :OUT conj ::step-2)
+
+                          {
+                           ::step-2 [:test "step-2"]
+                           }
+                          )
+
+                        (fn [params]
+                          ;;                              ::addp   [:+< [1 2 3]]
+                          ;                             ::add    [:+> ::addp]
+                          (let [expander-sid (wf/rand-sid "add-p-")
+                                sum-result-sid (wf/rand-sid "sum-")
+                                ]
+
+                               (swap! (:META params) update :OUT conj sum-result-sid)
+                               {
+
+                                expander-sid [:+< [1 2 3]]
+                                sum-result-sid [:+> expander-sid]
+                                }
+                               )
+
+                          )
+
+                        ]
+
+     :opt-fns          [;; ls/ls-opts-fn
+
+                        (base/build-opt-on-done (fn [params result]
+                                                  (with-meta result @(:META params))
+                                                  ))
+
+                        st-wf/chan-factory-opts-fn
+                        ]
 
 
      ;; how to provide a custom ui for actions - we need to pass state here
-     :ui-fn      (partial wf-ui/<default-wf-ui> <in-out-wf>)
+     :ui-fn            (partial wf-ui/<default-wf-ui> <in-out-wf>)
 
-     ;:title      "Workflow with Event Loop and custom UI"
+     :title      "IN OUT workflow"
 
      ; :explanation [:div  "this is the explanation for the workflow"]
 
-     :wf-actions {
-                  ; :not-started []
-                  :running [
+     :wf-actions       {
+                        ; :not-started []
+                        :running [
 
-                            #_["ui event" (fn []
-                                            (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
-                                                 (async/put! loop-chan
-                                                             {(wf/rand-sid "ui-") [:test (u/now)]})
-                                                 )
-                                            )]
+                                  #_["ui event" (fn []
+                                                  (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
+                                                       (async/put! loop-chan
+                                                                   {(wf/rand-sid "ui-") [:test (u/now)]})
+                                                       )
+                                                  )]
 
-                            ]
-                  ; :done        []
-                  }
+                                  ]
+                        ; :done        []
+                        }
 
      }
-    )
 
   )

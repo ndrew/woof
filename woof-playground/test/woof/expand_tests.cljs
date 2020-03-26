@@ -51,7 +51,7 @@
       []
       ctx-fns
       steps-fns
-      [(base/build-opt-on-done (fn[result]
+      [(base/build-opt-on-done (fn[params result]
                                  (is (= (into (sorted-set)
                                               (filter number? (vals   result)))
                                         (into (sorted-set) (range N))))
