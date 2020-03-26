@@ -10,7 +10,10 @@
     [woof.client.stateful :as st-wf]
     [woof.wf :as wf]
     [woof.utils :as utils]
-    [woof.data :as d])
+    [woof.data :as d]
+
+    [woof.playground.v1.utils :refer [dstr kstr vstr]]
+    [viz.core :as viz])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -64,7 +67,7 @@
 
 
 
-(rum/defc <kv> < rum/state
+(rum/defc <kv-w-meta> < rum/state
   [k v]
 
   [:div {:style {:outline "1px solid rgba(0,0,0,.1333)"}}
@@ -76,6 +79,142 @@
    ]
   )
 
+
+(defn short-key [k]
+  (clojure.string/replace (pr-str k) #"woof.client.playground.wf." "")
+  )
+
+
+(defn short-value [v]
+  (if (utils/channel? v)
+    "<channel>"
+    (d/pretty v)
+    )
+  )
+
+
+(rum/defcs <kv> < rum/static (rum/local true ::show?)
+  [local heading results]
+
+  (let [show? @(::show? local)]
+    (into [:div
+           (ui/menubar heading [[(if show? "↑" "↓")
+                                 (fn []
+                                   (swap! (::show? local) not))]])
+           ]
+          (if show?
+            (map (fn [[k v]]
+                   [:div.kv
+                    [:.k (short-key k)]
+
+                    ; maybe pass steps and ctx here
+                    ; [:.step "aaa"]
+
+                    ; how to know how to show value
+                    [:.v (short-value v)]]
+                   ) results)
+            []
+            )
+          )
+    )
+  )
+
+
+(rum/defcs <results> < rum/static (rum/local true ::show?)
+  [local heading
+   ctx-map
+   initial-steps
+   results]
+
+  (let [show? @(::show? local)]
+    (into [:div
+           (ui/menubar heading [[(if show? "↑" "↓")
+                                 (fn []
+                                   (swap! (::show? local) not))]])
+           ]
+          (if show?
+            (let [tree (reduce (fn [a [k [step-id v]]]
+                                 (let [ctx (get ctx-map step-id)
+                                       expands? (get ctx :expands?)
+                                       modifier (clojure.string/join " "
+                                                                     [(if (get ctx :infinite) "i" "")
+                                                                      (if (get ctx :collect) "c" "")
+                                                                      (if (get ctx :expands?) "e" "")]
+
+                                                                     )
+
+                                       ]
+                                      (assoc a k {
+                                                  :step [step-id v]
+                                                  :res (get results k)
+                                                  :ctx ctx
+                                                  :modifier (clojure.string/trim modifier)
+                                                  :expands? expands?
+                                                  }))
+                                 ) (sorted-map) initial-steps)]
+              (map (fn [[k v]]
+                     [:div {:style {:outline "1px solid red"}}
+                      [:.kv
+                       [:.k (clojure.string/trim
+                              (str
+                                (short-key k)))]
+
+                       [:.v
+                        (pr-str (:step v))
+                        (if (= "" (:modifier v)) "" (str " — (" (:modifier v) ")"))
+                        ]
+                       ]
+
+
+                      [:.kv
+
+                       (if (:expands? v)
+                         (into
+                           [:.v]
+                           (map (fn[a] [:div.kv {:style {:margin-left "1rem"}}
+                                        [:.k (short-key a)]
+                                        [:.v (d/pretty (get results a))]
+                                        ] ) (:res v))
+                           )
+                         [:.v
+                          (str
+                            (short-value (:res v))
+                            )
+                          ]
+                         )
+
+                       ]
+
+                      ]
+                     ) tree)
+              )
+            []
+            )
+          )
+    )
+
+  )
+
+
+
+(rum/defcs <debug> < rum/reactive (rum/local false ::show?)
+
+  [{show? ::show?} wf]
+  (let [h (fn [] (swap! show? not))]
+    (if @show?
+      [:pre (ui/btn "..." h) "\n" (dstr (into (sorted-map) wf))]
+      (ui/btn "..." h)
+      )
+    )
+  )
+
+(defn graph-to-svg [steps rfn]
+  (let [graphviz-edges (reduce rfn "" steps)]
+    (viz/image (str "digraph { " graphviz-edges " }")))
+  )
+
+
+
 (rum/defc <in-out-wf> < rum/reactive
   [wf]
 
@@ -85,22 +224,51 @@
          IN (:IN in-out-map)
          OUT (:OUT in-out-map)
 
-         captured-wf (get-in wf [:runtime :initial])
-         params (get captured-wf :params)
+         {
+          ctx-map :context-map
+          params :params
+          initial-steps :steps
+          } (get-in wf [:runtime :initial])
+
+
          ]
-     [:div
+     [:div.proto7
 
 
-      (<kv> :IN (select-keys params IN))
-      (<kv> :OUT (select-keys result OUT))
+      (<kv-w-meta> :IN (select-keys params IN))
+      (<kv-w-meta> :OUT (select-keys result OUT))
 
-      ;(<kv> :full-params params)
 
-      ;(<kv> :context-map (get captured-wf :context-map))
-      ;(<kv> :steps (get captured-wf :steps))
 
-      ;[:pre (d/pretty result)]
-      ;[:pre (d/pretty in-out-map)]
+      (<results> (:title wf)
+                ctx-map
+                 initial-steps
+                 result
+                 )
+
+      (<kv> "results" result)
+
+      (<debug> result)
+
+
+      ;; how to keep the steps up to date
+      #_[:div.graph
+       {:dangerouslySetInnerHTML
+        {:__html (graph-to-svg initial-steps (fn [gviz [k [action param]]]
+                                       (if (wf/sid? param)
+                                           (str gviz " "
+                                                (clojure.string/replace (name param) #"-" "_")
+                                                " -> "
+                                                (clojure.string/replace (name k) #"-" "_")
+                                                ";\n")
+                                           gviz
+                                           )
+                                       ))}}]
+
+      ;(<kv-w-meta> :full-params params)
+
+      ;(<kv-w-meta> :context-map (get captured-wf :context-map))
+      ;(<kv-w-meta> :steps (get captured-wf :steps))
 
       ;(wf-ui/<default-wf-body-ui> wf)
       ]
