@@ -3,7 +3,8 @@
     [rum.core :as rum]
 
     [woof.playground.v1.utils :refer [dstr kstr vstr]]
-    )
+    [woof.base :as base]
+    [woof.data :as d])
   )
 
 
@@ -43,6 +44,16 @@
                  [:.separator]
                  (menu-item label action)))
              menu-items)))
+
+
+(defn shorten-bool [b]
+  (if b "✓" "✕"))
+
+(defn kv-menu-item-toggler [kv-ref kv header k ]
+  [(str header (shorten-bool (get kv k)))
+   (fn [] (swap! kv-ref update k not))]
+  )
+
 
 
 ;;
@@ -128,11 +139,14 @@
 
 (rum/defc <wf-menu-ui> < rum/reactive
   [header status all-actions]
-  [:div.main-menu
-   [:span "  " (<wf-status-ui> status)]
+
    (let [actions (get all-actions status [])]
-     (menubar header actions))
-   ])
+     [:div.main-menu
+      (menubar header actions)
+      (<wf-status-ui> status)
+      ]
+     )
+   )
 
 
 ;;
@@ -143,8 +157,270 @@
   (let [h (fn [] (swap! show? not))]
     (if @show?
       [:pre.debug
-       (dstr (into (sorted-map) data))]
+       (dstr (into (sorted-map) data))
+       (btn "..." h)
+       ]
       (btn "..." h)
       )
     )
+  )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(defn shorten-sid [sid & {:keys [regex] :or {regex #"woof.client.playground.wf."}}]
+  (clojure.string/replace (pr-str sid) regex "")
+  )
+
+(defn epsilon-sid [short-sid [shorten-threshold shorten-before shorten-after]]
+  (if (< (count short-sid) shorten-threshold)
+    ;; return short sid as is
+    short-sid
+    ;;
+    (str
+      (subs short-sid 0 shorten-before)
+      "..."
+      (subs short-sid (- (count short-sid) shorten-after))
+
+      )
+
+    )
+  )
+
+
+
+(rum/defcs <sid> < rum/static
+                   (rum/local true ::short-keys?)
+  [local ui-cfg k]
+
+  (let [short? (and @(::short-keys? local)
+                    (:short-keys? ui-cfg))
+        short-sid (shorten-sid k)
+        epsilon-cfg (get ui-cfg :epsilon [30 12 5])
+        ]
+    [:.sid {:on-click (fn [e] (swap! (::short-keys? local) not))}
+
+     (str
+       ;@(::short-keys? local) " " (:short-keys? ui-cfg)
+
+       (if short?
+         ;; very short key
+         (epsilon-sid short-sid epsilon-cfg)
+         ;;
+         short-sid
+         )
+       )
+     ]
+    )
+  )
+
+
+(defn sval [v]
+  (try
+    (d/pretty v)
+    (catch js/Error e
+      "ERROR"
+      )
+    )
+  )
+
+
+(rum/defcs <value> < rum/static
+                     (rum/local true ::short-keys?)
+  [local ui-cfg v]
+  [:.val
+   (sval v)
+   ]
+
+  )
+
+(rum/defcs <sid-value> < rum/static
+                         (rum/local true ::expanded-kv?)
+  [local ui-cfg k v results]
+
+  (let [expand? (and @(::expanded-kv? local)
+                     (:expanded-kv? ui-cfg))
+        value (get results k)]
+    (into
+      [:.wf-body]
+
+      (if (:expands? v)
+        [(menubar "" [[ (if expand? "sid-list" "values")
+                          (fn [] (swap! (::expanded-kv? local) not))]])
+         (if expand?
+
+            (if (seq? (:res v))
+              [(into [:.val-list] (map #(<value> ui-cfg %) (:res v)))]
+              [(pr-str (:res v))]
+              )
+
+
+
+           (let [sid-list-ui-cfg (assoc ui-cfg :epsilon [20 5 5])]
+             (into [:.sid-list] (map #(<sid> sid-list-ui-cfg %) value)))
+           )
+
+         ]
+        [(<value> ui-cfg value)]
+        )
+
+      )
+
+    ))
+
+
+
+
+(rum/defc <result-row> < rum/static
+  [ui-cfg metadata results KV]
+
+  (let [k (:k KV)
+        v KV
+        OUT? (get-in metadata [:OUT k])]
+    [:div.wf-results-row
+
+     ;; modifier
+
+     [:div.wf-modifier
+
+      (str
+        (if-not (nil? OUT?) "OUT" "___")
+        "|" (:modifier v))
+
+      ]
+
+     (<sid> ui-cfg k)
+
+     ;; todo: sort by date
+
+     (<sid-value> ui-cfg k v results )
+
+
+     #_[:.wf-body
+        (if (:expands? v)
+          (if (:expanded-kv? ui-cfg)
+            (d/pretty (map (fn[a] (get results a)) (:res v)))
+
+            (let [sid-list-ui-cfg (assoc ui-cfg :epsilon [20 5 5])]
+              (into [:.sid-list
+                     (ui/menubar "" [["yo" (fn[]
+                                             )]])
+                     ]
+                    (map #(<sid> sid-list-ui-cfg %) value))
+              )
+
+
+            ;(d/pretty (d/pretty value))
+            )
+          ;; non-expand step
+          (d/pretty value)
+          )
+        #_(if (:expands? v)
+            (into
+              [:.v]
+              (map (fn[a] [:div.kv {:style {:margin-left "1rem"}}
+                           [:.k (short-key a)]
+                           [:.v (d/pretty (get results a))]
+                           ] ) (:res v))
+              )
+            [:.v
+             (str
+               (short-value (:res v))
+               )
+             ]
+            )
+        ]
+     ]
+    )
+  )
+
+
+(defn make-tree [ui-cfg initial-data results]
+  ;; make tree a lists
+  (let [{
+         ctx-map :context-map
+         initial-steps :steps
+         } initial-data
+
+        ;; todo: is it possible to have items sorted by time?
+        tree (reduce (fn [a [k [step-id v]]]
+                       (let [ctx (get ctx-map step-id)
+                             expands? (get ctx :expands?)
+                             modifier (clojure.string/join " "
+                                                           [(if (get ctx :infinite) "i" "")
+                                                            (if (get ctx :collect) "c" "")
+                                                            (if (get ctx :expands?) "e" "")])
+                             ]
+                            (conj a  {
+                                      :k k
+                                      :step [step-id v]
+                                      :res (get results k)
+                                      :ctx ctx
+                                      :modifier (clojure.string/trim modifier)
+                                      :expands? expands?
+                                      }))
+                       ) [] initial-steps)]
+    tree
+
+    )
+  )
+
+
+(rum/defcs <results-ui> < rum/static
+                          (rum/local true ::show?)
+                          (rum/local {
+                                      :short-keys? true
+                                      :expanded-kv? true
+                                      } ::ui-cfg)
+  [local
+
+   heading
+   initial-data
+   results
+   ]
+
+  (let [show?  @(::show? local)
+        *ui-cfg (::ui-cfg local)
+        ui-cfg @(::ui-cfg local)
+
+        mi-toggler (partial kv-menu-item-toggler *ui-cfg ui-cfg)
+
+        results-metadata (if-let [m (meta results)] m (base/default-meta-map))
+        ]
+    (into [:div.wf-results
+           (menubar heading [
+                                [(if show? "↑" "↓") (fn [] (swap! (::show? local) not))]
+                                (mi-toggler "short keys: " :short-keys?)
+                                (mi-toggler "expanded keys: " :expanded-kv?)
+                                ])
+           ]
+          (if show?
+            (let [tree (make-tree ui-cfg initial-data results)]
+              (concat
+                [
+                 ;[:pre (d/pretty tree) ]
+
+                 #_[:pre
+                  "expanded steps:\n"
+                  (d/pretty
+                    (clojure.set/difference
+                      (into #{} (keys results))
+                      (into #{} (keys tree))
+                      )
+                    )
+
+                  ]
+                 ]
+
+                (map (partial <result-row>
+                              ui-cfg
+                              results-metadata
+                              results) tree)
+                )
+              )
+            []
+            )
+          )
+    )
+
   )

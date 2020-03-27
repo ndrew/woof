@@ -168,7 +168,8 @@
 
   [:div
 
-   [:pre "↓ this is the default UI for displaying wf results ↓"]
+
+ [:pre "↓ this is the default UI for displaying wf results ↓"]
 
    (wf-ui/<default-wf-body-ui> wf)
 

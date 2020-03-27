@@ -12,7 +12,7 @@
 
     [woof.utils :as u]
     [woof.wf :as wf]
-    )
+    [woof.client.playground.ui.wf :as wf-ui])
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -24,25 +24,18 @@
 
 ;; ui
 
-(rum/defc <post-ui> < rum/reactive [*wf]
-  (let [wf @*wf
-        status (:status wf)
-        title (:title wf) ;; (pr-str (:id wf))
-        ]
+(rum/defc <post-ui> < rum/reactive [wf]
 
-    [:div
-     (ui/<wf-menu-ui> title status (:actions wf))
+  [:div
+   ;; wf specific data
+   [:pre {:style {:margin-bottom "1rem"}}
+    (pr-str (::preview (:result wf)))]
 
-     (let [r (:result wf)]
-       [:pre
-        (pr-str (::preview r))
-        ]
-       )
 
-     [:hr]
-     [:pre (d/pretty (into (sorted-map) wf))]
-     ]
-    )
+   (wf-ui/<default-wf-body-ui> wf)
+
+   ]
+
   )
 
 
@@ -50,67 +43,67 @@
 (defn init-post-wf! [*NODE]
   {
 
-   :title     "Write to Local Storage Workflow"
-
-   :ui-fn     <post-ui>
-
-   :init-fns  [(fn [params]
-                 ;; this should prepare all stuff needed for ctx and steps
-                 (let [evt-loop-chan (st-wf/&chan params (wf/rand-sid "evt-loop"))]
-                      {
-                       ;; keep the evt loop chan
-                       ::evt-loop-chan evt-loop-chan
-                       }
-                      )
-                 )
-
-               ls/ls-init-fn
-
-               st-wf/chan-factory-init-fn
-               ]
-
-   :ctx-fns   [ls/ls-ctx-fn
-               (fn [params]
-                 {
-                  :test     {:fn (fn [v] v)}
-
-                  :evt-loop {
-                             :fn       (fn [in-chan] in-chan)
-                             :infinite true
-                             :expands? true
-                             }
-                  }
-                 )]
-
-   :steps-fns [(fn [params]
-                 {
-                  ::preview  [:ls-infinite-read "PREVIEW"]
-
-                  ::evt-loop [:evt-loop (::evt-loop-chan params)]
-                  }
-                 )]
-
-   :opt-fns   [ls/ls-opts-fn
-               st-wf/chan-factory-opts-fn]
+   :title      "Write to Local Storage Workflow"
 
 
-   :wf-actions  {
-                 :running [
+   :ui-fn      (partial wf-ui/<default-wf-ui> <post-ui>)
 
-                           ["dummy write " (fn []
+   :init-fns   [(fn [params]
+                  ;; this should prepare all stuff needed for ctx and steps
+                  (let [evt-loop-chan (st-wf/&chan params (wf/rand-sid "evt-loop"))]
+                       {
+                        ;; keep the evt loop chan
+                        ::evt-loop-chan evt-loop-chan
+                        }
+                       )
+                  )
 
-                                             (let [loop-chan (st-wf/&wf-init-param *NODE ::evt-loop-chan)]
-                                                  (async/put! loop-chan
-                                                              {(wf/rand-sid "ui-")
-                                                               [:ls-write ["PREVIEW"
+                ls/ls-init-fn
 
-                                                                           (str "I am a post\n" (u/now))
-                                                                           ]]})
-                                                  )
-                                             )]
-                           ]
-                 }
+                st-wf/chan-factory-init-fn
+                ]
 
+   :ctx-fns    [ls/ls-ctx-fn
+                (fn [params]
+                  {
+                   :test     {:fn (fn [v] v)}
+
+                   :evt-loop {
+                              :fn       (fn [in-chan] in-chan)
+                              :infinite true
+                              :expands? true
+                              }
+                   }
+                  )]
+
+   :steps-fns  [(fn [params]
+                  {
+                   ::preview  [:ls-infinite-read "PREVIEW"]
+
+                   ::evt-loop [:evt-loop (::evt-loop-chan params)]
+                   }
+                  )]
+
+   :opt-fns    [ls/ls-opts-fn
+                st-wf/chan-factory-opts-fn]
+
+
+   :wf-actions {
+                :running [
+
+                          ["dummy write " (fn []
+
+                                            (let [loop-chan (st-wf/&wf-init-param *NODE ::evt-loop-chan)]
+                                                 (async/put! loop-chan
+                                                             {(wf/rand-sid "ui-")
+                                                              [:ls-write ["PREVIEW"
+
+                                                                          (str "I am a post\n" (u/now))
+                                                                          ]]})
+                                                 )
+                                            )]
+                          ]
+                }
 
    }
   )

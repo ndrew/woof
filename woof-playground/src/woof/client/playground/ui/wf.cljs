@@ -25,19 +25,7 @@
 
 
 
-(rum/defc <default-body> < rum/static
-  [wf]
-
-  [:div {:style {:padding ".5rem" :border "1px solid black"}}
-   (condp = (:status wf)
-     :not-started   [:pre "Ready to start!"]
-     :running [:pre "..."]
-     :done (safe-pretty (:result wf))
-     :error [:pre "Error: " (safe-pretty (:result wf))]
-     )
-   ]
-  )
-
+;;
 
 (rum/defcs <default-wf-body-ui> < rum/reactive
                                (rum/local true ::inline-results?)
@@ -46,37 +34,40 @@
 
   [:div.wf-body
 
+   ;; todo check if wf is running
+
+   (if (not= :not-started (:status wf))
+     (ui/<results-ui> "RESULTS"
+                      (get-in wf [:runtime :initial])
+                      (:result wf))
+     )
+
+    ;[:hr]
+
    ;; this should be the easiest way to display wf results
 
-   #_[:pre
-    (str
-      "Inline: " @(::inline-results? local) "\n"
-      "Sort: " @(::sort-results? local) "\n"
-      )
-    ]
-
-   [:div.wf-body-menu
+   #_[:div.wf-body-menu
     (ui/menubar "Display results as:" [
                                        ["inline" (fn [] (swap! (::inline-results? local) not))]
                                        ["sort" (fn [] (swap! (::sort-results? local) not))]
                                        ])
     ]
 
-   (if @(::inline-results? local)
+   #_(if @(::inline-results? local)
      [:pre
       "Results (inlined)\n"
       (d/pretty (base/inline-results (:result wf)))
       ]
      )
 
-   (if @(::sort-results? local)
+   #_(if @(::sort-results? local)
      [:pre
       "Results (sorted)\n"
       (d/pretty (into (sorted-map) (:result wf)))
       ]
      )
 
-   [:pre
+   #_[:pre
     "Results (vstr)\n"
 
     ;; fixme: how to substitute fully qualified keywords with shorter ones?
@@ -88,6 +79,20 @@
    ]
 
   )
+
+(rum/defc <default-body> < rum/static
+  [wf]
+
+  [:div {:style {:padding ".5rem" :border "1px solid black"}}
+   (condp = (:status wf)
+     :not-started   [:pre "Ready to start!"]
+     :running (<default-wf-body-ui> wf)         ; [:pre "..."]
+     :done    (<default-wf-body-ui> wf)         ; (safe-pretty (:result wf))
+     :error [:pre "Error: " (safe-pretty (:result wf))]
+     )
+   ]
+  )
+
 
 ;; default ui for wf runner
 (rum/defc <default-wf-ui> < rum/reactive

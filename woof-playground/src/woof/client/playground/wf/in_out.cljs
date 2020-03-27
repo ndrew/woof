@@ -120,93 +120,12 @@
   )
 
 
-(rum/defcs <results> < rum/static (rum/local true ::show?)
-  [local heading
-   ctx-map
-   initial-steps
-   results]
-
-  (let [show? @(::show? local)]
-    (into [:div
-           (ui/menubar heading [[(if show? "↑" "↓")
-                                 (fn []
-                                   (swap! (::show? local) not))]])
-           ]
-          (if show?
-            (let [tree (reduce (fn [a [k [step-id v]]]
-                                 (let [ctx (get ctx-map step-id)
-                                       expands? (get ctx :expands?)
-                                       modifier (clojure.string/join " "
-                                                                     [(if (get ctx :infinite) "i" "")
-                                                                      (if (get ctx :collect) "c" "")
-                                                                      (if (get ctx :expands?) "e" "")]
-
-                                                                     )
-
-                                       ]
-                                      (assoc a k {
-                                                  :step [step-id v]
-                                                  :res (get results k)
-                                                  :ctx ctx
-                                                  :modifier (clojure.string/trim modifier)
-                                                  :expands? expands?
-                                                  }))
-                                 ) (sorted-map) initial-steps)]
-              (map (fn [[k v]]
-                     [:div {:style {:outline "1px solid red"}}
-                      [:.kv
-                       [:.k (clojure.string/trim
-                              (str
-                                (short-key k)))]
-
-                       [:.v
-                        (pr-str (:step v))
-                        (if (= "" (:modifier v)) "" (str " — (" (:modifier v) ")"))
-                        ]
-                       ]
-
-
-                      [:.kv
-
-                       (if (:expands? v)
-                         (into
-                           [:.v]
-                           (map (fn[a] [:div.kv {:style {:margin-left "1rem"}}
-                                        [:.k (short-key a)]
-                                        [:.v (d/pretty (get results a))]
-                                        ] ) (:res v))
-                           )
-                         [:.v
-                          (str
-                            (short-value (:res v))
-                            )
-                          ]
-                         )
-
-                       ]
-
-                      ]
-                     ) tree)
-              )
-            []
-            )
-          )
-    )
-
-  )
 
 
 
-(rum/defcs <debug> < rum/reactive (rum/local false ::show?)
 
-  [{show? ::show?} wf]
-  (let [h (fn [] (swap! show? not))]
-    (if @show?
-      [:pre (ui/btn "..." h) "\n" (dstr (into (sorted-map) wf))]
-      (ui/btn "..." h)
-      )
-    )
-  )
+
+
 
 (defn graph-to-svg [steps rfn]
   (let [graphviz-edges (reduce rfn "" steps)]
@@ -224,32 +143,36 @@
          IN (:IN in-out-map)
          OUT (:OUT in-out-map)
 
-         {
-          ctx-map :context-map
-          params :params
-          initial-steps :steps
-          } (get-in wf [:runtime :initial])
+         initial-data (get-in wf [:runtime :initial])
+
+         params (:params initial-data)
+
 
 
          ]
-     [:div.proto7
+     [:div ;; .proto7
+
+      (try
+        (ui/<results-ui> "RESULTs"
+                         initial-data
+                         result)
+        (catch js/Error e
+          [:pre (pr-str e)]
+          )
+        )
+
+
+
+      [:hr]
 
 
       (<kv-w-meta> :IN (select-keys params IN))
       (<kv-w-meta> :OUT (select-keys result OUT))
 
 
-
-      (<results> (:title wf)
-                ctx-map
-                 initial-steps
-                 result
-                 )
-
       (<kv> "results" result)
 
-      (<debug> result)
-
+      (ui/<debug> result)
 
       ;; how to keep the steps up to date
       #_[:div.graph
@@ -278,21 +201,39 @@
   )
 
 
-;; todo: what if don't know which steps will be resulting
-;; maybe via :op-handlers-map :done
-;; but it doesn't change the data
-
-
 
 (defn initialize-in-out-wf [*wf]
     {
+     :title      "IN OUT workflow"
 
-     :init-fns         [; init-evt-loop
-                        (fn [params]
+     :explanation [:div
+                   [:p "In this workflow we try maintaining meta data for workflow through full workflow lifecycle."]
+
+                   [:p "We add the " [:code "init-fn"] " that creates a metadata atom via "
+                    [:code "base/build-init-meta-fn"]  " (accessor " [:code "base/&*meta"] "), so consequent "
+
+                    [:code "init-fn"] "s can pass some metadata further to " [:code "ctx-fn"]
+                    " and " [:code "steps-fn"]]
+
+                    [:p [:code "ctx-fn"] " can use metadata for providing prefixed "
+                     "step handlers - in case of name collision, or several versions of the step handler"
+                    ]
+
+                    [:p [:code "steps-fn"] " can use metadata for specifying additional info regarding steps, "
+                     "especially expanded"
+                     ]
+
+                    [:p [:b "<?>"] " How this is different from doing it via params? Maybe just use separate playground context "
+                     "— for explicitly stating what is a result"]
+
+                    [:p "Also we use this workflow for refining the UI that will show workflow progress"]
+                    ]
+
+     :init-fns         [(fn [params]
                           (let [params-map {:some-numbers [1 2 3 4 5]}]
 
                               ;; store in meta params IN metadata
-                               (swap! (:META params) update :IN conj :some-numbers)
+                               (swap! (base/&*meta params) update :IN conj :some-numbers)
 
                                params-map
                                )
@@ -301,27 +242,20 @@
                         st-wf/chan-factory-init-fn
                         ]
 
-     :ctx-fns          [;ctx-evt-fn
-                        ;; (in-out-merge META steps)
-                        (fn [params]
+     :ctx-fns          [(fn [params]
                           {
                            :test {:fn (fn [v] v)}
 
                            ;; math
-
                            :+<   {:fn       (fn [xs]
                                               (into (array-map)
                                                     (map-indexed (fn [i x]
                                                                    [(wf/rand-sid) [:v x]]) xs)))
                                   :expands? true
                                   }
-
                            :v    {:fn (fn [x] x)}
-
                            :+>   {
-                                  :fn       (fn [xs]
-
-                                              (reduce + xs))
+                                  :fn       (fn [xs] (reduce + xs))
                                   :collect? true
                                   }
 
@@ -333,7 +267,7 @@
      :steps-fns        [;
                         ;; combine that will preserve meta
                         (fn [params]
-                          (swap! (:META params) update :OUT conj ::step-1)
+                          (swap! (base/&*meta params) update :OUT conj ::step-1)
                             {
                              ::step-1        [:test "step-1"]
                              ::hidden-step-1 [:test "hidden-step"]
@@ -341,7 +275,7 @@
                             )
 
                         (fn [params]
-                          (swap! (:META params) update :OUT conj ::step-2)
+                          (swap! (base/&*meta params) update :OUT conj ::step-2)
 
                           {
                            ::step-2 [:test "step-2"]
@@ -349,15 +283,12 @@
                           )
 
                         (fn [params]
-                          ;;                              ::addp   [:+< [1 2 3]]
-                          ;                             ::add    [:+> ::addp]
                           (let [expander-sid (wf/rand-sid "add-p-")
                                 sum-result-sid (wf/rand-sid "sum-")
                                 ]
 
-                               (swap! (:META params) update :OUT conj sum-result-sid)
+                               (swap! (base/&*meta params) update :OUT conj sum-result-sid)
                                {
-
                                 expander-sid [:+< [1 2 3]]
                                 sum-result-sid [:+> expander-sid]
                                 }
@@ -367,22 +298,11 @@
 
                         ]
 
-     :opt-fns          [;; ls/ls-opts-fn
-
-                        (base/build-opt-on-done (fn [params result]
-                                                  (with-meta result @(:META params))
-                                                  ))
-
-                        st-wf/chan-factory-opts-fn
-                        ]
-
+     :opt-fns          [(base/build-opt-on-done (fn [params result] (with-meta result @(base/&*meta params))))
+                        st-wf/chan-factory-opts-fn]
 
      ;; how to provide a custom ui for actions - we need to pass state here
      :ui-fn            (partial wf-ui/<default-wf-ui> <in-out-wf>)
-
-     :title      "IN OUT workflow"
-
-     ; :explanation [:div  "this is the explanation for the workflow"]
 
      :wf-actions       {
                         ; :not-started []

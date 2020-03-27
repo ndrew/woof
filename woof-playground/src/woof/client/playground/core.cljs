@@ -274,18 +274,17 @@
 (rum/defc <wf-ui> < rum/reactive [*TREE current-selector wf-actions]
   (let [*wf (rum/cursor-in *TREE current-selector)]
     [:div.woof-playground
+
      (ui/menubar (pr-str current-selector)
                  (concat
                    [["←" (partial back-to-project-selector *TREE current-selector)]]
                    (global-menu-items wf-actions)))
-     [:hr]
 
-     [:div {:style {:padding "1rem"
-                    :background-color "rgba(255,255,0,.043333)"}}
-      ;; todo: check if the wf has own ui
+     [:div.workflow-box
       (let [wf @*wf]
         ((:ui-fn wf) *wf))
-      ]           ]
+      ]
+     ]
     )
   )
 

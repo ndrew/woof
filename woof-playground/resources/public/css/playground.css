@@ -7,43 +7,6 @@ header {
 }
 
 
-/* menu bar */
-
-.menubar {
-    box-sizing: content-box;
-
-    display: inline-flex;
-    align-content: flex-end;
-    align-items: baseline;
-
-}
-
-.menubar .menu-item {
-    font-weight: 100;
-
-    padding: .1rem .33rem 0 .33rem;
-
-    color: rgb(220,20,60);
-    text-decoration: none;
-    border: 1px solid crimson;
-    margin-left: .5rem;
-
-}
-
-.menubar .menu-item:hover,
-.menubar .menu-item.selected {
-    color: #fff;
-    background-color: rgba(255,128,128,.75);
-}
-
-.menubar > .header {
-    font-weight: bolder;
-}
-
-.menubar .separator {
-    width: 1rem;
-}
-
 
 
 .wf {
@@ -125,26 +88,6 @@ ul.listbox {
 
 
 /* proto7 */
-
-
-.proto7 .flex > div {
-    outline: 1px solid darkolivegreen;
-    padding: .333rem;
-}
-
-.proto7 header {
-    margin-bottom: 1rem;
-}
-
-.proto7 .kv {
-    font-size: 6.5pt;
-    line-height: 1.33;
-}
-
-.proto7 .k {
-    margin-right: .5rem;
-}
-
 
 .proto8 .tabs > ul {
     display: flex;
@@ -243,9 +186,7 @@ ul.listbox {
 
 
 body {
-    font-family: -apple-system,BlinkMacSystemFont,"avenir next",avenir,helvetica,"helvetica neue",ubuntu,roboto,noto,"segoe ui",arial,sans-serif
-
-
+    /*font-family: -apple-system,BlinkMacSystemFont,"avenir next",avenir,helvetica,"helvetica neue",ubuntu,roboto,noto,"segoe ui",arial,sans-serif*/
 }
 
 .proto9 .container {
@@ -439,6 +380,8 @@ pre {
 }
 
 
+/* menubar */
+
 .menubar {
     box-sizing: content-box;
 
@@ -446,6 +389,8 @@ pre {
     align-content: flex-end;
     align-items: baseline;
 
+
+    margin-right: .5rem;
 }
 
 .menubar .menu-item {
@@ -456,8 +401,10 @@ pre {
     color: rgb(220,20,60);
     text-decoration: none;
     border: 1px solid crimson;
-    margin-left: .5rem;
+}
 
+.menubar .menu-item + .menu-item {
+    margin-left: .5rem;
 }
 
 .menubar .menu-item:hover,
@@ -468,6 +415,7 @@ pre {
 
 .menubar > .header {
     font-weight: bolder;
+    margin-right: .5rem;
 }
 
 .menubar .separator {
@@ -758,8 +706,8 @@ pre {
 
 .woof-internal > .woof-internal-popup {
     border: 1px solid rgba(0,0,0,.5);
-    padding: 1px 1.5rem .5rem .5rem;
-
+    /*padding: 1px 1.5rem .5rem .5rem;*/
+    background-color: white;
 
 }
 
@@ -825,21 +773,69 @@ pre {
 
 
 
+/***********************************/
+
+.woof-playground {
+
+}
+
+.woof-playground > .menubar + * {
+    border-top: 1px solid lightblue;
+    margin-top: .333rem;
+    padding-top: .333rem;
+    padding-left: .1333rem;
+}
 
 
 /* default workflow ui */
 
-.default-wf-ui {}
+.default-wf-ui {
 
+}
+
+
+.default-wf-ui .main-menu {
+    display:  flex;
+    flex: 0 1 auto;
+    width: 100%;
+}
+
+.default-wf-ui .main-menu .menubar {
+    flex-grow: 1;
+}
+
+.default-wf-ui .main-menu .tag {
+
+}
+
+/* explanation or other ui */
 .default-wf-ui .main-menu + * {
     margin: 1rem;
 }
 
 .default-wf-ui .wf-body {
-
-    border: 1px solid lightblue;
+    /*border: 1px solid lightblue;*/
 
 }
+
+
+
+
+.default-wf-ui .flex > div {
+    outline: 1px solid darkolivegreen;
+    padding: .333rem;
+}
+
+.default-wf-ui .kv {
+    /*font-size: 6.5pt;*/
+    line-height: 1.33;
+}
+
+.default-wf-ui .k {
+    margin-right: .5rem;
+}
+
+
 
 .wf-body .wf-body-menu {
     display: flex;
@@ -847,3 +843,90 @@ pre {
     flex-flow: row-reverse;
 }
 
+
+.workflow-box {
+
+}
+
+.wf-results {
+    /*outline: 1px solid cadetblue;*/
+}
+
+.wf-results .wf-results-row {
+    /**/
+
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+
+    padding: .1rem;
+}
+
+.wf-results .wf-results-row:hover {
+    background: rgba(0,255,0,0.1333);
+}
+
+.wf-results .wf-results-row > pre {
+    outline: 1px solid black;
+    /*display: none;*/
+}
+
+
+
+.wf-results .wf-results-row .sid {
+
+    border: 1px solid rgba(0,0,0,.133);
+    border-radius: 3px;
+    border-collapse: collapse;
+    box-sizing: border-box;
+
+    padding: .1333rem;
+
+}
+
+.wf-results .wf-results-row .sid:hover {
+    cursor: pointer;
+    border-color: rgba(0,0,0,.633);
+}
+
+
+
+/* widths */
+
+.wf-results .wf-results-row .wf-modifier {
+    width: 60px;
+    white-space: pre-wrap;
+}
+
+.wf-results .wf-results-row > .sid {
+
+    /* wf sid */
+    min-width: 15rem;
+    text-align: right;
+    margin-right: 1rem;
+}
+
+.wf-results .wf-results-row .wf-body {
+    /*min-width: 300px;*/
+    flex-grow: 1;
+
+    display: flex;
+    flex: 0 1 auto;
+}
+
+
+/* sid-list */
+
+.sid-list {
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+}
+
+.sid-list .sid {
+
+}
+
+.sid-list .sid {
+    margin-right: .1333rem
+}
