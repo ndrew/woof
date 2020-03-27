@@ -131,7 +131,7 @@
 ; nice way of displaying wf results
 
 (defn short-key [k]
-  (clojure.string/replace-all (pr-str k) #":woof.playground.prototype6/" "::"))
+  (clojure.string/replace (pr-str k) #":woof.playground.prototype6/" "::"))
 
 
 (defn short-value [v]

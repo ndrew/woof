@@ -38,32 +38,41 @@
 ;; playground wf runner function
 ;;
 
-(defn init-alpha-wf! [wf-id wf-init-fn]
+(defn init-alpha-wf! [update? wf-id wf-init-fn]
   (let [initial-state (state/empty-swf wf-id)]
+
     (st-wf/wf wf-id
               (fn [*SWF]
-                (let [nu-wf-state (wf-init-fn *SWF)
+                (let [nu-wf-state (wf-init-fn *SWF)]
 
-                      updated-state (merge
-                                      initial-state
-                                      nu-wf-state
-                                      {
-                                       :title   (get nu-wf-state :title "Untitled WF")
+                     (if update?
+                       (do
+                         (swap! *SWF merge nu-wf-state)
+                         )
 
-                                       ;; todo: should run/stop fn be exposed
+                       (do
+                         (swap! *SWF merge
+                                (merge
+                                  initial-state
+                                  nu-wf-state
+                                  {
+                                   :title   (get nu-wf-state :title "Untitled WF")
+                                   ;; todo: should run/stop fn be exposed
 
-                                       :actions (st-wf/default-actions-map
-                                                  (partial st-wf/wf-init! *SWF)
-                                                  (partial state/swf-run! *SWF)
-                                                  (partial state/swf-stop! *SWF)
-                                                  (get nu-wf-state :wf-actions {}))
+                                   :actions (st-wf/default-actions-map
+                                              (partial st-wf/wf-init! *SWF)
+                                              (partial state/swf-run! *SWF)
+                                              (partial state/swf-stop! *SWF)
+                                              (get nu-wf-state :wf-actions {}))
 
-                                       :ui-fn   (get nu-wf-state :ui-fn (partial wf-ui/<default-wf-ui>
-                                                                                 wf-ui/<default-body>))
-                                       })
-                      ]
+                                   :ui-fn   (get nu-wf-state :ui-fn (partial wf-ui/<default-wf-ui>
+                                                                             wf-ui/<default-body>))
+                                   }))
 
-                     (swap! *SWF merge updated-state)
+                         )
+                       )
+
+
                      )
                 ))
     )
@@ -75,23 +84,23 @@
 ;; * each node starting with wf- is a separate workflow
 ;; * internal - internal woof stuff
 
-(defn init-test-wfs []
+(defn init-test-wfs [update?]
 
   ;; todo: is it needed to call init-alpha-wf! here?
   ;; or it should be called if the button is pressed
   {
    ;; workflow w state (keywords that start with wf-...)
-   :wf-simplest-wf           (init-alpha-wf! :wf-simplest-wf test-wf/simplest-wf-initializer)
-   :wf-with-ui               (init-alpha-wf! :wf-with-ui test-wf/wf-with-ui-initializer)
+   :wf-simplest-wf           (init-alpha-wf! update? :wf-simplest-wf test-wf/simplest-wf-initializer )
+   :wf-with-ui               (init-alpha-wf! update? :wf-with-ui test-wf/wf-with-ui-initializer)
 
-   :wf-page                  (init-alpha-wf! :wf-page page-wf/initialize!)
+   :wf-page                  (init-alpha-wf! update? :wf-page page-wf/initialize!)
 
-   :wf-listings              (init-alpha-wf! :wf-listings listing-wf/initialize!)
+   :wf-listings              (init-alpha-wf! update? :wf-listings listing-wf/initialize!)
 
-   :wf-local-storage-post    (init-alpha-wf! :wf-local-storage-post post-wf/init-post-wf!)
-   :wf-local-storage-preview (init-alpha-wf! :wf-local-storage-preview preview-wf/init-preview-wf!)
+   :wf-local-storage-post    (init-alpha-wf! update? :wf-local-storage-post post-wf/init-post-wf!)
+   :wf-local-storage-preview (init-alpha-wf! update? :wf-local-storage-preview preview-wf/init-preview-wf!)
 
-   :wf-IN-OUT                (init-alpha-wf! :wf-IN-OUT in-out-wf/initialize-in-out-wf)
+   :wf-IN-OUT                (init-alpha-wf! update? :wf-IN-OUT in-out-wf/initialize-in-out-wf)
    }
   )
 
@@ -121,7 +130,7 @@
   )
 
 (defonce *TREE (atom (merge
-                       (init-test-wfs)
+                       (init-test-wfs false)
                        {
                       ;; internal
                       :internal           {
@@ -214,7 +223,7 @@
 
     (go
       (async/<! ch)
-      (let [updated-wfs (init-test-wfs)]
+      (let [updated-wfs (init-test-wfs false)]
         (swap! *TREE merge updated-wfs {::current []})
 
         (when-not (empty? new-curr)
@@ -229,8 +238,9 @@
 
 (defn update-current-wf! [tree curr]
 
+
   (let [[wf-id] curr
-        updated-wfs (init-test-wfs)
+        updated-wfs (init-test-wfs true)
         updated-wf (get-in updated-wfs curr)
 
         other-wfs (dissoc updated-wfs wf-id)
@@ -240,7 +250,6 @@
 
     (let [*dummy-state (atom updated-wf)]
 
-      ;; wf is not res
       (==>workflow-selected *dummy-state)
 
       (let [nu-wf-map @*dummy-state]
@@ -365,7 +374,7 @@
             (stop-current-wf! tree curr curr)))
         (do
           (prn "NO WF is working - updating all workflows")
-          (swap! *TREE merge (init-test-wfs) {::current []})
+          (swap! *TREE merge (init-test-wfs false) {::current []})
           )
         )
       )
