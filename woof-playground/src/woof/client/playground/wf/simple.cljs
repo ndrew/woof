@@ -10,7 +10,8 @@
     [cljs.core.async :as async]
     [woof.utils :as u]
     [woof.client.playground.ui.wf :as wf-ui]
-    [woof.base :as base])
+    [woof.base :as base]
+    [woof.utils :as utils])
   (:import [goog.net.XhrIo ResponseType])
 
   (:require-macros
@@ -183,6 +184,27 @@
 
                                 v)}
 
+                  :timer {:fn       (fn [max]
+                                      (let [ch (async/chan)]
+                                           (go
+                                             (dotimes [n max]
+                                               (async/put! ch {:t (utils/now)})
+                                               (async/<! (utils/timeout 1000))
+                                               )
+
+                                             (async/put! ch {:msg "Timer ended"})
+                                             )
+                                           ch)
+                                      )
+                          :infinite true
+                          }
+
+                  :format-time {:fn (fn [t]
+                                      (if-let [tt (get t :t)]
+                                              (.toString (js/Date. tt))
+                                              "Timer ended!")
+                                      )}
+
                   }
                  )]
 
@@ -191,6 +213,13 @@
                (fn [params]
                  {
                   ::initial-print [:print "hello"]
+
+
+                  ::timer  [:timer 100]
+                  ::t [:format-time ::timer]
+
+
+
                   })
 
                ]
@@ -220,23 +249,32 @@
      [:div
 
 
-      [:button {:style {:font-size "12pt"}
-                :on-click (fn [e]
-                            (let [loop-chan (&wf-init-param wf ::evt-loop-chan)]
-                                 (async/put! loop-chan
-                                             {(wf/rand-sid "click-") [:print (u/now)]})
-                                 )
-                            )}
-       "Click me!"
+      [:.timer "Timer — " (get (:result wf) ::t "")
+
+       [:hr]
+
+       [:div
+        "Event loop test: "
+        [:button {:style {:font-size "12pt"}
+                  :on-click (fn [e]
+                              (let [loop-chan (&wf-init-param wf ::evt-loop-chan)]
+                                   (async/put! loop-chan
+                                               {(wf/rand-sid "click-") [:print (u/now)]})
+                                   )
+                              )}
+         "Click me!"]
+        ]
+       (into [:.dates [:header {:style {:margin-top "1rem"}} "Click log (showing last 10 clicks)"]]
+             (map
+               (fn [t]
+                 [:pre (str "click — " t)])
+               (take 10 (reverse (get-in (:result wf) [::timestamps] []))))
+             )
+
        ]
 
-      (into [:.dates]
-            (map
-              (fn [t]
-                [:pre (str "click — " t)])
-              (reverse (get-in (:result wf) [::timestamps] [])))
-            )
 
+      [:hr]
 
       ]
 
@@ -264,7 +302,7 @@
 
    :explanation [:div.explanation
                  [:p "Woof workflows can simulate event loop, so we can use wf with the UI"]
-                 [:p "By clicking the button - we can add new steps to event loop"]
+                 [:p "By clicking the button - we can add new steps to event loop. Also available via 'ui event' workflow action"]
                  ]
 
    :wf-actions {
