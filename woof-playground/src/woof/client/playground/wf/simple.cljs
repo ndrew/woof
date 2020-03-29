@@ -34,50 +34,84 @@
   {
 
    :init-fns    [(fn [params]
-                   {:IN :some-wf-parameters})]
+                   ;; these don't matter now
+                   {:IN :some-wf-parameters}
+                   )]
+
+   :title       "Finite WF with default UI"
+
+   :explanation [:div.explanation
+
+                 [:p "This is an introductory playground workflow. Playground provides the workflow with a possibility to have an UI."]
+
+                 [:p "This workflow is finite, that is it will stop after all steps are processed."]
+
+                 [:p "Hypothesis: Function composition (f(g(x))) can be done with woof workflows."
+                  "Example of this can be map enrichment (like ring middle-ware)"]
+
+                 [:pre {:style {:font-size "10pt"}} [:code
+"
+// start with some initial data passed to :id step handler
+  ::value [:id {:initial :map}]
+
+// do f(value)
+  ::f [:f ::value]
+
+// do z(f(value)) — z is async, so further steps will wait for the result
+  ::z [:z-async ::f]
+
+// do g(z(f(value)))
+  ::g [:g ::z]
+"
+                  ]]
+
+                 ]
+
 
    :ctx-fns     [(fn [params]
                    {
-                    :intro {:fn (fn [v]
-                                  (prn "INTRO:" v)
-                                  v)
-                            }
-                    :wait  {
-                            :fn (fn [t]
-                                  (let [ch (async/chan)]
 
-                                       (go
-                                         (async/<! (u/timeout t))
-                                         (async/put! ch "DONE")
-                                         )
+                    :id {:fn identity}
 
-                                       ch))
-                            }
+                    :f {:fn (fn [v]
+                              (assoc v :f true)
+                              )}
+
+                    :g {:fn (fn [v]
+                              (assoc v :g true))}
+
+
+                    :z-async {:fn (fn [v]
+                                    (let [ch (async/chan)
+                                          t 1000 ]
+
+                                         (go
+                                           (async/<! (u/timeout t))
+                                           (async/put! ch (assoc v :z true)))
+
+                                         ch))}
+
                     }
                    )]
 
    :steps-fns   [(fn [params]
                    {
-                    ::intro-1 [:intro "Example of the simplest WF possible"]
-                    ::intro-2 [:intro "123456"]
 
-                    ::wait    [:wait 2000]
+                    ::value [:id {:initial :map}]
+
+                    ::f [:f ::value]
+
+                    ::z [:z-async ::f]
+
+                    ::g [:g ::z]
+
+
                     })
 
                  ]
    :opt-fns     []
 
 
-   ;; ui specific keys, optional - TODO: make these namespaced
-   :title       "Finite WF with default UI"
-
-   :explanation [:div.explanation
-
-                 [:p "This is a simplest workflow example."]
-                 [:p "This workflow is finite, that is it will stop after all steps are processed."]
-
-
-                 ]
    :wf-actions  {
                  :done [["log WF state" (fn []
                                                       (prn "Workflow is ready. WF state is:")
