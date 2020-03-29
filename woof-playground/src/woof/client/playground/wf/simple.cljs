@@ -30,7 +30,7 @@
 
 ;; todo: come with better wf example
 
-(defn simplest-wf-initializer [*SWF]
+(defn basic-wf-initializer [*SWF]
   {
 
    :init-fns    [(fn [params]
@@ -74,19 +74,23 @@
                     :id {:fn identity}
 
                     :f {:fn (fn [v]
+                              (prn ":F")
                               (assoc v :f true)
                               )}
 
                     :g {:fn (fn [v]
+                              (prn ":G")
                               (assoc v :g true))}
 
 
                     :z-async {:fn (fn [v]
                                     (let [ch (async/chan)
-                                          t 1000 ]
+                                          t 3000 ]
 
+                                         (prn ":Z - starting")
                                          (go
                                            (async/<! (u/timeout t))
+                                           (prn ":Z - done")
                                            (async/put! ch (assoc v :z true)))
 
                                          ch))}
@@ -137,13 +141,19 @@
 
 (defn ctx-evt-fn [params]
   {
-   :test     {:fn (fn [v] v)}
-
    :evt-loop {
               :fn       (fn [in-chan] in-chan)
               :infinite true
               :expands? true
               }
+
+   :collect {
+             :fn (fn [v]
+                   v
+                   )
+             :collect? true
+             }
+
    }
   )
 
@@ -151,6 +161,9 @@
   {
 
    ::evt-loop [:evt-loop (::evt-loop-chan params)]
+
+   ::timestamps [:collect ::evt-loop]
+
    }
   )
 
@@ -166,7 +179,9 @@
 
                (fn [params]
                  {
-                  :test {:fn (fn [v] v)}
+                  :print {:fn (fn [v]
+
+                                v)}
 
                   }
                  )]
@@ -175,7 +190,7 @@
 
                (fn [params]
                  {
-                  ::YO [:test "YO"]
+                  ::initial-print [:print "hello"]
                   })
 
                ]
@@ -188,12 +203,45 @@
   )
 
 
-(rum/defcs <example-node-ui> < rum/reactive
-                               (rum/local true ::inline-results?)
-                               (rum/local true ::sort-results?)
+
+;; exposes init param by it's key
+(defn &wf-init-param [wf k]
+  (get-in wf [:runtime :initial :params k]))
+
+
+(rum/defcs <custom-wf-ui> < rum/reactive
+                            (rum/local true ::inline-results?)
+                            (rum/local true ::sort-results?)
   [local wf]
 
   [:div
+
+   (if (not= :not-started (:status wf))
+     [:div
+
+
+      [:button {:style {:font-size "12pt"}
+                :on-click (fn [e]
+                            (let [loop-chan (&wf-init-param wf ::evt-loop-chan)]
+                                 (async/put! loop-chan
+                                             {(wf/rand-sid "click-") [:print (u/now)]})
+                                 )
+                            )}
+       "Click me!"
+       ]
+
+      (into [:.dates]
+            (map
+              (fn [t]
+                [:pre (str "click — " t)])
+              (reverse (get-in (:result wf) [::timestamps] [])))
+            )
+
+
+      ]
+
+     )
+
 
 
       [:pre "↓ this is the default UI for displaying wf results ↓"]
@@ -210,12 +258,13 @@
 
 
    ;; how to provide a custom ui for actions - we need to pass state here
-   :ui-fn      (partial wf-ui/<default-wf-ui> <example-node-ui>)
+   :ui-fn      (partial wf-ui/<default-wf-ui> <custom-wf-ui>)
 
    :title      "Workflow with Event Loop and custom UI"
 
-   :explanation [:div
-                 "this is the explanation for the workflow"
+   :explanation [:div.explanation
+                 [:p "Woof workflows can simulate event loop, so we can use wf with the UI"]
+                 [:p "By clicking the button - we can add new steps to event loop"]
                  ]
 
    :wf-actions {
@@ -225,7 +274,7 @@
                           ["ui event" (fn []
                                           (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
                                                (async/put! loop-chan
-                                                           {(wf/rand-sid "ui-") [:test (u/now)]})
+                                                           {(wf/rand-sid "ui-") [:print (u/now)]})
                                                )
                                           )]
 

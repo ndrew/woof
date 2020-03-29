@@ -49,6 +49,8 @@
        )
      )
 
+
+
     ;[:hr]
 
    ;; this should be the easiest way to display wf results
@@ -118,7 +120,12 @@
          (fn? explanation) (explanation)
          )
 
-      (<body-fn> wf)
+     (try
+       (<body-fn> wf)
+       (catch js/Error e
+         [:pre (pr-str e)]
+         )
+       )
      ]
     )
   )

@@ -353,16 +353,33 @@
                              ]
                             (if (:expanded-kv? ui-cfg)
                               ;; todo: expand
-                              (concat a  [{
-                                        :k k
-                                        :step [step-id v]
-                                        :res (get results k)
-                                        :ctx ctx
-                                        :modifier (clojure.string/trim modifier)
-                                        :expands? expands?
-                                        }
-                                      ]
-                                      )
+                              (let [sid-list (get results k)
+                                    root-node {
+                                               :k k
+                                               :step [step-id v]
+                                               :res sid-list
+                                               :ctx ctx
+                                               :modifier (clojure.string/trim modifier)
+                                               :expands? expands?
+
+                                               }
+                                    ]
+                                (concat a [root-node]
+                                        #_(map (fn [sid]
+                                               {
+                                                :k sid
+                                                :res (get results sid)
+
+                                                :step [step-id v]
+                                                :ctx ctx
+                                                :modifier (clojure.string/trim modifier)
+                                                :expands? false
+                                                }
+                                               )
+                                             sid-list )
+                                        )
+                                )
+
                               (conj a  {
                                         :k k
                                         :step [step-id v]
@@ -412,7 +429,7 @@
             (let [tree (make-tree ui-cfg initial-data results)]
               (concat
                 [
-                 ;[:pre (d/pretty tree) ]
+                 ; [:pre (d/pretty tree) ]
 
                  #_[:pre
                   "expanded steps:\n"
