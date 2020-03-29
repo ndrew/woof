@@ -11,7 +11,8 @@
     [woof.utils :as u]
     [woof.client.playground.ui.wf :as wf-ui]
     [woof.base :as base]
-    [woof.utils :as utils])
+    [woof.utils :as utils]
+    [woof.data :as d])
   (:import [goog.net.XhrIo ResponseType])
 
   (:require-macros
@@ -294,31 +295,44 @@
 (defn initialize-test-wf-w-state! [*wf]
   {
 
-
    ;; how to provide a custom ui for actions - we need to pass state here
-   :ui-fn      (partial wf-ui/<default-wf-ui> <custom-wf-ui>)
+   :ui-fn       (partial wf-ui/<default-wf-ui> <custom-wf-ui>)
 
-   :title      "Workflow with Event Loop and custom UI"
+   :title       "Workflow with Event Loop and custom UI"
 
    :explanation [:div.explanation
-                 [:p "Woof workflows can simulate event loop, so we can use wf with the UI"]
+                 [:p "Woof workflows can simulate event loop via infinite expand step. So the UI can send new steps to the workflow,"
+                  "workflow run these steps, modify state which will become reflected in the UI."
+                  ]
+
                  [:p "By clicking the button - we can add new steps to event loop. Also available via 'ui event' workflow action"]
                  ]
 
-   :wf-actions {
-                ; :not-started []
-                :running [
+   :wf-actions  {
+                 ; :not-started []
+                 :running [
 
-                          ["ui event" (fn []
-                                          (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
-                                               (async/put! loop-chan
-                                                           {(wf/rand-sid "ui-") [:print (u/now)]})
-                                               )
-                                          )]
+                           ["simulate click" (fn []
+                                               (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
+                                                    (async/put! loop-chan
+                                                                {(wf/rand-sid "ui-") [:print (u/now)]})
+                                                    )
+                                               )]
 
-                          ]
-                ; :done        []
-                }
+                           ["send to evt loop"
+                            (fn []
+                              (let [step (d/to-primitive (js/prompt "provide step as [:handler-id <params>], e.g. [:print \"some value\"]"))]
+                                   (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
+                                     (async/put! loop-chan
+                                                 {(wf/rand-sid "emit-") step})
+                                     )
+                                   )
+                              )
+                            ]
+
+                           ]
+                 ; :done        []
+                 }
 
    }
   )
