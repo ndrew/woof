@@ -26,13 +26,13 @@
 
 (rum/defc <post-ui> < rum/reactive [wf]
 
-  [:div
+  [:div {:style {:padding ".5rem" :border "1px solid black"}}
    ;; wf specific data
    [:pre {:style {:margin-bottom "1rem"}}
     (pr-str (::preview (:result wf)))]
 
 
-   (wf-ui/<default-wf-body-ui> wf)
+   (wf-ui/<default-body> wf)
 
    ]
 

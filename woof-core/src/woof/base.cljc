@@ -65,11 +65,20 @@
 
 
 ;; todo: check whether we need this here. if so - add the metadata merging function
+(defn default-meta-map []
+  {:IN  #{}
+   :OUT #{}}
+  )
+
 (defn build-init-meta-fn []
   (fn [params]
     (merge params
-           {:META (atom {:IN  #{}
-                         :OUT #{}})})))
+           {:META (atom (default-meta-map))})))
+
+(defn &*meta [params]
+  (if-let [*meta (:META params)]
+    *meta
+    (utils/throw! "no :META provided in the params")))
 
 
 ;; do we need this here?

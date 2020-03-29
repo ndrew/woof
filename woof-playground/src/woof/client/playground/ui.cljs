@@ -351,14 +351,28 @@
                                                             (if (get ctx :collect) "c" "")
                                                             (if (get ctx :expands?) "e" "")])
                              ]
-                            (conj a  {
-                                      :k k
-                                      :step [step-id v]
-                                      :res (get results k)
-                                      :ctx ctx
-                                      :modifier (clojure.string/trim modifier)
-                                      :expands? expands?
-                                      }))
+                            (if (:expanded-kv? ui-cfg)
+                              ;; todo: expand
+                              (concat a  [{
+                                        :k k
+                                        :step [step-id v]
+                                        :res (get results k)
+                                        :ctx ctx
+                                        :modifier (clojure.string/trim modifier)
+                                        :expands? expands?
+                                        }
+                                      ]
+                                      )
+                              (conj a  {
+                                        :k k
+                                        :step [step-id v]
+                                        :res (get results k)
+                                        :ctx ctx
+                                        :modifier (clojure.string/trim modifier)
+                                        :expands? expands?
+                                        })
+                              )
+                            )
                        ) [] initial-steps)]
     tree
 

@@ -813,11 +813,9 @@ pre {
     margin: 1rem;
 }
 
-.default-wf-ui .wf-body {
+.default-wf-ui > .wf-body {
     /*border: 1px solid lightblue;*/
-
 }
-
 
 
 
@@ -850,6 +848,9 @@ pre {
 
 .wf-results {
     /*outline: 1px solid cadetblue;*/
+    padding: .5rem;
+    border: 1px solid black;
+
 }
 
 .wf-results .wf-results-row {

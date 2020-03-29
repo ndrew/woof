@@ -82,15 +82,12 @@
 
 (rum/defc <default-body> < rum/static
   [wf]
-
-  [:div {:style {:padding ".5rem" :border "1px solid black"}}
-   (condp = (:status wf)
-     :not-started   [:pre "Ready to start!"]
-     :running (<default-wf-body-ui> wf)         ; [:pre "..."]
-     :done    (<default-wf-body-ui> wf)         ; (safe-pretty (:result wf))
-     :error [:pre "Error: " (safe-pretty (:result wf))]
-     )
-   ]
+  (condp = (:status wf)
+    :not-started [:pre "Ready to start!"]
+    :running (<default-wf-body-ui> wf)                      ; [:pre "..."]
+    :done (<default-wf-body-ui> wf)                         ; (safe-pretty (:result wf))
+    :error [:pre "Error: " (safe-pretty (:result wf))]
+    )
   )
 
 
