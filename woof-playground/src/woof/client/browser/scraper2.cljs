@@ -125,21 +125,30 @@
 
    ::selector [:identity "#root > div > div > main > section > article"]
 
-   ::outline [:identity " { outline: 1px solid lime; }"]
-   ::css-rule [:str-join [::selector ::outline]]
+   ;; add custom css rules to better identify things we will be parsing
+   ::custom-css-for-listing [:css-rule ::listing-css-rule]
+   ::custom-css-for-error [:css-rule ".woof-error { outline: 5px solid red; }"]
 
-   ::css-1 [:css-rule ::css-rule]
-   ::css-2 [:css-rule ".woof-error { outline: 5px solid red; }"]
+      ::outline [:identity " { outline: 1px solid lime; }"]
+      ::listing-css-rule [:str-join [::selector ::outline]]
 
+
+   ;; get the elements to be parsed
    ::els [:query-selector-all ::selector]
 
+   ;; process the elements similar to pmap
    ::processed-elements [:process* ::els]
 
+   ;; a tricky way for storing all expanded step-ids
    ::k [:mem-k* ::processed-elements]
-   ::KV [:*kv-zip [::k ::processed-elements]]
 
-   ::filtered-listings [:filter-errors ::KV]
+   ;; zip all listings back to map with {<sid> <listing>}
+   ::listings-kv [:*kv-zip [::k ::processed-elements]]
 
+   ;; filter out listings that were not parsed
+   ::filtered-listings [:filter-errors ::listings-kv]
+
+   ;; resulting listings
    ::LISTINGS [:collect ::filtered-listings]
 
   ;; for now do not output the listings within workflow
