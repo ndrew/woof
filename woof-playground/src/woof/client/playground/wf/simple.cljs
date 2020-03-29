@@ -59,7 +59,7 @@
    :steps-fns   [(fn [params]
                    {
                     ::intro-1 [:intro "Example of the simplest WF possible"]
-                    ::intro-2 [:intro ""]
+                    ::intro-2 [:intro "123456"]
 
                     ::wait    [:wait 2000]
                     })
@@ -71,21 +71,15 @@
    ;; ui specific keys, optional - TODO: make these namespaced
    :title       "Finite WF with default UI"
 
-   :explanation [:div
+   :explanation [:div.explanation
 
-                 [:p {:style {:color "red"}} "This is a simplest workflow example. Finite!!!"]
-                 [:pre "ctx:\n
-:intro - displays a test message
-:wait - waits for some time
-"]
+                 [:p "This is a simplest workflow example."]
+                 [:p "This workflow is finite, that is it will stop after all steps are processed."]
 
-                 [:pre "steps:\n
-  ::intro-1 [:intro \"Example of the simplest WF possible\"]
-  ::intro-2 [:intro \"\"]
-  ::wait [:wait 2000]"]
+
                  ]
    :wf-actions  {
-                 :done [["custom action (on done) " (fn []
+                 :done [["log WF state" (fn []
                                                       (prn "Workflow is ready. WF state is:")
                                                       (.log js/console @*SWF))
                          ]]}
@@ -125,7 +119,6 @@
    ::evt-loop [:evt-loop (::evt-loop-chan params)]
    }
   )
-
 
 
 (defn initialize-test-wf! []

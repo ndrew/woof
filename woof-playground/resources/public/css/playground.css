@@ -810,7 +810,7 @@ pre {
 
 /* explanation or other ui */
 .default-wf-ui .main-menu + * {
-    margin: 1rem;
+    /*margin-top: 1rem;*/
 }
 
 .default-wf-ui > .wf-body {
@@ -846,11 +846,30 @@ pre {
 
 }
 
+.explanation {
+    background-color: rgba(176, 196, 222, .2);
+    padding: .5rem;
+    margin: .5rem 0;
+}
+
+.wf-error {
+    line-height: 1.5;
+    font-weight: bolder;
+    color: maroon;
+
+    padding: 1rem;
+    background-color: lightcoral;
+}
+
 .wf-results {
     /*outline: 1px solid cadetblue;*/
     padding: .5rem;
     border: 1px solid black;
 
+}
+
+.wf-results + .wf-results {
+    margin-top: 1rem;
 }
 
 .wf-results .wf-results-row {

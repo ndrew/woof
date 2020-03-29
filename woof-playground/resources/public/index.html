@@ -8,17 +8,39 @@
 
     <link rel="icon" href="/favicon.png">
 
+    <style>
+      article {
+        margin-bottom: 1.5rem;
+      }
+
+      article header {
+        margin-bottom: .5rem;
+      }
+    </style>
   </head>
   <body>
 
     <div id="app">
       <h2>🐶 woof-woof!</h2>
 
-      <a href="/browser.html">Browser</a>
-      <a href="/playground.html">Playground</a>
+      <article>
+        <header> <a href="/playground.html">Playground</a> </header>
+
+        Figwheel sandbox for developing stateful workflows with react UI.
+      </article>
+
+      <article>
+        <header><a href="/browser.html">Browser</a></header>
+
+        Figwheel sandbox for developing workflow that should run as a content script.
+      </article>
+
+      <article>
+        <header><a href="/figwheel-extra-main/auto-testing">Tests</a></header>
+
+      </article>
+
 
     </div>
-<!--    <script>var PLAYGROUND = true;</script>-->
-<!--    <script src="cljs-out/playground-main.js" type="text/javascript"></script>-->
   </body>
 </html>

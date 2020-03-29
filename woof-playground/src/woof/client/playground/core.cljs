@@ -137,19 +137,20 @@
                                            :ping       0
                                            :show-menu? false
 
-                                           :stop-wf-on-reload? false
+                                           ;; what should the defaults be, false
+                                           :stop-wf-on-reload? true
 
                                            }
                       ;; alpha ui stuff
                       ::current           []
 
                       ::global-actions    [
-                                           ["global action" global-action]
+                                           ;; ["global action" global-action]
                                            ]
 
                       ::global-wf-actions {
-                                           :wf-dummy [["wf specific action" (fn [] (prn "I am a global action for wf-dummy"))]
-                                                      ]}
+                                           ;:wf-dummy [["wf specific action" (fn [] (prn "I am a global action for wf-dummy"))]]
+                                           }
                       })))
 
 
@@ -252,11 +253,24 @@
 
       (==>workflow-selected *dummy-state)
 
-      (let [nu-wf-map @*dummy-state]
+      (let [nu-wf-map @*dummy-state
+
+            _upd-map (select-keys nu-wf-map [:ui-fn :actions :title :wf-actions :explanation
+
+                                             :init-fns :steps-fns :opt-fns
+                                             ])
+            upd-map (into {
+                           :error nil
+                           } (filter (fn [[k v]] (not (nil? v)))
+                                     _upd-map))
+            ]
         ;; what of wf map can be updated for running workflow
-        (prn "keeping the " wf-id "running")
+        (prn "updating the selected workflow " wf-id )
+
+        (.warn js/console upd-map)
+
         (swap! *TREE update-in curr
-               merge (select-keys nu-wf-map [:ui-fn :actions :title :wf-actions :explanation]))
+               merge upd-map)
 
         ;(.log js/console "PREV" (get-in tree curr))
         ;(.log js/console "NU" nu-wf-map)

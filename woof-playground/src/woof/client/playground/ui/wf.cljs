@@ -34,12 +34,19 @@
 
   [:div.wf-body
 
-   ;; todo check if wf is running
-
-   (if (not= :not-started (:status wf))
-     (ui/<results-ui> "RESULTS"
+   (if-let [initial-steps (get-in wf [:runtime :initial :steps])]
+     (ui/<results-ui> "INITIAL STEPS"
                       (get-in wf [:runtime :initial])
-                      (:result wf))
+                      initial-steps)
+     )
+
+
+   (if-let [results (:result wf)]
+     (if (not= :not-started (:status wf))
+       (ui/<results-ui> "RESULTS"
+                        (get-in wf [:runtime :initial])
+                        results)
+       )
      )
 
     ;[:hr]
@@ -83,10 +90,12 @@
 (rum/defc <default-body> < rum/static
   [wf]
   (condp = (:status wf)
-    :not-started [:pre "Ready to start!"]
+    :not-started [:div
+                  "Hit run! to start a workflow"
+                  ]
     :running (<default-wf-body-ui> wf)                      ; [:pre "..."]
     :done (<default-wf-body-ui> wf)                         ; (safe-pretty (:result wf))
-    :error [:pre "Error: " (safe-pretty (:result wf))]
+    :error [:pre.wf-error "Error:\n" (safe-pretty (:result wf))]
     )
   )
 

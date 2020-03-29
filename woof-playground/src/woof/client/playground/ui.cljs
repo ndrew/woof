@@ -245,7 +245,7 @@
       [:.wf-body]
 
       (if (:expands? v)
-        [(menubar "" [[ (if expand? "sid-list" "values")
+        [(menubar "" [[ (if expand? "as sid-list" "as values")
                           (fn [] (swap! (::expanded-kv? local) not))]])
          (if expand?
 
