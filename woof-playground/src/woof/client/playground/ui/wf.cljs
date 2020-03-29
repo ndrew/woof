@@ -26,7 +26,6 @@
 
 
 ;;
-
 (rum/defcs <default-wf-body-ui> < rum/reactive
                                (rum/local true ::inline-results?)
                                (rum/local true ::sort-results?)
@@ -34,7 +33,9 @@
 
   [:div.wf-body
 
-   (if-let [initial-steps (get-in wf [:runtime :initial :steps])]
+
+   #_(if-let [initial-steps (get-in wf [:runtime :initial :steps])]
+     ;; TODO: better UI for steps
      (ui/<results-ui> "INITIAL STEPS"
                       (get-in wf [:runtime :initial])
                       initial-steps)

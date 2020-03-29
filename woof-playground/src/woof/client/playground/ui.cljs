@@ -290,12 +290,13 @@
         v KV
         OUT? (get-in metadata [:OUT k])]
     [:div.wf-results-row
+     {:class (if (:updated? v) "wf-updated" "")}
 
      ;; modifier
 
      [:div.wf-modifier
-
       (str
+
         (if-not (nil? OUT?) "OUT" "___")
         "|" (:modifier v))
 
@@ -306,7 +307,6 @@
      ;; todo: sort by date
 
      (<sid-value> ui-cfg k v results )
-
 
      #_[:.wf-body
         (if (:expands? v)
@@ -374,6 +374,7 @@
                                                :modifier (clojure.string/trim modifier)
                                                :expands? expands?
 
+                                               :updated? ((get ui-cfg :updated-keys #{}) k)
                                                }
                                     ]
                                 (concat a [root-node]
@@ -399,6 +400,8 @@
                                         :ctx ctx
                                         :modifier (clojure.string/trim modifier)
                                         :expands? expands?
+
+                                        :updated? ((get ui-cfg :updated-keys #{}) k)
                                         })
                               )
                             )
@@ -409,12 +412,16 @@
   )
 
 
+
+
 (rum/defcs <results-ui> < rum/static
                           (rum/local true ::show?)
                           (rum/local {
                                       :short-keys? true
                                       :expanded-kv? true
                                       } ::ui-cfg)
+                          (rum/local (atom {}) ::prev-results)
+
   [local
 
    heading
@@ -429,8 +436,17 @@
         mi-toggler (partial kv-menu-item-toggler *ui-cfg ui-cfg)
 
         results-metadata (if-let [m (meta results)] m (base/default-meta-map))
+
+        *prev @(::prev-results local)
+
+        prev-results @*prev
+        _ (reset! *prev results)
+
+        [upd] (clojure.data/diff results prev-results)
+        upd-keys (if (nil? upd) #{} (into #{} (keys upd)))
         ]
     (into [:div.wf-results
+
            (menubar heading [
                                 [(if show? "↑" "↓") (fn [] (swap! (::show? local) not))]
                                 (mi-toggler "short keys: " :short-keys?)
@@ -438,7 +454,7 @@
                                 ])
            ]
           (if show?
-            (let [tree (make-tree ui-cfg initial-data results)]
+            (let [tree (make-tree (assoc ui-cfg :updated-keys upd-keys) initial-data results)]
               (concat
                 [
                  ; [:pre (d/pretty tree) ]

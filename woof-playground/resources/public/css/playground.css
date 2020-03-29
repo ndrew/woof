@@ -850,6 +850,8 @@ pre {
     background-color: rgba(176, 196, 222, .2);
     padding: .5rem;
     margin: .5rem 0;
+
+    line-height: 1;
 }
 
 .wf-error {
@@ -979,5 +981,28 @@ pre {
     80%, 100% {
         opacity: 100%;
     }
+
+}
+
+
+@keyframes bg-update {
+    0%, 20% {
+        background-color: rgba(0,255,0, 0.30);
+    }
+    40% {
+        background-color: rgba(0,255,0,.25);
+    }
+    60% {
+        background-color: rgba(0,255,0,.20);
+    }
+    80%, 100% {
+        background-color: rgba(0,255,0, .0);
+    }
+
+}
+
+
+.wf-updated {
+    animation: bg-update 1.5s steps(5, end);
 
 }

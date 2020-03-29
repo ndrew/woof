@@ -22,7 +22,6 @@
 ;;
 ;; alpha workflow example
 
-
 ;; here we test the idea of WF initializer function:
 ;;   we need to return a WF map containing:
 ;;    * necessary stuff: init-fn/ctx-fn/steps-fn
@@ -30,7 +29,6 @@
 ;;        ui fn, wf actions, etc
 ;;        also we pass WF atom where this map will live
 
-;; todo: come with better wf example
 
 (defn basic-wf-initializer [*SWF]
   {
@@ -51,9 +49,8 @@
                  [:p "Hypothesis: Function composition (f(g(x))) can be done with woof workflows."
                   "Example of this can be map enrichment (like ring middle-ware)"]
 
-                 [:pre {:style {:font-size "10pt"}} [:code
-"
-// start with some initial data passed to :id step handler
+                 [:pre {:style {:font-size "8.5pt" :padding-left "2rem"}} [:code
+"// start with some initial data passed to :id step handler
   ::value [:id {:initial :map}]
 
 // do f(value)
@@ -131,164 +128,98 @@
 ;;;;;
 ;; more complex example
 
-(defn init-evt-loop [params]
-  ;; this should prepare all stuff needed for ctx and steps
-  (let [evt-loop-chan (st-wf/&chan params (wf/rand-sid "evt-loop"))]
-    {
-     ;; keep the evt loop chan
-     ::evt-loop-chan evt-loop-chan
-     }
-    )
-  )
-
-(defn ctx-evt-fn [params]
-  {
-   :evt-loop {
-              :fn       (fn [in-chan] in-chan)
-              :infinite true
-              :expands? true
-              }
-
-   :collect {
-             :fn (fn [v]
-                   v
-                   )
-             :collect? true
-             }
-
-   }
-  )
-
-(defn steps-evt-fn [params]
-  {
-
-   ::evt-loop [:evt-loop (::evt-loop-chan params)]
-
-   ::timestamps [:collect ::evt-loop]
-
-   }
-  )
+(declare <custom-wf-ui>)
 
 
 (defn initialize-test-wf! []
-  {
+  (let [
+        init-evt-loop (fn [params]
+          ;; this should prepare all stuff needed for ctx and steps
+          (let [evt-loop-chan (st-wf/&chan params (wf/rand-sid "evt-loop"))]
+            {
+             ::evt-loop-chan evt-loop-chan ;; keep the evt loop chan
+             }))
 
-   :init-fns  [init-evt-loop
-               st-wf/chan-factory-init-fn
-               ]
+        ctx-evt-fn (fn [params]
+          {
+           :evt-loop {
+                      :fn       (fn [in-chan] in-chan)
+                      :infinite true
+                      :expands? true
+                      }
 
-   :ctx-fns   [ctx-evt-fn
+           :collect {
+                     :fn (fn [v]
+                           v)
+                     :collect? true
+                     }
+           })
 
-               (fn [params]
-                 {
-                  :print {:fn (fn [v]
-
-                                v)}
-
-                  :timer {:fn       (fn [max]
-                                      (let [ch (async/chan)]
-                                           (go
-                                             (dotimes [n max]
-                                               (async/put! ch {:t (utils/now)})
-                                               (async/<! (utils/timeout 1000))
-                                               )
-
-                                             (async/put! ch {:msg "Timer ended"})
-                                             )
-                                           ch)
-                                      )
-                          :infinite true
-                          }
-
-                  :format-time {:fn (fn [t]
-                                      (if-let [tt (get t :t)]
-                                              (.toString (js/Date. tt))
-                                              "Timer ended!")
-                                      )}
-
-                  }
-                 )]
-
-   :steps-fns [steps-evt-fn
-
-               (fn [params]
-                 {
-                  ::initial-print [:print "hello"]
-
-
-                  ::timer  [:timer 100]
-                  ::t [:format-time ::timer]
-
-
-
-                  })
-
-               ]
-
-   :opt-fns   [;; ls/ls-opts-fn
-               st-wf/chan-factory-opts-fn
-               ]
-
-   }
-  )
-
-
-
-;; exposes init param by it's key
-(defn &wf-init-param [wf k]
-  (get-in wf [:runtime :initial :params k]))
-
-
-(rum/defcs <custom-wf-ui> < rum/reactive
-                            (rum/local true ::inline-results?)
-                            (rum/local true ::sort-results?)
-  [local wf]
-
-  [:div
-
-   (if (not= :not-started (:status wf))
-     [:div
-
-
-      [:.timer "Timer — " (get (:result wf) ::t "")
-
-       [:hr]
-
-       [:div
-        "Event loop test: "
-        [:button {:style {:font-size "12pt"}
-                  :on-click (fn [e]
-                              (let [loop-chan (&wf-init-param wf ::evt-loop-chan)]
-                                   (async/put! loop-chan
-                                               {(wf/rand-sid "click-") [:print (u/now)]})
-                                   )
-                              )}
-         "Click me!"]
         ]
-       (into [:.dates [:header {:style {:margin-top "1rem"}} "Click log (showing last 10 clicks)"]]
-             (map
-               (fn [t]
-                 [:pre (str "click — " t)])
-               (take 10 (reverse (get-in (:result wf) [::timestamps] []))))
-             )
+    {
 
-       ]
+     :init-fns  [init-evt-loop
+                 st-wf/chan-factory-init-fn
+                 ]
 
+     :ctx-fns   [ctx-evt-fn
 
-      [:hr]
+                 (fn [params]
+                   {
+                    :print {:fn (fn [v]
 
-      ]
+                                  v)}
 
-     )
+                    :timer {:fn       (fn [max]
+                                        (let [ch (async/chan)]
+                                             (go
+                                               (dotimes [n max]
+                                                 (async/put! ch {:t (utils/now)})
+                                                 (async/<! (utils/timeout 1000))
+                                                 )
 
+                                               (async/put! ch {:msg "Timer ended"})
+                                               )
+                                             ch)
+                                        )
+                            :infinite true
+                            }
 
+                    :format-time {:fn (fn [t]
+                                        (if-let [tt (get t :t)]
+                                                (.toString (js/Date. tt))
+                                                "Timer ended!")
+                                        )}
 
-      [:pre "↓ this is the default UI for displaying wf results ↓"]
-      (wf-ui/<default-wf-body-ui> wf)
+                    }
+                   )]
 
-   ;[:hr]
-   ;[:pre (d/pretty (into (sorted-map) wf))]
-   ]
+     :steps-fns [(fn [params]
+                   {
+                    ::evt-loop [:evt-loop (::evt-loop-chan params)]
+                    ::timestamps [:collect ::evt-loop]
+                    }
+                   )
+
+                 (fn [params]
+                   {
+
+                    ;; ::initial-print [:print "hello"]
+
+                    ::timer  [:timer 100]
+                    ::t [:format-time ::timer]
+
+                    })
+
+                 ]
+
+     :opt-fns   [;; ls/ls-opts-fn
+                 st-wf/chan-factory-opts-fn
+                 ]
+
+     }
+    )
+
   )
 
 
@@ -347,4 +278,61 @@
 
 
 
+;;; ui
+
+;; exposes init param by it's key
+(defn &wf-init-param [wf k]
+  (get-in wf [:runtime :initial :params k]))
+
+(rum/defcs <custom-wf-ui> < rum/reactive
+                            (rum/local true ::inline-results?)
+                            (rum/local true ::sort-results?)
+  [local wf]
+
+  [:div
+
+   (if (not= :not-started (:status wf))
+     [:div
+
+
+      [:.timer "Timer — " (get (:result wf) ::t "")
+
+       [:hr]
+
+       [:div
+        "Event loop test: "
+        [:button {:style {:font-size "12pt"}
+                  :on-click (fn [e]
+                              (let [loop-chan (&wf-init-param wf ::evt-loop-chan)]
+                                   (async/put! loop-chan
+                                               {(wf/rand-sid "click-") [:print (u/now)]})
+                                   )
+                              )}
+         "Click me!"]
+        ]
+       (into [:.dates [:header {:style {:margin-top "1rem"}} "Click log (showing last 10 clicks)"]]
+             (map
+               (fn [t]
+                 [:pre (str "click — " t)])
+               (take 10 (reverse (get-in (:result wf) [::timestamps] []))))
+             )
+
+       ]
+
+
+      [:hr]
+
+      ]
+
+     )
+
+
+
+   [:pre "↓ this is the default UI for displaying wf results ↓"]
+   (wf-ui/<default-wf-body-ui> wf)
+
+   ;[:hr]
+   ;[:pre (d/pretty (into (sorted-map) wf))]
+   ]
+  )
 
