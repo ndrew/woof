@@ -140,10 +140,10 @@
 
    ::filtered-listings [:filter-errors ::KV]
 
-   ::RESULT [:collect ::filtered-listings]
+   ::LISTINGS [:collect ::filtered-listings]
 
-
-   ::hello [:hello ::RESULT]
+  ;; for now do not output the listings within workflow
+   ;; ::hello [:hello ::LISTINGS]
 
    }
   )
@@ -153,13 +153,15 @@
    :op-handlers-map {
                      :done  (fn [result]
 
-                              (.log js/console result)
+                              (.groupCollapsed js/console "Workflow ended.")
+                              (.log js/console
+                                    "Full results map: " result)
 
                               (.log js/console
-                                    "RESULT"
-                                    (::RESULT result))
+                                    "Parsed listings: "
+                                    (::LISTINGS result))
 
-
+                              (.groupEnd js/console)
                               )
 
                      :error (fn [result]
