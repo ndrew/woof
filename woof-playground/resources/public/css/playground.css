@@ -950,3 +950,34 @@ pre {
 .sid-list .sid {
     margin-right: .1333rem
 }
+
+
+.val.channel {
+    color: rgba(0,0,0,.5);
+}
+
+.val.channel:before,
+.tag.pending:before
+{
+    content: '... ';
+    animation: dots 750ms steps(5, end) infinite;
+}
+
+
+
+
+@keyframes dots {
+    0%, 20% {
+        opacity: 0;
+    }
+    40% {
+        opacity: 30%;
+    }
+    60% {
+        opacity: 70%;
+    }
+    80%, 100% {
+        opacity: 100%;
+    }
+
+}

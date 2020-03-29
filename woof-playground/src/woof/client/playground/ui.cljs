@@ -4,7 +4,8 @@
 
     [woof.playground.v1.utils :refer [dstr kstr vstr]]
     [woof.base :as base]
-    [woof.data :as d])
+    [woof.data :as d]
+    [woof.utils :as u])
   )
 
 
@@ -217,7 +218,10 @@
 
 (defn sval [v]
   (try
-    (d/pretty v)
+    (if (u/channel? v)
+      "<channel>"
+      (d/pretty v)
+      )
     (catch js/Error e
       "ERROR"
       )
@@ -228,9 +232,17 @@
 (rum/defcs <value> < rum/static
                      (rum/local true ::short-keys?)
   [local ui-cfg v]
-  [:.val
-   (sval v)
-   ]
+
+  (if (u/channel? v)
+    [:.val.channel
+     "<channel>"
+     ]
+    [:.val
+     (sval v)
+     ]
+    )
+
+
 
   )
 
