@@ -1,18 +1,7 @@
 (ns ^:figwheel-hooks woof.client.playground.wf.simple
   (:require
-    [rum.core :as rum]
-
-    ;; v2 deps
-    [woof.client.stateful :as st-wf]
-
-    [woof.client.playground.ui :as ui]
-    [woof.wf :as wf]
     [cljs.core.async :as async]
-    [woof.utils :as u]
-    [woof.client.playground.ui.wf :as wf-ui]
-    [woof.base :as base]
-    [woof.utils :as utils]
-    [woof.data :as d])
+    [woof.utils :as u])
   (:import [goog.net.XhrIo ResponseType])
 
   (:require-macros
@@ -33,11 +22,6 @@
 (defn basic-wf-initializer [*SWF]
   {
 
-   :init-fns    [(fn [params]
-                   ;; these don't matter now
-                   {:IN :some-wf-parameters}
-                   )]
-
    :title       "Finite WF with default UI"
 
    :explanation [:div.explanation
@@ -50,41 +34,36 @@
                   "Example of this can be map enrichment (like ring middle-ware)"]
 
                  [:pre {:style {:font-size "8.5pt" :padding-left "2rem"}} [:code
-"// start with some initial data passed to :id step handler
-  ::value [:id {:initial :map}]
+                                                                           "// start with some initial data passed to :id step handler
+                                                                             ::value [:id {:initial :map}]
 
-// do f(value)
-  ::f [:f ::value]
+                                                                           // do f(value)
+                                                                             ::f [:f ::value]
 
-// do z(f(value)) — z is async, so further steps will wait for the result
-  ::z [:z-async ::f]
+                                                                           // do z(f(value)) — z is async, so further steps will wait for the result
+                                                                             ::z [:z-async ::f]
 
-// do g(z(f(value)))
-  ::g [:g ::z]
-"
-                  ]]
+                                                                           // do g(z(f(value)))
+                                                                             ::g [:g ::z]"]]]
 
-                 ]
-
+;;
+   :init-fns    []
 
    :ctx-fns     [(fn [params]
                    {
 
-                    :id {:fn identity}
+                    :id      {:fn identity}
+                    :f       {:fn (fn [v]
+                                    (prn ":F")
+                                    (assoc v :f true))}
 
-                    :f {:fn (fn [v]
-                              (prn ":F")
-                              (assoc v :f true)
-                              )}
-
-                    :g {:fn (fn [v]
-                              (prn ":G")
-                              (assoc v :g true))}
-
+                    :g       {:fn (fn [v]
+                                    (prn ":G")
+                                    (assoc v :g true))}
 
                     :z-async {:fn (fn [v]
                                     (let [ch (async/chan)
-                                          t 3000 ]
+                                          t 3000]
 
                                          (prn ":Z - starting")
                                          (go
@@ -93,7 +72,6 @@
                                            (async/put! ch (assoc v :z true)))
 
                                          ch))}
-
                     }
                    )]
 
@@ -102,237 +80,22 @@
 
                     ::value [:id {:initial :map}]
 
-                    ::f [:f ::value]
+                    ::f     [:f ::value]
 
-                    ::z [:z-async ::f]
+                    ::z     [:z-async ::f]
 
-                    ::g [:g ::z]
-
+                    ::g     [:g ::z]
 
                     })
-
                  ]
    :opt-fns     []
 
-
    :wf-actions  {
                  :done [["log WF state" (fn []
-                                                      (prn "Workflow is ready. WF state is:")
-                                                      (.log js/console @*SWF))
+                                          (prn "Workflow is ready. WF state is:")
+                                          (.log js/console @*SWF))
                          ]]}
 
    }
-  )
-
-
-;;;;;
-;; more complex example
-
-(declare <custom-wf-ui>)
-
-
-(defn initialize-test-wf! []
-  (let [
-        init-evt-loop (fn [params]
-          ;; this should prepare all stuff needed for ctx and steps
-          (let [evt-loop-chan (st-wf/&chan params (wf/rand-sid "evt-loop"))]
-            {
-             ::evt-loop-chan evt-loop-chan ;; keep the evt loop chan
-             }))
-
-        ctx-evt-fn (fn [params]
-          {
-           :evt-loop {
-                      :fn       (fn [in-chan] in-chan)
-                      :infinite true
-                      :expands? true
-                      }
-
-           :collect {
-                     :fn (fn [v]
-                           v)
-                     :collect? true
-                     }
-           })
-
-        ]
-    {
-
-     :init-fns  [init-evt-loop
-                 st-wf/chan-factory-init-fn
-                 ]
-
-     :ctx-fns   [ctx-evt-fn
-
-                 (fn [params]
-                   {
-                    :print {:fn (fn [v]
-
-                                  v)}
-
-                    :timer {:fn       (fn [max]
-                                        (let [ch (async/chan)]
-                                             (go
-                                               (dotimes [n max]
-                                                 (async/put! ch {:t (utils/now)})
-                                                 (async/<! (utils/timeout 1000))
-                                                 )
-
-                                               (async/put! ch {:msg "Timer ended"})
-                                               )
-                                             ch)
-                                        )
-                            :infinite true
-                            }
-
-                    :format-time {:fn (fn [t]
-                                        (if-let [tt (get t :t)]
-                                                (.toString (js/Date. tt))
-                                                "Timer ended!")
-                                        )}
-
-                    }
-                   )]
-
-     :steps-fns [(fn [params]
-                   {
-                    ::evt-loop [:evt-loop (::evt-loop-chan params)]
-                    ::timestamps [:collect ::evt-loop]
-                    }
-                   )
-
-                 (fn [params]
-                   {
-
-                    ;; ::initial-print [:print "hello"]
-
-                    ::timer  [:timer 100]
-                    ::t [:format-time ::timer]
-
-                    })
-
-                 ]
-
-     :opt-fns   [;; ls/ls-opts-fn
-                 st-wf/chan-factory-opts-fn
-                 ]
-
-     }
-    )
-
-  )
-
-
-(defn initialize-test-wf-w-state! [*wf]
-  {
-
-   ;; how to provide a custom ui for actions - we need to pass state here
-   :ui-fn       (partial wf-ui/<default-wf-ui> <custom-wf-ui>)
-
-   :title       "Workflow with Event Loop and custom UI"
-
-   :explanation [:div.explanation
-                 [:p "Woof workflows can simulate event loop via infinite expand step. So the UI can send new steps to the workflow,"
-                  "workflow run these steps, modify state which will become reflected in the UI."
-                  ]
-
-                 [:p "By clicking the button - we can add new steps to event loop. Also available via 'ui event' workflow action"]
-                 ]
-
-   :wf-actions  {
-                 ; :not-started []
-                 :running [
-
-                           ["simulate click" (fn []
-                                               (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
-                                                    (async/put! loop-chan
-                                                                {(wf/rand-sid "ui-") [:print (u/now)]})
-                                                    )
-                                               )]
-
-                           ["send to evt loop"
-                            (fn []
-                              (let [step (d/to-primitive (js/prompt "provide step as [:handler-id <params>], e.g. [:print \"some value\"]"))]
-                                   (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
-                                     (async/put! loop-chan
-                                                 {(wf/rand-sid "emit-") step})
-                                     )
-                                   )
-                              )
-                            ]
-
-                           ]
-                 ; :done        []
-                 }
-
-   }
-  )
-
-
-
-(defn wf-with-ui-initializer [*NODE]
-  (merge
-    (initialize-test-wf!)
-    (initialize-test-wf-w-state! *NODE))
-  )
-
-
-
-;;; ui
-
-;; exposes init param by it's key
-(defn &wf-init-param [wf k]
-  (get-in wf [:runtime :initial :params k]))
-
-(rum/defcs <custom-wf-ui> < rum/reactive
-                            (rum/local true ::inline-results?)
-                            (rum/local true ::sort-results?)
-  [local wf]
-
-  [:div
-
-   (if (not= :not-started (:status wf))
-     [:div
-
-
-      [:.timer "Timer — " (get (:result wf) ::t "")
-
-       [:hr]
-
-       [:div
-        "Event loop test: "
-        [:button {:style {:font-size "12pt"}
-                  :on-click (fn [e]
-                              (let [loop-chan (&wf-init-param wf ::evt-loop-chan)]
-                                   (async/put! loop-chan
-                                               {(wf/rand-sid "click-") [:print (u/now)]})
-                                   )
-                              )}
-         "Click me!"]
-        ]
-       (into [:.dates [:header {:style {:margin-top "1rem"}} "Click log (showing last 10 clicks)"]]
-             (map
-               (fn [t]
-                 [:pre (str "click — " t)])
-               (take 10 (reverse (get-in (:result wf) [::timestamps] []))))
-             )
-
-       ]
-
-
-      [:hr]
-
-      ]
-
-     )
-
-
-
-   [:pre "↓ this is the default UI for displaying wf results ↓"]
-   (wf-ui/<default-wf-details-ui> wf)
-
-   ;[:hr]
-   ;[:pre (d/pretty (into (sorted-map) wf))]
-   ]
   )
 

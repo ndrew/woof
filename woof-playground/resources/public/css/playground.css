@@ -816,6 +816,13 @@ pre {
     line-height: 1;
 }
 
+.default-wf-ui .explanation code {
+    border: 1px solid rgba(0,0,0,.1333);
+    padding: 0.1rem;
+
+    border-radius: 3px;
+}
+
 .wf-error {
     line-height: 1.5;
     font-weight: bolder;

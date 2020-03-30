@@ -17,7 +17,11 @@
     [woof.client.playground.ui.internal :as internal]
     [woof.client.playground.ui.wf :as wf-ui]
 
-    [woof.client.playground.wf.simple :as test-wf]
+    [woof.client.playground.wf.simple :as simple-wf]
+    [woof.client.playground.wf.simple-custom-ui :as simple-w-ui]
+
+    [woof.client.playground.wf.sandbox :as sandbox-wf]
+
     [woof.client.playground.wf.page :as page-wf]
     [woof.client.playground.wf.listing :as listing-wf]
     [woof.client.playground.wf.post :as post-wf]
@@ -89,10 +93,14 @@
   ;; todo: is it needed to call init-alpha-wf! here?
   ;; or it should be called if the button is pressed
   {
-   ;; workflow w state (keywords that start with wf-...)
-   :wf-basic-wf              (init-alpha-wf! update? :wf-basic-wf test-wf/basic-wf-initializer)
 
-   :wf-with-ui               (init-alpha-wf! update? :wf-with-ui test-wf/wf-with-ui-initializer)
+   :wf-sandbox (init-alpha-wf! update?
+                               :wf-sandbox sandbox-wf/sandbox-wf-init!)
+   ;; workflow w state (keywords that start with wf-...)
+   :wf-basic-wf              (init-alpha-wf! update? :wf-basic-wf simple-wf/basic-wf-initializer)
+   :wf-with-ui               (init-alpha-wf! update? :wf-with-ui simple-w-ui/wf-with-ui-initializer)
+
+
 
    ;:wf-page                  (init-alpha-wf! update? :wf-page page-wf/initialize!)
    ;:wf-listings              (init-alpha-wf! update? :wf-listings listing-wf/initialize!)
@@ -266,11 +274,8 @@
             ]
         ;; what of wf map can be updated for running workflow
         (prn "updating the selected workflow " wf-id )
-
-        (.warn js/console upd-map)
-
-        (swap! *TREE update-in curr
-               merge upd-map)
+        ;(.warn js/console upd-map)
+        (swap! *TREE update-in curr merge upd-map)
 
         ;(.log js/console "PREV" (get-in tree curr))
         ;(.log js/console "NU" nu-wf-map)

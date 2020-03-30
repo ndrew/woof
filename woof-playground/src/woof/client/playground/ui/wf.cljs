@@ -516,20 +516,35 @@
 
   [:div.wf-details
 
-   #_(if-let [initial-steps (get-in wf [:runtime :initial :steps])]
-     ;; TODO: better UI for steps, for now use same ui as for results
-     (<results-ui> "INITIAL STEPS"
-                   (get-in wf [:runtime :initial])
-                   initial-steps)
-     )
-
    (if-let [results (:result wf)]
      (if (not= :not-started (:status wf))
        (<results-ui> "RESULTS"
                         (get-in wf [:runtime :initial])
-                        results)
-       )
-     )
+                        results)))
+
+   (if-let [initial-steps (get-in wf [:runtime :initial :steps])]
+     (<results-ui> "INITIAL STEPS" ;; TODO: better UI for steps, for now use same ui as for results
+                   (get-in wf [:runtime :initial])
+                   initial-steps))
+
+   (if-let [initial-params (get-in wf [:runtime :initial :params])]
+     [:div.wf-results
+      ;; menubar
+      (ui/menubar "INITIAL PARAMS" [])
+      (map (fn [[k v]]
+        [:div.wf-results-row
+         [:.sid
+          (pr-str k)
+          ]
+         [:.val
+          (pr-str v)
+          ]
+         ])
+           initial-params
+           )
+
+      ])
+
    ]
 
   )
