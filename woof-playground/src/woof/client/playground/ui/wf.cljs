@@ -458,7 +458,8 @@
         mi-toggler (partial kv-menu-item-toggler (::ui-cfg local) ui-cfg)]
 
     (if-not show?
-      [:div.wf-results]
+      [:div.wf-results
+       (ui/menubar heading [[(if show? "↑" "↓") (fn [] (swap! (::show? local) not))]])]
 
       (try
         (let [tree (make-tree (assoc ui-cfg :updated-keys upd-keys) initial-data results)

@@ -29,7 +29,6 @@
   ;    [woof.playground.old.example.files-ui :as files-ws]
   ;    [woof.playground.old.example.ws :as ws]
     ;; basic wfs:
-    [woof.playground.old.example.ouroboros :as ouroboros]
     [woof.playground.old.example.infinite :as infinite]
     [woof.playground.old.example.big-wf :as big-wf]
 
@@ -77,16 +76,6 @@
 
 ;; basic uis
 
-(defn ouroboros-wf [*STATE]
-  (init-runner-wf! *STATE
-                   (ouroboros/prepare-params!)
-                   ouroboros/context-map-fn
-                   ouroboros/steps-fn
-                   ouroboros/actions-fn
-                   (partial default-ui-fn "infinite clock")
-                   :auto-start true
-                   )
-  )
 
 (defn infinite-wf [*STATE]
   (init-runner-wf! *STATE
@@ -168,7 +157,7 @@
 
 
                       :basic-worflows [
-                                       ["ouroboros" ouroboros-wf]
+
                                        ["infinite" infinite-wf]
                                        ["expand" expand-wf]
                                        ]
