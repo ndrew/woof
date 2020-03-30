@@ -21,6 +21,7 @@
     [woof.client.playground.wf.simple-custom-ui :as simple-w-ui]
 
     [woof.client.playground.wf.sandbox :as sandbox-wf]
+    [woof.client.playground.wf.expand :as expand-wf]
 
     [woof.client.playground.wf.page :as page-wf]
     [woof.client.playground.wf.listing :as listing-wf]
@@ -100,6 +101,7 @@
    :wf-basic-wf              (init-alpha-wf! update? :wf-basic-wf simple-wf/basic-wf-initializer)
    :wf-with-ui               (init-alpha-wf! update? :wf-with-ui simple-w-ui/wf-with-ui-initializer)
 
+   :wf-expand                (init-alpha-wf! update? :wf-expand expand-wf/expand-wf-init!)
 
 
    ;:wf-page                  (init-alpha-wf! update? :wf-page page-wf/initialize!)

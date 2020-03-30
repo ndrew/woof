@@ -33,20 +33,17 @@
                  [:p "Hypothesis: Function composition (f(g(x))) can be done with woof workflows."
                   "Example of this can be map enrichment (like ring middle-ware)"]
 
-                 [:pre {:style {:font-size "8.5pt" :padding-left "2rem"}} [:code
-                                                                           "// start with some initial data passed to :id step handler
-                                                                             ::value [:id {:initial :map}]
+                 [:pre {:style {:font-size "8.5pt" :padding-left "2rem"}}
+"// start with some initial data passed to :id step handler
+::value [:id {:initial :map}] \n
+// do f(value)
+::f [:f ::value] \n
+// do z(f(value)) — z is async, so further steps will wait for the result
+::z [:z-async ::f] \n
+// do g(z(f(value)))
+::g [:g ::z] \n"]]
 
-                                                                           // do f(value)
-                                                                             ::f [:f ::value]
-
-                                                                           // do z(f(value)) — z is async, so further steps will wait for the result
-                                                                             ::z [:z-async ::f]
-
-                                                                           // do g(z(f(value)))
-                                                                             ::g [:g ::z]"]]]
-
-;;
+   ;;
    :init-fns    []
 
    :ctx-fns     [(fn [params]
