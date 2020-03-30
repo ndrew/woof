@@ -153,7 +153,7 @@
      [:div ;; .proto7
 
       (try
-        (ui/<results-ui> "RESULTs"
+        (wf-ui/<results-ui> "RESULTs"
                          initial-data
                          result)
         (catch js/Error e

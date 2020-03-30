@@ -920,6 +920,13 @@ pre {
     border-radius: 0;
 }
 
+.wf-results-row.wf-expanded {
+    padding-left: 2.5rem;
+}
+
+.wf-results-row.wf-expanded > .sid {
+    opacity: .66666;
+}
 
 
 .sid-list {
@@ -952,11 +959,6 @@ pre {
     align-items: center;
 }
 
-.k-val > .sid {
-    min-width: 100px;
-    text-align: right;
-    opacity: 0.75;
-}
 
 .k-val >  .separator {
     padding: 0 0.333rem;
@@ -967,6 +969,18 @@ pre {
     flex: 0 1 auto;
 }
 
+
+.sid {
+    color: blue;
+}
+
+.k-val > .sid {
+    /*min-width: 100px;*/
+    text-align: right;
+    /*opacity: 0.75;*/
+    color: lightseagreen;
+
+}
 
 
 /***********************************/
