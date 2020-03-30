@@ -5,7 +5,8 @@
     [woof.playground.v1.utils :refer [dstr kstr vstr]]
     [woof.base :as base]
     [woof.data :as d]
-    [woof.utils :as u])
+    [woof.utils :as u]
+    [woof.wf :as wf])
   )
 
 
@@ -189,6 +190,25 @@
   )
 
 
+(defn sid-length [k-width]
+  (if (not= -1 k-width)
+    (str (.floor js/Math (- k-width
+            (/ k-width 3)
+            ))
+            "em" )
+    "auto"))
+
+(defn calculate-k-width [ks]
+  (+ 1 (reduce (fn [a k]
+                 (let [len (count k)]
+                      (if (> len a)
+                        len
+                        a))
+                 ) 0 ks))
+  )
+
+;;
+
 
 (rum/defcs <sid> < rum/static
                    (rum/local true ::short-keys?)
@@ -198,17 +218,20 @@
                     (:short-keys? ui-cfg))
         short-sid (shorten-sid k)
         epsilon-cfg (get ui-cfg :epsilon [30 12 5])
+        k-width (get ui-cfg :k-width -1)
         ]
-    [:.sid {:on-click (fn [e] (swap! (::short-keys? local) not))}
+    [:.sid
+     {
+      :on-click (fn [e]
+                  ;; todo: on-click should select a top level sid in a tree
+                  (swap! (::short-keys? local) not))
+      :style    { :width (sid-length k-width) }
+      }
 
      (str
-       ;@(::short-keys? local) " " (:short-keys? ui-cfg)
-
        (if short?
-         ;; very short key
-         (epsilon-sid short-sid epsilon-cfg)
-         ;;
-         short-sid
+         (epsilon-sid short-sid epsilon-cfg) ;; very short key
+         short-sid ;;
          )
        )
      ]
@@ -229,22 +252,135 @@
   )
 
 
-(rum/defcs <value> < rum/static
-                     (rum/local true ::short-keys?)
+;;
+(rum/defcs <single-v> < rum/static
+                        (rum/local true ::short-map?)
   [local ui-cfg v]
 
-  (if (u/channel? v)
-    [:.val.channel
-     "<channel>"
-     ]
+  (cond
+    (u/channel? v)
+    [:.val.channel "<channel>"]
+
+    (map? v)
+    (let [k-width (calculate-k-width (map str (keys v)))
+          nu-ui-cfg (assoc ui-cfg :k-width k-width)]
+      [:.val {:on-click (fn [e]
+                          (swap! (::short-map? local) not)
+                          )}
+
+
+       (if @(::short-map? local)
+         ;(pr-str v)
+         (map (fn [[k v]]
+                [:.kv-row
+                 (<sid> nu-ui-cfg k)
+                 [:.val (sval v)]
+                 ]
+                ) v)
+         (d/pretty v))
+       ]
+      )
+
+    (and (seq? v) (wf/sid-list? v))
+    (let [epsilon-cfg (get ui-cfg :epsilon [20 5 5])
+          k-width (calculate-k-width
+                    (map (fn [sid]
+                           (epsilon-sid (shorten-sid sid) epsilon-cfg)) v))
+          ]
+      [:.val {:style { :width (sid-length (inc k-width))}}
+
+       [:.sid-list
+        (map (fn [sid]
+               (<sid> ui-cfg sid)
+               ;[:span (epsilon-sid (shorten-sid sid) epsilon-cfg)]
+               ) v)
+        ]
+       ]
+      )
+
+    (seq? v)
+    (let [foo 1]
+      [:.val
+       [:.val-list
+        (map (fn [v] (<single-v> ui-cfg v)) v)
+        ]
+       ]
+      )
+
+    :else
     [:.val
      (sval v)
      ]
     )
 
-
-
   )
+
+(defn rotate [n s]
+  (lazy-cat (drop n s)
+            (take n s)))
+
+(defn shift-1[s]
+  (rotate 1 s))
+
+
+;; ui for [:step ::other step]
+(rum/defcs <k-v> < rum/static
+                        (rum/local true ::as-diff?)
+                        (rum/local [::sid-only ::value-only ::sid-and-value ]  ::modes)
+  [local ui-cfg k v]
+
+  (let [value (:value v)
+        mode (first @(::modes local))
+        ]
+
+    [:.k-val
+     {:on-click (fn [e]
+                  (swap! (::modes local) shift-1))}
+     (cond
+       (= mode ::sid-only)
+       (<sid> ui-cfg k)
+
+       (= mode ::value-only)
+       (<single-v> (assoc ui-cfg :k-width -1) (:parent-value v))
+
+       (= mode ::sid-and-value)
+       [:.k-val
+        (<sid> ui-cfg k)
+        (<single-v> (assoc ui-cfg :k-width -1) (:parent-value v))
+        ]
+       )
+
+      [:span.separator "→"]
+
+      (<single-v> ui-cfg value)
+
+     #_(if @(::as-diff? local)
+         (let [[only-in-v _ _] (clojure.data/diff value
+                                                  parent-value)]
+           [[:span.separator "+"]
+            (<single-v> ui-cfg only-in-v)
+            ]
+
+           )
+         [
+          [:span.separator "→"]
+          (<single-v> ui-cfg value)
+          ]
+
+         )
+
+     ]
+    )
+  )
+
+
+
+(rum/defc <parent-step> < rum/static
+  [ui-cfg v]
+
+  [:.sid-body (<k-v> ui-cfg (:parent-step v) v)]
+  )
+
 
 (rum/defcs <sid-value> < rum/static
                          (rum/local true ::expanded-kv?)
@@ -253,102 +389,36 @@
   (let [expand? (and @(::expanded-kv? local)
                      (:expanded-kv? ui-cfg))
         value (get results k)]
-    (into
-      [:.wf-body]
 
-      (if (:expands? v)
-        [(menubar "" [[ (if expand? "as sid-list" "as values")
-                          (fn [] (swap! (::expanded-kv? local) not))]])
-         (if expand?
+    (if (:parent-step v)
+      (<parent-step> ui-cfg (assoc v
+                                :value value
+                                :parent-value (get results (:parent-step v))))
 
-            (if (seq? (:res v))
-              [(into [:.val-list] (map #(<value> ui-cfg %) (:res v)))]
-              [(pr-str (:res v))]
-              )
-
-
-
-           (let [sid-list-ui-cfg (assoc ui-cfg :epsilon [20 5 5])]
-             (into [:.sid-list] (map #(<sid> sid-list-ui-cfg %) value)))
-           )
-
-         ]
-        [(<value> ui-cfg value)]
-        )
-
-      )
-
-    ))
-
-
+      ;; else
+      [:.sid-body
+       (<single-v> ui-cfg value)
+       ])))
 
 
 (rum/defc <result-row> < rum/static
   [ui-cfg metadata results KV]
 
-  (let [k (:k KV)
-        v KV
-        OUT? (get-in metadata [:OUT k])]
+  (let [k (:k KV)]
     [:div.wf-results-row
-     {:class (if (:updated? v) "wf-updated" "")}
+     {:class (if (:updated? KV) "wf-updated" "")}
 
-     ;; modifier
-
-     [:div.wf-modifier
-      (str
-
-        (if-not (nil? OUT?) "OUT" "___")
-        "|" (:modifier v))
-
-      ]
-
+     ;; todo: is modifier needed? maybe we need a menu?
+     ;; [:div.wf-modifier (str (if-not (nil? OUT?) "OUT" "___") "|" (:modifier v))]
      (<sid> ui-cfg k)
-
-     ;; todo: sort by date
-
-     (<sid-value> ui-cfg k v results )
-
-     #_[:.wf-body
-        (if (:expands? v)
-          (if (:expanded-kv? ui-cfg)
-            (d/pretty (map (fn[a] (get results a)) (:res v)))
-
-            (let [sid-list-ui-cfg (assoc ui-cfg :epsilon [20 5 5])]
-              (into [:.sid-list
-                     (ui/menubar "" [["yo" (fn[]
-                                             )]])
-                     ]
-                    (map #(<sid> sid-list-ui-cfg %) value))
-              )
-
-
-            ;(d/pretty (d/pretty value))
-            )
-          ;; non-expand step
-          (d/pretty value)
-          )
-        #_(if (:expands? v)
-            (into
-              [:.v]
-              (map (fn[a] [:div.kv {:style {:margin-left "1rem"}}
-                           [:.k (short-key a)]
-                           [:.v (d/pretty (get results a))]
-                           ] ) (:res v))
-              )
-            [:.v
-             (str
-               (short-value (:res v))
-               )
-             ]
-            )
-        ]
+     (<sid-value> ui-cfg k KV results )
      ]
     )
   )
 
 
 (defn make-tree [ui-cfg initial-data results]
-  ;; make tree a lists
+  ;; list items
   (let [{
          ctx-map :context-map
          initial-steps :steps
@@ -363,7 +433,9 @@
                                                             (if (get ctx :collect) "c" "")
                                                             (if (get ctx :expands?) "e" "")])
                              ]
-                            (if (:expanded-kv? ui-cfg)
+
+                            ;; todo:
+                            #_(if (:expanded-kv? ui-cfg)
                               ;; todo: expand
                               (let [sid-list (get results k)
                                     root-node {
@@ -392,18 +464,26 @@
                                              sid-list )
                                         )
                                 )
-
-                              (conj a  {
-                                        :k k
-                                        :step [step-id v]
-                                        :res (get results k)
-                                        :ctx ctx
-                                        :modifier (clojure.string/trim modifier)
-                                        :expands? expands?
-
-                                        :updated? ((get ui-cfg :updated-keys #{}) k)
-                                        })
                               )
+
+
+
+                            (conj a {
+                                     :k        k
+                                     :step     [step-id v]
+
+                                     :parent-step   (if (wf/sid? v)
+                                                 v
+                                                 nil)
+
+
+                                     :res      (get results k)
+                                     :ctx      ctx
+                                     :modifier (clojure.string/trim modifier)
+                                     :expands? expands?
+
+                                     :updated? ((get ui-cfg :updated-keys #{}) k)
+                                     })
                             )
                        ) [] initial-steps)]
     tree
@@ -430,10 +510,7 @@
    ]
 
   (let [show?  @(::show? local)
-        *ui-cfg (::ui-cfg local)
         ui-cfg @(::ui-cfg local)
-
-        mi-toggler (partial kv-menu-item-toggler *ui-cfg ui-cfg)
 
         results-metadata (if-let [m (meta results)] m (base/default-meta-map))
 
@@ -444,38 +521,31 @@
 
         [upd] (clojure.data/diff results prev-results)
         upd-keys (if (nil? upd) #{} (into #{} (keys upd)))
+
+        ;; mi-toggler (partial kv-menu-item-toggler (::ui-cfg local) ui-cfg)
         ]
     (into [:div.wf-results
-
            (menubar heading [
                                 [(if show? "↑" "↓") (fn [] (swap! (::show? local) not))]
-                                (mi-toggler "short keys: " :short-keys?)
-                                (mi-toggler "expanded keys: " :expanded-kv?)
+                                ; todo: what togglers do we need?
+                                ;(mi-toggler "short keys: " :short-keys?)
+                                ;(mi-toggler "expanded keys: " :expanded-kv?)
                                 ])
            ]
           (if show?
-            (let [tree (make-tree (assoc ui-cfg :updated-keys upd-keys) initial-data results)]
-              (concat
-                [
-                 ; [:pre (d/pretty tree) ]
+            (let [tree (make-tree (assoc ui-cfg :updated-keys upd-keys) initial-data results)
 
-                 #_[:pre
-                  "expanded steps:\n"
-                  (d/pretty
-                    (clojure.set/difference
-                      (into #{} (keys results))
-                      (into #{} (keys tree))
-                      )
-                    )
-
+                  k-shorten-fn shorten-sid
+                  k-width (calculate-k-width (map #(k-shorten-fn (get % :k)) tree))
+                  nu-ui-cfg (assoc ui-cfg
+                              :k-width k-width
+                              :epsilon [20 5 5]
+                              )
                   ]
-                 ]
-
-                (map (partial <result-row>
-                              ui-cfg
-                              results-metadata
-                              results) tree)
-                )
+              (map (partial <result-row>
+                            nu-ui-cfg
+                            results-metadata
+                            results) tree)
               )
             []
             )

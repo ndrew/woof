@@ -329,7 +329,7 @@
 
 
    [:pre "↓ this is the default UI for displaying wf results ↓"]
-   (wf-ui/<default-wf-body-ui> wf)
+   (wf-ui/<default-wf-details-ui> wf)
 
    ;[:hr]
    ;[:pre (d/pretty (into (sorted-map) wf))]

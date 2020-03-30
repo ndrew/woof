@@ -294,10 +294,8 @@
                    [["←" (partial back-to-project-selector *TREE current-selector)]]
                    (global-menu-items wf-actions)))
 
-     [:div.workflow-box
-      (let [wf @*wf]
-        ((:ui-fn wf) *wf))
-      ]
+     (let [wf @*wf]
+       ((:ui-fn wf) *wf))
      ]
     )
   )

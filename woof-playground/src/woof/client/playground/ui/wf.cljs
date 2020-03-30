@@ -26,21 +26,19 @@
 
 
 ;;
-(rum/defcs <default-wf-body-ui> < rum/reactive
-                               (rum/local true ::inline-results?)
-                               (rum/local true ::sort-results?)
+(rum/defcs <default-wf-details-ui> < rum/reactive
+                                     (rum/local true ::inline-results?)
+                                     (rum/local true ::sort-results?)
   [local wf]
 
-  [:div.wf-body
+  [:div.wf-details
 
-
-   #_(if-let [initial-steps (get-in wf [:runtime :initial :steps])]
-     ;; TODO: better UI for steps
+   (if-let [initial-steps (get-in wf [:runtime :initial :steps])]
+     ;; TODO: better UI for steps, for now use same ui as for results
      (ui/<results-ui> "INITIAL STEPS"
                       (get-in wf [:runtime :initial])
                       initial-steps)
      )
-
 
    (if-let [results (:result wf)]
      (if (not= :not-started (:status wf))
@@ -49,43 +47,6 @@
                         results)
        )
      )
-
-
-
-    ;[:hr]
-
-   ;; this should be the easiest way to display wf results
-
-   #_[:div.wf-body-menu
-    (ui/menubar "Display results as:" [
-                                       ["inline" (fn [] (swap! (::inline-results? local) not))]
-                                       ["sort" (fn [] (swap! (::sort-results? local) not))]
-                                       ])
-    ]
-
-   #_(if @(::inline-results? local)
-     [:pre
-      "Results (inlined)\n"
-      (d/pretty (base/inline-results (:result wf)))
-      ]
-     )
-
-   #_(if @(::sort-results? local)
-     [:pre
-      "Results (sorted)\n"
-      (d/pretty (into (sorted-map) (:result wf)))
-      ]
-     )
-
-   #_[:pre
-    "Results (vstr)\n"
-
-    ;; fixme: how to substitute fully qualified keywords with shorter ones?
-    ;; ugly way to shorten the fully qualified keywords
-    (binding [v1u/*curr-ns* (.substr (.replace (str :woof.client.playground.wf.simple/test) "/test" "") 1)]
-      (v1u/vstr (:result wf)))]
-
-
    ]
 
   )
@@ -96,8 +57,8 @@
     :not-started [:div
                   "Hit run! to start a workflow"
                   ]
-    :running (<default-wf-body-ui> wf)                      ; [:pre "..."]
-    :done (<default-wf-body-ui> wf)                         ; (safe-pretty (:result wf))
+    :running (<default-wf-details-ui> wf)                      ; [:pre "..."]
+    :done (<default-wf-details-ui> wf)                         ; (safe-pretty (:result wf))
     :error [:pre.wf-error "Error:\n" (safe-pretty (:result wf))]
     )
   )
