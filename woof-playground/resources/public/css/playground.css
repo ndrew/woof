@@ -855,7 +855,7 @@ pre {
 .wf-results .wf-results-row .val
 {
 
-    background-color: white;
+    /*background-color: white;*/
 
     /* main  */
     border: 1px solid rgba(0,128,0,.133);
@@ -935,6 +935,21 @@ pre {
     flex-wrap: wrap;
 }
 
+.sid-list > .sid {
+    /*font-size: 7pt;*/
+}
+
+.sid-list.inline > .sid {
+    /*background: red;*/
+    background-color: rgba(0,0,0,.03);
+
+}
+
+.sid-list.inline > .sid + .sid {
+    margin-left: .5rem;
+
+}
+
 .sid-list > .brackets:hover {
     outline: 1px solid crimson;
 }
@@ -949,6 +964,32 @@ pre {
 .val-list > .val:last-of-type:after{
     content: ")";
     opacity: .333;
+}
+
+.val-list.inline {
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+}
+
+.wf-results .wf-results-row .val-list.inline > .val {
+    background-color: rgba(0,0,0,.03);
+    border: 1px solid rgba(0,0,0,.03);
+}
+
+.wf-results .wf-results-row .val-list > .val,
+.k-val > .val,
+.kv-row > .val
+{
+    font-weight: bolder;
+}
+
+.wf-results .wf-results-row .val-list > .val:hover {
+    background-color: rgba(0,0,128,.13333);
+}
+
+.wf-results .wf-results-row .val-list.inline > .val + .val {
+    margin-left: .1rem;
 }
 
 
