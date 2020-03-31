@@ -266,7 +266,7 @@
         ]
 
     [:div.popup
-     (new-ui/<wf-menu-ui> "POPUP:" status @(cursor [:wf :status-actions]))
+     (new-ui/<wf-menu-ui> "POPUP:" status @(cursor [:wf :status-actions]) [])
 
      [:hr]
 

@@ -132,11 +132,15 @@
 
 
 (rum/defc <wf-menu-ui> < rum/reactive
-  [header status all-actions]
+  [header status actions-map ui-items]
 
-   (let [actions (get all-actions status [])]
+   (let [actions (get actions-map status [])]
      [:div.main-menu
       (menubar header actions)
+
+      (if (seq ui-items)
+        (menubar "UI" ui-items))
+
       (<wf-status-ui> status)
       ]
      )

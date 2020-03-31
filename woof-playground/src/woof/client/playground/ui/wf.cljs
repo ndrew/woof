@@ -517,6 +517,8 @@
 
   [:div.wf-details
 
+
+
    (if-let [results (:result wf)]
      (if (not= :not-started (:status wf))
        (<results-ui> "RESULTS"
@@ -524,11 +526,15 @@
                         results)))
 
    (if-let [initial-steps (get-in wf [:runtime :initial :steps])]
-     (<results-ui> "INITIAL STEPS" ;; TODO: better UI for steps, for now use same ui as for results
-                   (get-in wf [:runtime :initial])
-                   initial-steps))
+     (if (get-in wf [::ui :show-steps?] false)
+       ;; TODO: better UI for steps, for now use same ui as for results
+       (<results-ui> "INITIAL STEPS"
+                     (get-in wf [:runtime :initial])
+                     initial-steps)))
+
 
    (if-let [initial-params (get-in wf [:runtime :initial :params])]
+     (if (get-in wf [::ui :show-params?] false)
      [:div.wf-results
       ;; menubar
       (ui/menubar "INITIAL PARAMS" [])
@@ -543,8 +549,7 @@
          ])
            initial-params
            )
-
-      ])
+      ]))
 
    ]
 
@@ -575,25 +580,45 @@
 
 
 ;; default ui for wf runner
-(rum/defc <default-wf-ui> < rum/reactive
-  [<body-fn> *wf]
+(rum/defcs <default-wf-ui> < rum/reactive
+                             (rum/local {
+                                         :show-explanation? true
+                                         :show-steps? false
+                                         :show-params? false
+                                         } ::ui-cfg)
+  [local <body-fn> *wf]
   (let [wf @*wf
         status (:status wf)
         title (:title wf)
         explanation (:explanation wf)
+
+        ui-cfg @(::ui-cfg local)
+        show-explanation? (:show-explanation? ui-cfg)
+        toggle-handler (fn [k] (swap! (::ui-cfg local) update k not))
         ]
 
     [:div.default-wf-ui
-     (ui/<wf-menu-ui> title status (:actions wf))
+     (ui/<wf-menu-ui> title status
+                      (:actions wf)
+                      [
+                       [(str "explanation " (shorten-bool show-explanation?)) (partial toggle-handler :show-explanation?)]
+                       [(str "steps " (shorten-bool (:show-steps? ui-cfg))) (partial toggle-handler :show-steps?)]
+                       [(str "params " (shorten-bool (:show-params? ui-cfg))) (partial toggle-handler :show-params?)]
 
-     (cond
+                       ])
+
+     (if show-explanation?
+       (cond
          (string? explanation) [:pre explanation]
          (vector? explanation) explanation
          (fn? explanation) (explanation)
-         )
+         ))
+
 
      (try
-       (<body-fn> wf)
+       ;; how to pass ui params to a workflow
+       (<body-fn>
+         (assoc wf ::ui ui-cfg))
        (catch js/Error e
          [:pre (pr-str e)] ;; todo: nicer error catching
          )

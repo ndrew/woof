@@ -28,7 +28,8 @@
     [:div
      (ui/<wf-menu-ui>
        title status
-       (:actions wf))
+       (:actions wf)
+       [])
 
 
      (let [r (:result wf)]

@@ -416,7 +416,7 @@
 
      ;; wf actions menu
 
-     (new-ui/<wf-menu-ui> "wf:" status @(cursor [:wf :status-actions]))
+     (new-ui/<wf-menu-ui> "wf:" status @(cursor [:wf :status-actions]) [])
 
      ;; results
 
