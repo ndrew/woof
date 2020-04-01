@@ -4,6 +4,7 @@
 
     [clojure.data :as cd]
     [clojure.string :as str]
+    [cljs.stacktrace :as stacktrace]
 
     [woof.base :as base]
     [woof.client.playground.ui :as ui]
@@ -436,6 +437,14 @@
   )
 
 
+(defn find-updated-keys [results prev-results]
+  (let [[upd] (cd/diff results prev-results)]
+    (if (nil? upd) #{}
+                   (if (map? upd)
+                     (into #{} (keys upd))
+                     #{}))
+    )
+  )
 ;;
 (rum/defcs <results-ui> < rum/static
                           (rum/local true ::show?)
@@ -445,33 +454,36 @@
                                       } ::ui-cfg)
                           (rum/local (atom {}) ::prev-results)
 
-  [local   heading initial-data results]
+  [local heading initial-data results]
 
-  (let [show?  @(::show? local)
-        *prev @(::prev-results local)
-        prev-results @*prev
-        _ (reset! *prev results)
-        [upd] (cd/diff results prev-results)
-        upd-keys (if (nil? upd) #{} (into #{} (keys upd)))
+  (try
 
-        ui-cfg @(::ui-cfg local)
-        mi-toggler (partial kv-menu-item-toggler (::ui-cfg local) ui-cfg)]
+    (let [*prev @(::prev-results local)
+          prev-results @*prev
+          _ (reset! *prev results)
 
-    (if-not show?
-      [:div.wf-results
-       (ui/menubar heading [[(if show? "↑" "↓") (fn [] (swap! (::show? local) not))]])]
+          ui-cfg @(::ui-cfg local)
+          mi-toggler (partial kv-menu-item-toggler (::ui-cfg local) ui-cfg)
 
-      (try
-        (let [tree (make-tree (assoc ui-cfg :updated-keys upd-keys) initial-data results)
+          show?  @(::show? local)
+
+          ]
+
+      (if-not show?
+        [:div.wf-results
+         (ui/menubar heading [[(if show? "↑" "↓") (fn [] (swap! (::show? local) not))]])]
+
+        (let [
+              upd-keys (find-updated-keys results prev-results)
+              tree (make-tree (assoc ui-cfg :updated-keys upd-keys) initial-data results)
 
               epsilon-cfg [20 5 5]
               k-shorten-fn (if (:short-keys? ui-cfg)
                              (fn [sid] (epsilon-sid (shorten-sid sid) epsilon-cfg))
                              shorten-sid)
 
-              k-width (calculate-k-width (map #(k-shorten-fn (get % :k)) tree))
               nu-ui-cfg (assoc ui-cfg
-                          :k-width k-width
+                          :k-width (calculate-k-width (map #(k-shorten-fn (get % :k)) tree))
                           :epsilon epsilon-cfg
                           )
 
@@ -487,21 +499,27 @@
                                 ;; todo: filter steps by sid?
                                 ])
 
-
            (map (partial <result-row>
                          nu-ui-cfg
                          results-metadata
                          results) tree)
-
            ]
           )
-        (catch js/Error e
-          (.warn js/console e)
-          )
         )
+      )
 
 
-  )))
+    (catch js/Error e
+      (do
+        ;; does this makes sense? - will react prop
+        (.error js/console e)
+        ;; (swap! *wf assoc :error e)
+        [:pre.wf-error "<results-ui>:\n" (.-stack e)]
+        )
+      )
+    )
+
+  )
 
 
 
@@ -513,45 +531,46 @@
 (rum/defcs <default-wf-details-ui> < rum/reactive
                                      (rum/local true ::inline-results?)
                                      (rum/local true ::sort-results?)
-  [local wf]
+  [local *wf]
 
-  [:div.wf-details
+  (let [wf @*wf]
+    [:div.wf-details
+
+     (if-let [results (:result wf)]
+       (if (not= :not-started (:status wf))
+         (<results-ui> "RESULTS"
+                       (get-in wf [:runtime :initial])
+                       results)))
+
+     (if-let [initial-steps (get-in wf [:runtime :initial :steps])]
+       (if (get-in wf [::ui :show-steps?] false)
+         ;; TODO: better UI for steps, for now use same ui as for results
+         (<results-ui> "INITIAL STEPS"
+                       (get-in wf [:runtime :initial])
+                       initial-steps)))
 
 
+     (if-let [initial-params (get-in wf [:runtime :initial :params])]
+       (if (get-in wf [::ui :show-params?] false)
+         [:div.wf-results
+          ;; menubar
+          (ui/menubar "INITIAL PARAMS" [])
+          (map (fn [[k v]]
+                 [:div.wf-results-row
+                  [:.sid
+                   (pr-str k)
+                   ]
+                  [:.val
+                   (pr-str v)
+                   ]
+                  ])
+               initial-params
+               )
+          ]))
 
-   (if-let [results (:result wf)]
-     (if (not= :not-started (:status wf))
-       (<results-ui> "RESULTS"
-                        (get-in wf [:runtime :initial])
-                        results)))
+     ]
+    )
 
-   (if-let [initial-steps (get-in wf [:runtime :initial :steps])]
-     (if (get-in wf [::ui :show-steps?] false)
-       ;; TODO: better UI for steps, for now use same ui as for results
-       (<results-ui> "INITIAL STEPS"
-                     (get-in wf [:runtime :initial])
-                     initial-steps)))
-
-
-   (if-let [initial-params (get-in wf [:runtime :initial :params])]
-     (if (get-in wf [::ui :show-params?] false)
-     [:div.wf-results
-      ;; menubar
-      (ui/menubar "INITIAL PARAMS" [])
-      (map (fn [[k v]]
-        [:div.wf-results-row
-         [:.sid
-          (pr-str k)
-          ]
-         [:.val
-          (pr-str v)
-          ]
-         ])
-           initial-params
-           )
-      ]))
-
-   ]
 
   )
 
@@ -566,64 +585,77 @@
     )
   )
 
-(rum/defc <default-body> < rum/static
-  [wf]
-  (condp = (:status wf)
-    :not-started [:div
-                  "Hit run! to start a workflow"
-                  ]
-    :running (<default-wf-details-ui> wf)                      ; [:pre "..."]
-    :done (<default-wf-details-ui> wf)                         ; (safe-pretty (:result wf))
-    :error [:pre.wf-error "Error:\n" (safe-pretty (:result wf))]
-    )
-  )
 
 
-;; default ui for wf runner
-(rum/defcs <default-wf-ui> < rum/reactive
-                             (rum/local {
-                                         :show-explanation? true
-                                         :show-steps? false
-                                         :show-params? false
-                                         } ::ui-cfg)
-  [local <body-fn> *wf]
+;;
+;; UI wrapper for showing workflow results/progress
+;; custom sub-component as a <body-fn>
+(rum/defc <wf-UI> < rum/reactive
+  [<body-fn> *wf]
+
+  ;; enrich wf with ui-specific info for this component
+  (when (nil? (::ui @*wf))
+    (swap! *wf assoc  ::ui {
+                                :show-explanation? false
+                                :show-steps? false
+                                :show-params? false
+
+                                :debug? false
+                               }))
+
   (let [wf @*wf
-        status (:status wf)
-        title (:title wf)
-        explanation (:explanation wf)
+        toggle-handler (fn [k] (swap! *wf update-in [::ui k] not))]
 
-        ui-cfg @(::ui-cfg local)
-        show-explanation? (:show-explanation? ui-cfg)
-        toggle-handler (fn [k] (swap! (::ui-cfg local) update k not))
-        ]
 
     [:div.default-wf-ui
-     (ui/<wf-menu-ui> title status
+     (ui/<wf-menu-ui> (:title wf) (:status wf)
                       (:actions wf)
                       [
-                       [(str "explanation " (shorten-bool show-explanation?)) (partial toggle-handler :show-explanation?)]
-                       [(str "steps " (shorten-bool (:show-steps? ui-cfg))) (partial toggle-handler :show-steps?)]
-                       [(str "params " (shorten-bool (:show-params? ui-cfg))) (partial toggle-handler :show-params?)]
-
+                       [(str "explanation " (shorten-bool (get-in wf [::ui :show-explanation?])))  (partial toggle-handler :show-explanation?)]
+                       [(str "steps "       (shorten-bool (get-in wf [::ui :show-steps?])))        (partial toggle-handler :show-steps?)]
+                       [(str "params "      (shorten-bool (get-in wf [::ui :show-params?])))       (partial toggle-handler :show-params?)]
+                       []
+                       [(str "debug "       (shorten-bool (get-in wf [::ui :debug?])))       (partial toggle-handler :debug?)]
                        ])
 
-     (if show-explanation?
-       (cond
-         (string? explanation) [:pre explanation]
-         (vector? explanation) explanation
-         (fn? explanation) (explanation)
-         ))
+     (if (get-in wf [::ui :show-explanation?])
+       (let [explanation (:explanation wf)]
+         (cond
+           (string? explanation) [:pre explanation]
+           (vector? explanation) explanation
+           (fn? explanation) (explanation))))
 
-
-     (try
-       ;; how to pass ui params to a workflow
-       (<body-fn>
-         (assoc wf ::ui ui-cfg))
-       (catch js/Error e
-         [:pre (pr-str e)] ;; todo: nicer error catching
-         )
+     (if (get-in wf [::ui :debug?])
+       [:pre
+        (safe-pretty wf)
+        ]
        )
+
+
+     (<body-fn> *wf)
      ]
     )
   )
+
+
+(rum/defc <default-body> < rum/static
+  [*wf]
+  (let [wf @*wf]
+    (condp = (:status wf)
+      :not-started [:div  "Hit run! to start a workflow" ]
+      :running (<default-wf-details-ui> *wf)
+      :done    (<default-wf-details-ui> *wf)
+      :error
+      [:pre.wf-error
+       "<default-body>\n\n"
+       (if-let [err (:result wf)]
+         (do
+           (.error js/console err)
+           (str (.-stack err)))
+         )
+
+       (if-let [err (:error wf)]
+         (str (safe-pretty err) "\n" (.-stack err)))
+       ]
+)))
 

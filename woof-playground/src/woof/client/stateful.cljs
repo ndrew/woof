@@ -47,6 +47,8 @@
                       [] ["run!" run-wf!])
    :running     (conj (get wf-actions-map :running [])
                       [] ["stop!" stop-wf!])
+   :error       (conj (get wf-actions-map :error [])
+                      [] ["reset!" init-wf!])
    :done        (conj (get wf-actions-map :done [])
                       [] ["reset!" init-wf!])
    })

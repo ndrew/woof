@@ -29,9 +29,6 @@
   ;    [woof.playground.old.example.files-ui :as files-ws]
   ;    [woof.playground.old.example.ws :as ws]
     ;; basic wfs:
-    [woof.playground.old.example.infinite :as infinite]
-    [woof.playground.old.example.big-wf :as big-wf]
-
     [woof.client.playground.ui :as new-ui]
 
 
@@ -77,27 +74,6 @@
 ;; basic uis
 
 
-(defn infinite-wf [*STATE]
-  (init-runner-wf! *STATE
-                   (infinite/prepare-params!)
-                   infinite/context-map-fn
-                   infinite/steps-fn
-                   infinite/actions-fn
-                   (partial default-ui-fn "infinite workflow")
-                   :auto-start true
-                   )
-  )
-
-(defn expand-wf [*STATE]
-  (init-runner-wf! *STATE
-                   (big-wf/prepare-params!)
-                   big-wf/context-map-fn
-                   big-wf/steps-fn
-                   big-wf/actions-fn
-                   (partial default-ui-fn "expand")
-                   ; :auto-start true
-                   )
-  )
 
 
 
@@ -155,11 +131,7 @@
 (defonce *UI-STATE (atom
                      {
 
-
                       :basic-worflows [
-
-                                       ["infinite" infinite-wf]
-                                       ["expand" expand-wf]
                                        ]
                       :complex-workflows [
                                           ["UI loop" ui-loop-wf]

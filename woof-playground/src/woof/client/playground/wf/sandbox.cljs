@@ -8,7 +8,8 @@
     [woof.data :as d]
     [woof.wf :as wf]
     [woof.utils :as utils]
-    )
+    [woof.test-data :as test-data]
+    [woof.base :as base])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -20,22 +21,142 @@
 
 ;;
 ;; context
-(defn sandbox-ctx-fn [params]
+
+
+(defn sandbox-init-params-fn [params]
   {
-   :print {:fn (fn [v]
-                 (.log js/console v)
-                 v)}
    }
+  )
+
+(defn sandbox-ctx-fn [params]
+  (let [make-chan (partial st-wf/&chan params)]
+    {
+     :identity   {:fn (fn [a] a)}
+
+     :hello      {:fn (fn [a]
+                        (let [c (make-chan (wf/rand-sid))]
+                             (go
+                               (async/put! c (str "Hello! " (pr-str a))))
+                             c))}
+
+     :meta-hello {
+                  :fn (fn [a]
+                        )
+                  }
+
+     :hello-wait {:fn (fn [a]
+                        (let [c (make-chan (wf/rand-sid))]
+                             (go
+                               (async/<! (utils/timeout 3000))
+
+                               (async/put! c (str "Hello! " (pr-str a))))
+                             c))}
+
+     ;; return time for max-num times
+     :8          {:fn       (fn [max-num]
+                              (let [chan (make-chan (wf/rand-sid))
+                                    t (volatile! (utils/now))]
+
+                                   (go-loop [i 0]
+                                            (async/<! (utils/timeout 500))
+
+                                            ;; (.warn js/console "i" i (< i max-num) (- (u/now) @t) )
+                                            (vreset! t (utils/now))
+
+                                            (async/>! chan (str i ": " (int (rand 100))))
+
+                                            (if (< i max-num)
+                                              (recur (inc i))))
+
+                                   chan))
+                  :infinite true
+                  }
+
+
+     ;; the expand step emits several values — question: how to use this in the end
+
+     :xpand-8    {:fn       (fn [cfg]
+                              (let [chan> (make-chan)]
+                                   (go []
+                                       (let [v (async/<! (utils/timeout 1500))
+                                             producer-sid (base/rand-sid "xpand-intermediary-")
+                                             consumer-sid (base/rand-sid "xpand-result-")
+                                             ]
+
+                                         ;; here we expand once
+                                         (async/put! chan>
+                                                     {producer-sid [:8 20]
+                                                      consumer-sid [:hello producer-sid]
+                                                      })))
+                                   chan>)
+                              )
+                  :expands? true}
+
+     :xpand-8-result {
+                 :fn (fn [sids]
+                       (let [nu-steps (reduce (fn [a sid]
+                                         (if (clojure.string/starts-with? (name sid) "xpand-result-")
+                                             (assoc a (base/rand-sid "result") [:identity sid])
+                                             a))
+                                       {} sids)]
+
+                            nu-steps
+                            )
+                       )
+                 :expands? true
+                 }
+
+     :first-collect {
+                      :fn (fn [v]
+
+                            (if (= :nil v)
+                                ;; do we need to throw exception here?
+                                (utils/throw! "empty sid list provided for :first-collect"))
+                            ;(.log js/console :first-collect v)
+
+                            (if (and (seq? v) (seq v))
+                                (first v)
+                                v)
+                            )
+
+                      :collect? true
+                      }
+
+     }
+    )
+
   )
 
 ;;
 ;; steps
 (defn sandbox-steps-fn [params]
+
   {
 
-   ::initial-print [:id "hello"]
+   ::xpnd [:xpand-8 {}]
 
-   })
+;
+;  [:xpand-8 {}] -> ::xpand-intermediary-... [:8 20]
+;                   ::xpand-result-.....     [:hello producer-sid]
+;
+;
+   ::expand-result [:xpand-8-result ::xpnd]
+
+   ;; (::xpand-result-..,::xpand-intermediary-..) -> (::xpand-result-..)
+
+   ::result [:first-collect ::expand-result]
+
+   ::evt-loop   [:infinite-expander (::evt-loop-chan params)]
+
+
+
+   ;;::8 [:8 10]
+   ;;::i [:identity ::8]
+   ;;::h [:hello ::i]
+
+
+   }
+  )
 
 ;;
 ;; UI
@@ -43,19 +164,20 @@
 (rum/defcs <custom-ui> < rum/reactive
                          (rum/local true ::inline-results?)
                          (rum/local true ::sort-results?)
-  [local wf]
+  [local *wf]
 
-  [:div
+  (let [wf @*wf]
+    [:div
 
-   #_(if (not= :not-started (:status wf))
-     [:div
-      "you custom ui here"
-      ]
-     )
-
-   ;   [:pre "↓ this is the default UI for displaying wf results ↓"]
-   (wf-ui/<default-wf-details-ui> wf)
-   ]
+     #_(if (not= :not-started (:status wf))
+         [:div
+          "you custom ui here"
+          ]
+         )
+     ;   [:pre "↓ this is the default UI for displaying wf results ↓"]
+     (wf-ui/<default-body> *wf)
+     ]
+    )
   )
 
 
@@ -66,7 +188,7 @@
 (defn sandbox-wf-init! [*NODE]
   (merge
     {
-     :ui-fn       (partial wf-ui/<default-wf-ui> <custom-ui>)
+     :ui-fn       (partial wf-ui/<wf-UI> <custom-ui>)
      :title       "S A N D B O X"
 
      :explanation [:div.explanation
@@ -99,11 +221,11 @@
 
 (defn evt-ctx-fn [params]
   {
-   :evt-loop {
-              :fn       (fn [in-chan] in-chan)
-              :infinite true
-              :expands? true
-              }
+   :infinite-expander {
+                      :fn       (fn [in-chan] in-chan)
+                      :infinite true
+                      :expands? true
+                      }
 
    :id {:fn identity}
 
@@ -113,12 +235,6 @@
               :collect? true
               }
    })
-
-(defn evt-steps-fn [params]
-  {
-   ::evt-loop   [:evt-loop (::evt-loop-chan params)]
-   }
-  )
 
 ;;
 
@@ -138,15 +254,14 @@
 (defn init-sandbox-wf! [*wf]
   {
 
-   :init-fns   [evt-init-fn
+   :init-fns   [sandbox-init-params-fn
+                evt-init-fn
                 st-wf/chan-factory-init-fn]
 
    :ctx-fns    [evt-ctx-fn
                 sandbox-ctx-fn]
 
-   :steps-fns  [evt-steps-fn
-                sandbox-steps-fn
-                ]
+   :steps-fns  [sandbox-steps-fn]
 
    :opt-fns    [st-wf/chan-factory-opts-fn]
 

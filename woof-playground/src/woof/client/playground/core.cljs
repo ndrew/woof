@@ -70,7 +70,7 @@
                                               (partial state/swf-stop! *SWF)
                                               (get nu-wf-state :wf-actions {}))
 
-                                   :ui-fn   (get nu-wf-state :ui-fn (partial wf-ui/<default-wf-ui>
+                                   :ui-fn   (get nu-wf-state :ui-fn (partial wf-ui/<wf-UI>
                                                                              wf-ui/<default-body>))
                                    }))
 

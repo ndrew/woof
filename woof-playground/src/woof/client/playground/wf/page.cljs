@@ -212,33 +212,31 @@
   )
 
 
-(rum/defc <custom-wf-ui> < rum/static [wf]
+(rum/defc <custom-wf-ui> < rum/static [*wf]
 
-  [:div
+  (let [wf @*wf]
+    [:div
 
-   (<root-tree>
-     (get-in wf [:result ::initial-tree] {})
-     (get-in wf [:result ::initial-path] "???")
-     )
+     (<root-tree>
+       (get-in wf [:result ::initial-tree] {})
+       (get-in wf [:result ::initial-path] "???")
+       )
 
-   [:hr]
+     [:hr]
+     [:p "RESULTS!!!"]
+     ;[:pre (d/pretty (sort (keys wf)))]
 
-   [:p "RESULTS!!!"]
-
-   ;[:pre (d/pretty (sort (keys wf)))]
-
-
-
-   ;[:hr]
-   [:pre (d/pretty (:result wf))]
-   ]
+     ;[:hr]
+     [:pre (d/pretty (:result wf))]
+     ]
+    )
   )
 
 
 (defn stateful-init! [*wf]
   {
    ;; for we provide a ui fn
-   :ui-fn       (partial wf-ui/<default-wf-ui> <custom-wf-ui>)
+   :ui-fn       (partial wf-ui/<wf-UI> <custom-wf-ui>)
 
 
    :title       "Present folder contents as web page"
@@ -246,25 +244,24 @@
    :explanation "Protoype: for now, use fake/hardcoded data"
 
    :wf-actions  {
-                :not-started [
-                              ["explain what happening (see console)"
-                               (fn []
-                                 (prn "example, to see whether woof workflow could handle real time scenarios"))
+                 :not-started [
+                               ["explain what happening (see console)"
+                                (fn []
+                                  (prn "example, to see whether woof workflow could handle real time scenarios"))
+                                ]
                                ]
-                              ]
-                :running [
+                 :running     [
 
-                          ["send event" (fn []
-                                          (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
-                                               (async/put! loop-chan
-                                                           {(wf/rand-sid "ui-") [:test (u/now)]})
-                                               )
-                                          )]
+                               ["send event" (fn []
+                                               (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
+                                                    (async/put! loop-chan
+                                                                {(wf/rand-sid "ui-") [:test (u/now)]})
+                                                    )
+                                               )]
 
-                          ]
-                ; :done        []
-                }
-
+                               ]
+                 ; :done        []
+                 }
 
    }
   )

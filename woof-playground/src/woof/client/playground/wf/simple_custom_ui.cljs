@@ -113,7 +113,7 @@
   {
 
    ;; how to provide a custom ui for actions - we need to pass state here
-   :ui-fn       (partial wf-ui/<default-wf-ui> <custom-wf-ui>)
+   :ui-fn       (partial wf-ui/<wf-UI> <custom-wf-ui>)
 
    :title       "Workflow with Event Loop and custom UI"
 
@@ -173,44 +173,47 @@
 (rum/defcs <custom-wf-ui> < rum/reactive
                             (rum/local true ::inline-results?)
                             (rum/local true ::sort-results?)
-  [local wf]
+  [local *wf]
 
-  [:div
+  (let [wf @*wf]
+    [:div
 
-   (if (not= :not-started (:status wf))
-     [:div
-
-
-      [:.timer "Timer — " (get (:result wf) ::t "")]
-
-       [:hr]
-
+     (if (not= :not-started (:status wf))
        [:div
-        "Event loop test: "
-        [:button {:style {:font-size "12pt"}
-                  :on-click (fn [e]
-                              (let [loop-chan (&wf-init-param wf ::evt-loop-chan)]
-                                   (async/put! loop-chan
-                                               {(wf/rand-sid "click-") [:print (utils/now)]})
-                                   )
-                              )}
-         "Click me!"]
+
+
+        [:.timer "Timer — " (get (:result wf) ::t "")]
+
+        [:hr]
+
+        [:div
+         "Event loop test: "
+         [:button {:style {:font-size "12pt"}
+                   :on-click (fn [e]
+                               (let [loop-chan (&wf-init-param wf ::evt-loop-chan)]
+                                    (async/put! loop-chan
+                                                {(wf/rand-sid "click-") [:print (utils/now)]})
+                                    )
+                               )}
+          "Click me!"]
+         ]
+        (into [:.dates [:header {:style {:margin-top "1rem"}} "Click log (showing last 10 clicks)"]]
+              (map
+                (fn [t]
+                  [:pre (str "click — " t)])
+                (take 10 (reverse (get-in (:result wf) [::timestamps] []))))
+              )
+
+
+        [:hr]
         ]
-       (into [:.dates [:header {:style {:margin-top "1rem"}} "Click log (showing last 10 clicks)"]]
-             (map
-               (fn [t]
-                 [:pre (str "click — " t)])
-               (take 10 (reverse (get-in (:result wf) [::timestamps] []))))
-             )
+       )
 
+     [:pre "↓ this is the default UI for displaying wf results ↓"]
+     (wf-ui/<default-body> *wf)
 
-      [:hr]
-      ]
-     )
+     ]
+    )
 
-   [:pre "↓ this is the default UI for displaying wf results ↓"]
-   (wf-ui/<default-wf-details-ui> wf)
-
-   ]
   )
 

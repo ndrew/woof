@@ -135,10 +135,10 @@
 
 
 (rum/defc <in-out-wf> < rum/reactive
-  [wf]
+  [*wf]
 
-
-   (let [result (:result wf)
+   (let [wf @*wf
+         result (:result wf)
          in-out-map (meta result)
          IN (:IN in-out-map)
          OUT (:OUT in-out-map)
@@ -204,120 +204,120 @@
 
 (defn initialize-in-out-wf [*wf]
     {
-     :title      "IN OUT workflow"
+     :title       "IN OUT workflow"
 
      :explanation [:div
                    [:p "In this workflow we try maintaining meta data for workflow through full workflow lifecycle."]
 
                    [:p "We add the " [:code "init-fn"] " that creates a metadata atom via "
-                    [:code "base/build-init-meta-fn"]  " (accessor " [:code "base/&*meta"] "), so consequent "
+                    [:code "base/build-init-meta-fn"] " (accessor " [:code "base/&*meta"] "), so consequent "
 
                     [:code "init-fn"] "s can pass some metadata further to " [:code "ctx-fn"]
                     " and " [:code "steps-fn"]]
 
-                    [:p [:code "ctx-fn"] " can use metadata for providing prefixed "
-                     "step handlers - in case of name collision, or several versions of the step handler"
+                   [:p [:code "ctx-fn"] " can use metadata for providing prefixed "
+                    "step handlers - in case of name collision, or several versions of the step handler"
                     ]
 
-                    [:p [:code "steps-fn"] " can use metadata for specifying additional info regarding steps, "
-                     "especially expanded"
-                     ]
-
-                    [:p [:b "<?>"] " How this is different from doing it via params? Maybe just use separate playground context "
-                     "— for explicitly stating what is a result"]
-
-                    [:p "Also we use this workflow for refining the UI that will show workflow progress"]
+                   [:p [:code "steps-fn"] " can use metadata for specifying additional info regarding steps, "
+                    "especially expanded"
                     ]
 
-     :init-fns         [(fn [params]
-                          (let [params-map {:some-numbers [1 2 3 4 5]}]
+                   [:p [:b "<?>"] " How this is different from doing it via params? Maybe just use separate playground context "
+                    "— for explicitly stating what is a result"]
 
-                              ;; store in meta params IN metadata
-                               (swap! (base/&*meta params) update :IN conj :some-numbers)
+                   [:p "Also we use this workflow for refining the UI that will show workflow progress"]
+                   ]
 
-                               params-map
-                               )
+     :init-fns    [(fn [params]
+                     (let [params-map {:some-numbers [1 2 3 4 5]}]
+
+                          ;; store in meta params IN metadata
+                          (swap! (base/&*meta params) update :IN conj :some-numbers)
+
+                          params-map
                           )
-                        (base/build-init-meta-fn)
-                        st-wf/chan-factory-init-fn
-                        ]
+                     )
+                   (base/build-init-meta-fn)
+                   st-wf/chan-factory-init-fn
+                   ]
 
-     :ctx-fns          [(fn [params]
-                          {
-                           :test {:fn (fn [v] v)}
+     :ctx-fns     [(fn [params]
+                     {
+                      :test {:fn (fn [v] v)}
 
-                           ;; math
-                           :+<   {:fn       (fn [xs]
-                                              (into (array-map)
-                                                    (map-indexed (fn [i x]
-                                                                   [(wf/rand-sid) [:v x]]) xs)))
-                                  :expands? true
-                                  }
-                           :v    {:fn (fn [x] x)}
-                           :+>   {
-                                  :fn       (fn [xs] (reduce + xs))
-                                  :collect? true
-                                  }
-
-                           }
-                          )
-
-                        ]
-
-     :steps-fns        [;
-                        ;; combine that will preserve meta
-                        (fn [params]
-                          (swap! (base/&*meta params) update :OUT conj ::step-1)
-                            {
-                             ::step-1        [:test "step-1"]
-                             ::hidden-step-1 [:test "hidden-step"]
+                      ;; math
+                      :+<   {:fn       (fn [xs]
+                                         (into (array-map)
+                                               (map-indexed (fn [i x]
+                                                              [(wf/rand-sid) [:v x]]) xs)))
+                             :expands? true
                              }
-                            )
+                      :v    {:fn (fn [x] x)}
+                      :+>   {
+                             :fn       (fn [xs] (reduce + xs))
+                             :collect? true
+                             }
 
-                        (fn [params]
-                          (swap! (base/&*meta params) update :OUT conj ::step-2)
+                      }
+                     )
 
+                   ]
+
+     :steps-fns   [;
+                   ;; combine that will preserve meta
+                   (fn [params]
+                     (swap! (base/&*meta params) update :OUT conj ::step-1)
+                     {
+                      ::step-1        [:test "step-1"]
+                      ::hidden-step-1 [:test "hidden-step"]
+                      }
+                     )
+
+                   (fn [params]
+                     (swap! (base/&*meta params) update :OUT conj ::step-2)
+
+                     {
+                      ::step-2 [:test "step-2"]
+                      }
+                     )
+
+                   (fn [params]
+                     (let [expander-sid (wf/rand-sid "add-p-")
+                           sum-result-sid (wf/rand-sid "sum-")
+                           ]
+
+                          (swap! (base/&*meta params) update :OUT conj sum-result-sid)
                           {
-                           ::step-2 [:test "step-2"]
+                           expander-sid   [:+< [1 2 3]]
+                           sum-result-sid [:+> expander-sid]
                            }
                           )
 
-                        (fn [params]
-                          (let [expander-sid (wf/rand-sid "add-p-")
-                                sum-result-sid (wf/rand-sid "sum-")
-                                ]
+                     )
 
-                               (swap! (base/&*meta params) update :OUT conj sum-result-sid)
-                               {
-                                expander-sid [:+< [1 2 3]]
-                                sum-result-sid [:+> expander-sid]
-                                }
-                               )
+                   ]
 
-                          )
-
-                        ]
-
-     :opt-fns          [(base/build-opt-on-done (fn [params result] (with-meta result @(base/&*meta params))))
-                        st-wf/chan-factory-opts-fn]
+     :opt-fns     [(base/build-opt-on-done (fn [params result] (with-meta result @(base/&*meta params))))
+                   st-wf/chan-factory-opts-fn]
 
      ;; how to provide a custom ui for actions - we need to pass state here
-     :ui-fn            (partial wf-ui/<default-wf-ui> <in-out-wf>)
+     :ui-fn       (partial wf-ui/<wf-UI> <in-out-wf>)
 
-     :wf-actions       {
-                        ; :not-started []
-                        :running [
+     :wf-actions  {
+                   ; :not-started []
+                   :running [
 
-                                  #_["ui event" (fn []
-                                                  (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
-                                                       (async/put! loop-chan
-                                                                   {(wf/rand-sid "ui-") [:test (u/now)]})
-                                                       )
-                                                  )]
+                             #_["ui event" (fn []
+                                             (let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
+                                                  (async/put! loop-chan
+                                                              {(wf/rand-sid "ui-") [:test (u/now)]})
+                                                  )
+                                             )]
 
-                                  ]
-                        ; :done        []
-                        }
+                             ]
+                   ; :done        []
+                   }
 
      }
 

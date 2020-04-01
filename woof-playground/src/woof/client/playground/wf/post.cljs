@@ -24,17 +24,19 @@
 
 ;; ui
 
-(rum/defc <post-ui> < rum/reactive [wf]
+(rum/defc <post-ui> < rum/reactive
+  [*wf]
+  (let [wf @*wf]
+    [:div {:style {:padding ".5rem" :border "1px solid black"}}
+     ;; wf specific data
+     [:pre {:style {:margin-bottom "1rem"}}
+      (pr-str (::preview (:result wf)))]
 
-  [:div {:style {:padding ".5rem" :border "1px solid black"}}
-   ;; wf specific data
-   [:pre {:style {:margin-bottom "1rem"}}
-    (pr-str (::preview (:result wf)))]
+     (wf-ui/<default-body> *wf)
 
+     ]
+    )
 
-   (wf-ui/<default-body> wf)
-
-   ]
 
   )
 
@@ -46,7 +48,7 @@
    :title      "Write to Local Storage Workflow"
 
 
-   :ui-fn      (partial wf-ui/<default-wf-ui> <post-ui>)
+   :ui-fn      (partial wf-ui/<wf-UI> <post-ui>)
 
    :init-fns   [(fn [params]
                   ;; this should prepare all stuff needed for ctx and steps

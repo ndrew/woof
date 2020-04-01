@@ -143,9 +143,10 @@
    ]
   )
 
-(rum/defc <custom-wf-ui> < rum/static [wf]
+(rum/defc <custom-wf-ui> < rum/static [*wf]
 
-  (let [result (get wf :result {})
+  (let [wf @*wf
+        result (get wf :result {})
         kv-listings (get result ::listings {})
         ]
     [:div
@@ -264,7 +265,7 @@
 (defn stateful-init! [*wf]
   {
    ;; for we provide a ui fn
-   :ui-fn       (partial wf-ui/<default-wf-ui> <custom-wf-ui>)
+   :ui-fn       (partial wf-ui/<wf-UI> <custom-wf-ui>)
 
 
    :title       "Present folder contents as web page"
@@ -278,19 +279,18 @@
                                   (prn "example, to see whether woof workflow could handle real time scenarios"))
                                 ]
                                ]
-                 :running [
+                 :running     [
 
-                           ["send event" (fn []
-                                           #_(let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
-                                                (async/put! loop-chan
-                                                            {(wf/rand-sid "ui-") [:test (u/now)]})
-                                                )
-                                           )]
+                               ["send event" (fn []
+                                               #_(let [loop-chan (st-wf/&wf-init-param *wf ::evt-loop-chan)]
+                                                   (async/put! loop-chan
+                                                               {(wf/rand-sid "ui-") [:test (u/now)]})
+                                                   )
+                                               )]
 
-                           ]
+                               ]
                  ; :done        []
                  }
-
 
    }
   )
