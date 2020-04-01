@@ -4,13 +4,17 @@
 
     [clojure.data :as cd]
     [clojure.string :as str]
-    [cljs.stacktrace :as stacktrace]
 
     [woof.base :as base]
     [woof.client.playground.ui :as ui]
+    [woof.client.playground.ui.kv :as kv]
+    [woof.client.playground.ui.results-kv :as rkv]
+
     [woof.data :as d]
     [woof.wf :as wf]
-    [woof.utils :as u])
+    [woof.utils :as u]
+
+    )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -49,12 +53,6 @@
 
   )
 
-(defn rotate [n s]
-  (lazy-cat (drop n s)
-            (take n s)))
-
-(defn shift-1[s]
-  (rotate 1 s))
 
 
 ;;;;
@@ -113,37 +111,6 @@
     )
   )
 
-(defn make-tree [ui-cfg initial-data results]
-  ;; list items
-  (let [{
-         ctx-map :context-map
-         initial-steps :steps
-         } initial-data
-        ;; todo: is it possible to have items sorted by time?
-        ]
-
-    (if (:expanded-kv? ui-cfg)
-      (reduce (fn [a step]
-                (let [root (result-row-from-step ui-cfg ctx-map results step)
-                      res (:res root)]
-
-                     (if (and (get-in root [:ctx :expands?])
-                              (seq? res)
-                              (wf/sid-list? res))
-                       (concat a [root]
-                               (map (partial result-row-expanded ui-cfg root) res))
-                       (conj a root)
-                       )
-
-                     )
-                ) [] initial-steps)
-
-      (reduce (fn [a step]
-                (conj a (result-row-from-step ui-cfg ctx-map results step))) [] initial-steps)
-      )
-
-    )
-  )
 
 
 ;;
@@ -206,7 +173,7 @@
                           (rum/local [::inline-short ::inline-full ::vertical] ::modes)
   [local ui-cfg v]
   (let [mode (first @(::modes local))
-        swap-mode! (fn [e] (swap! (::modes local) shift-1))]
+        swap-mode! (fn [e] (swap! (::modes local) u/shift-1))]
     [:.val
      (cond
        (= ::inline-short mode)
@@ -244,7 +211,7 @@
                           (rum/local [::inline-short ::inline-full ::vertical] ::modes)
   [local ui-cfg v]
   (let [mode (first @(::modes local))
-        swap-mode! (fn [e] (swap! (::modes local) shift-1))]
+        swap-mode! (fn [e] (swap! (::modes local) u/shift-1))]
     [:.val
      ; (pr-str mode)
      (cond
@@ -333,7 +300,7 @@
 
      ;; todo: click here conflicts with click on <single-v>, so for now using button
      [:button
-      {:on-click (fn [e] (swap! (::modes local) shift-1))}
+      {:on-click (fn [e] (swap! (::modes local) u/shift-1))}
       "*"]
 
 
@@ -428,11 +395,8 @@
   )
 
 
-(defn shorten-bool [b]
-  (if b "✓" "✕"))
-
 (defn kv-menu-item-toggler [kv-ref kv header k ]
-  [(str header (shorten-bool (get kv k)))
+  [(str header (ui/shorten-bool (get kv k)))
    (fn [] (swap! kv-ref update k not))]
   )
 
@@ -445,6 +409,39 @@
                      #{}))
     )
   )
+
+
+(defn make-tree [ui-cfg initial-data results]
+  ;; list items
+  (let [{
+         ctx-map :context-map
+         initial-steps :steps
+         } initial-data
+        ;; todo: is it possible to have items sorted by time?
+        ]
+
+    (if (:expanded-kv? ui-cfg)
+      (reduce (fn [a step]
+                (let [root (result-row-from-step ui-cfg ctx-map results step)
+                      res (:res root)]
+
+                     (if (and (get-in root [:ctx :expands?])
+                              (seq? res)
+                              (wf/sid-list? res))
+                       (concat a [root]
+                               (map (partial result-row-expanded ui-cfg root) res))
+                       (conj a root)
+                       )
+
+                     )
+                ) [] initial-steps)
+
+      (reduce (fn [a step]
+                (conj a (result-row-from-step ui-cfg ctx-map results step))) [] initial-steps)
+      )
+    )
+  )
+
 ;;
 (rum/defcs <results-ui> < rum/static
                           (rum/local true ::show?)
@@ -521,22 +518,48 @@
 
   )
 
-
-
-
-
 ;;;;;;
 
+
+
+
+
+
 ;;
-(rum/defcs <default-wf-details-ui> < rum/reactive
-                                     (rum/local true ::inline-results?)
-                                     (rum/local true ::sort-results?)
-  [local *wf]
+(rum/defc <default-wf-details-ui> < rum/reactive
+  [*wf]
 
   (let [wf @*wf]
     [:div.wf-details
 
      (if-let [results (:result wf)]
+       (if (not= :not-started (:status wf))
+         (kv/<ui>
+                rkv/<sid-k>
+                rkv/<sid-v>
+                {
+                   :header "NU RESULTS"
+                   ;; :kv results
+                   :kvs (fn [ui-cfg]
+                          (rkv/results->kvs ui-cfg wf))
+
+                   :ui-defaults rkv/kv-ui-default-map
+                   :ui-actions (fn [*ui]
+                                 [[]
+                                  (kv/gen-toggle-action_ "short sids" :short-sids? *ui)
+                                  (kv/gen-toggle-action_ "expanded steps" :nest-expanded? *ui)
+                                  ]
+
+                                 )
+                   ;; pass kvs function here
+
+                   :groups []
+
+
+                   })
+         ))
+
+     #_(if-let [results (:result wf)]
        (if (not= :not-started (:status wf))
          (<results-ui> "RESULTS"
                        (get-in wf [:runtime :initial])
@@ -545,9 +568,57 @@
      (if-let [initial-steps (get-in wf [:runtime :initial :steps])]
        (if (get-in wf [::ui :show-steps?] false)
          ;; TODO: better UI for steps, for now use same ui as for results
-         (<results-ui> "INITIAL STEPS"
+         #_(<results-ui> "INITIAL STEPS"
                        (get-in wf [:runtime :initial])
-                       initial-steps)))
+                       initial-steps)
+
+         (let [ctx-map (get-in wf [:runtime :initial :context-map])]
+
+           (kv/<ui>
+             rkv/<step-k>
+             rkv/<step-v>
+             {
+              :header "STEPS"
+              ;; :kv results
+              :kvs (fn [ui-cfg]
+                     (map (fn [[k [shandler v]]]
+                            ;(prn shandler)
+                            (let [ctx (get ctx-map shandler)]
+                                 {:k k
+                                  :v [shandler v]
+                                  :ctx ctx
+                             }
+                            )) initial-steps)
+                     ;; todo: sorting steps
+                     #_(sort-by
+                         (fn [v]
+                           (str (get-in v [:v 0])))
+                         (map (fn [[k v]]
+                                {:k k
+                                 :v v
+                                 }
+                                ) initial-steps)
+                         )
+
+                     )
+
+              ;; :ui-defaults (fn [] {})
+              :ui-actions (fn [*ui]
+                            [[]
+                             ;;(kv/gen-toggle-action_ "short sids" :short-sids? *ui)
+                             ;;(kv/gen-toggle-action_ "expanded steps" :nest-expanded? *ui)
+                             ]
+
+                            )
+              ;; pass kvs function here
+
+              :groups []
+
+
+              })
+           )
+
+         ))
 
 
      (if-let [initial-params (get-in wf [:runtime :initial :params])]
@@ -606,16 +677,15 @@
   (let [wf @*wf
         toggle-handler (fn [k] (swap! *wf update-in [::ui k] not))]
 
-
     [:div.default-wf-ui
      (ui/<wf-menu-ui> (:title wf) (:status wf)
                       (:actions wf)
                       [
-                       [(str "explanation " (shorten-bool (get-in wf [::ui :show-explanation?])))  (partial toggle-handler :show-explanation?)]
-                       [(str "steps "       (shorten-bool (get-in wf [::ui :show-steps?])))        (partial toggle-handler :show-steps?)]
-                       [(str "params "      (shorten-bool (get-in wf [::ui :show-params?])))       (partial toggle-handler :show-params?)]
+                       [(str "explanation " (ui/shorten-bool (get-in wf [::ui :show-explanation?])))  (partial toggle-handler :show-explanation?)]
+                       [(str "steps "       (ui/shorten-bool (get-in wf [::ui :show-steps?])))        (partial toggle-handler :show-steps?)]
+                       [(str "params "      (ui/shorten-bool (get-in wf [::ui :show-params?])))       (partial toggle-handler :show-params?)]
                        []
-                       [(str "debug "       (shorten-bool (get-in wf [::ui :debug?])))       (partial toggle-handler :debug?)]
+                       [(str "debug "       (ui/shorten-bool (get-in wf [::ui :debug?])))       (partial toggle-handler :debug?)]
                        ])
 
      (if (get-in wf [::ui :show-explanation?])
@@ -625,12 +695,10 @@
            (vector? explanation) explanation
            (fn? explanation) (explanation))))
 
+
      (if (get-in wf [::ui :debug?])
        [:pre
-        (safe-pretty wf)
-        ]
-       )
-
+        (safe-pretty wf)])
 
      (<body-fn> *wf)
      ]

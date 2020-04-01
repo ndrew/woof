@@ -138,3 +138,11 @@
     ))
   )
 
+
+(defn rotate [n s]
+  (lazy-cat (drop n s)
+            (take n s)))
+
+
+(defn shift-1[s]
+  (rotate 1 s))

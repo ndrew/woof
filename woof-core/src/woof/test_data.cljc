@@ -127,13 +127,19 @@
 
 
 
+(def ^:dynamic *xpand-sample-rate* 0.333)
+(def ^:dynamic *xpand-step-sample-rate* 0.333)
+(def ^:dynamic *link-sample-rate* 0.123)
+
+
+
 (defn- gen-steps-and-context [N ]
   (let [xpand-sample-fn (fn[x]
-                          (random-sample 0.333 x))
+                          (random-sample *xpand-sample-rate* x))
         expand-step-sample-fn (fn[x]
-                                (random-sample 0.05 x))
+                                (random-sample *xpand-step-sample-rate* x))
         link-sample-fn (fn[x]
-                         (random-sample 0.123 x))
+                         (random-sample *link-sample-rate* x))
 
         idxs (take N (range))
         xpand-idxs (xpand-sample-fn idxs)]

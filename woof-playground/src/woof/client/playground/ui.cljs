@@ -3,7 +3,7 @@
     [rum.core :as rum]
 
     [woof.playground.v1.utils :refer [dstr kstr vstr]]
-    )
+    [clojure.string :as str])
   )
 
 
@@ -159,3 +159,10 @@
       )
     )
   )
+
+
+;;;
+
+(defn shorten-bool [b]
+  (if b
+    "✓" "✕"))

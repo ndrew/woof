@@ -23,7 +23,15 @@
   (let [ {
           context :context
           steps :steps
-          } (test-data/get-test-steps-and-context 100)
+          }
+
+        (binding [
+                  test-data/*xpand-sample-rate* 0.5
+                  test-data/*xpand-step-sample-rate* 0.8
+                  test-data/*link-sample-rate* 0.9
+                  ]
+          (test-data/get-test-steps-and-context 50)
+          )
         ]
     {
      :title       "Expand workflow"
