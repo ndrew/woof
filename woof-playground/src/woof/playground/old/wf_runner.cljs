@@ -16,7 +16,7 @@
     [woof.client.playground.ui :as ui]
 
     [woof.playground.old.context :as ctx-ui]
-    [woof.playground.old.steps :as steps-ui]
+
     [woof.playground.old.results :as r]
 
     [woof.utils :as u]
@@ -365,6 +365,32 @@
 ;;
 ;; UI
 
+(rum/defcs <steps> < rum/reactive
+                     (rum/local nil  ::hid)
+
+  [local *STEPS-MAP context-map]
+
+  [:div.steps-map-ui
+
+   [:h4 "steps:"]
+
+   (into [:div.step]
+         (map (fn [[k [hid v]]]
+                [:div
+                 (d/pretty k)
+                 (ui/menu-item (d/pretty hid) (fn[]
+                                                (.warn js/console v)
+                                                ))
+                 ]
+
+                ) @*STEPS-MAP)
+         )
+
+
+   ]
+  )
+
+
 
 ;; default wf runner ui
 (rum/defcs <wf-ui> < rum/reactive
@@ -382,7 +408,7 @@
      ;; pre-wf stuff: steps
 
      [:div.hbox
-      (steps-ui/<steps> (cursor [:wf :steps]) @(cursor [:wf :context-map]))
+      (<steps> (cursor [:wf :steps]) @(cursor [:wf :context-map]))
       (ctx-ui/<context> (cursor [:wf :context-map]))
       ]
 
