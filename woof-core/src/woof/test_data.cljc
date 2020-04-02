@@ -23,7 +23,13 @@
   (keyword (str id)))
 
 (defn gen-ns-id [id]
-  (keyword (str *ns* "/" id)))
+  #?(:clj (keyword (str *ns* "/" id)))
+  #?(:cljs
+     (let [curr-ns (namespace ::just-give-me-a-ns)]
+       (keyword (str curr-ns "/" id))
+       )
+  )
+)
 
 
 (defn build-handler
@@ -78,12 +84,10 @@
   (reduce
     (gen-expand-fn #(str "xpand-" %)
                    (fn [k z s]
-                     (let [ext-idxs (sampling-fn idxs)
-                           r (reduce (fn[a x]
-                                       (assoc a (gen-id (str "x-step-" z "--" x)) [(gen-id (str "s-" x)) {}]))
-                                     {} ext-idxs)]
-                       ;(println "expanded into " r)
-                       r)))
+                     (let [ext-idxs (sampling-fn idxs)]
+                          (reduce (fn[a x]
+                                    (assoc a (gen-ns-id (str "x-step-" z "--" x)) [(gen-id (str "s-" x)) {}]))
+                                  {} ext-idxs))))
 
 
     {} xpand-idxs))
