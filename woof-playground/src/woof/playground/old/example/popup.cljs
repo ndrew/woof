@@ -7,7 +7,7 @@
     [woof.data :as d]
     [woof.wf :as wf]
     [woof.utils :as u]
-    [woof.playground.old.wf-ui :as wf-ui]
+
     [woof.client.playground.ui :as new-ui]
 
     [markdown.core :refer [md->html]]

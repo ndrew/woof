@@ -11,7 +11,7 @@
 
     [woof.wf :as wf]
     [woof.wf-data :as wdata]
-    [woof.playground.old.wf-ui :as wf-ui]
+
 
     [woof.client.playground.ui :as ui]
 
