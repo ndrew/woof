@@ -5,7 +5,10 @@
     [woof.client.dom :as dom]
     ;[woof.client.browser.scraper :as scraper]
     [woof.client.browser.scraper2 :as scraper2]
-    ))
+
+    [cljs.core.async :refer [go] :as async]
+    [cljs.core.async.interop :refer-macros [<p!]]
+    [woof.utils :as u]))
 
 
 ;; ns for doing in-browser scraping
@@ -155,6 +158,34 @@
          )))
 
 
+
+;; !!obj && (typeof obj === 'object' || typeof obj === 'function') && typeof obj.then === 'function';
+
+(defn ^:export promise2chan [v]
+  (let [ch (async/chan)]
+    (go
+      (let [v (<p! v)]
+        (async/put! ch (if (nil? v) :nil v)))
+      )
+    ch
+    )
+  )
+
+
+
+#_(defn wrap-ctx-fn [cfg ctx-fn]
+  (fn [v]
+    (let [params v
+          js-result (ctx-fn params)
+          ]
+
+
+         ;; by default do not convert params to js or ?
+
+         )
+    )
+  )
+
 (defn ^:export ctx_fn [js-fn]
   (fn [params]
     (let [js-res (js-fn (clj->js params))]
@@ -166,7 +197,7 @@
                             raw-cfg (aget js-res k)
                             cfg (js->clj raw-cfg :keywordize-keys true)
                             ]
-                        (.log js/console cfg)
+                        ;; (.log js/console cfg)
                         [nu-k cfg]
                         )
 
@@ -178,7 +209,7 @@
 
 
 ;; for now - auto-run wf, if we are not in the playground
-(when-not (goog.object/get js/window "PLAYGROUND")
+#_(when-not (goog.object/get js/window "PLAYGROUND")
   ; (.clear js/console)
   (run_workflow)
 

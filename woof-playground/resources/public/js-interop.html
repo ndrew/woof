@@ -47,7 +47,8 @@
         var k = woof.browser.k;
 
         result[qk("boo")] = [k("identity"), "aaaa"];
-        result[qk("foo")] = [k("identity"), qk("boo")];
+
+        result[qk("foo")] = [k("promise"), qk("boo")];
 
         result["log-test"] = [k("log"), qk("foo")];
 
@@ -67,6 +68,13 @@
             wf.default_ctx_fn,
             wf.ctx_fn(function (params) {
                 return {
+                    "promise" : {
+                        "fn" : function (v) {
+                            var p = Promise.resolve(v);
+
+                            return wf.promise2chan(p);
+                        }
+                    },
                     "log": {
                         "fn": function(v) {
                             // who needs to convert js structs to a clojurescript ones?
