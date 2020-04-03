@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="css/browser.css" rel="stylesheet" type="text/css">
+
+    <link href="css/base.css" rel="stylesheet" type="text/css">
+
+    <link rel="icon" href="/favicon.png">
+</head>
+<body>
+
+
+
+
+<script src="cljs-out/browser-main.js" type="text/javascript"></script>
+
+
+<script>
+
+    function debug_fn(params) {
+        var result = {};
+
+        /**
+         * @function (string)
+         * */
+        var qk = woof.browser.qk;
+        var k = woof.browser.k;
+
+        debugger;
+
+        // result[qk("boo")] = [k("log"), "aaaa"];
+
+        return result;
+    }
+
+
+
+    function test_fn(params) {
+        var result = {};
+
+        /**
+         * @function (string)
+         * */
+        var qk = woof.browser.qk;
+        var k = woof.browser.k;
+
+        result[qk("boo")] = [k("identity"), "aaaa"];
+        result[qk("foo")] = [k("identity"), qk("boo")];
+
+        result["log-test"] = [k("log"), qk("foo")];
+
+        return result;
+    }
+
+
+
+    // how to know that woof is loaded?
+    setTimeout(function () {
+
+        var wf = woof.browser;
+
+        var initFns = [];
+
+        var ctxFns = [
+            wf.default_ctx_fn,
+            wf.ctx_fn(function (params) {
+                return {
+                    "log": {
+                        "fn": function(v) {
+                            // who needs to convert js structs to a clojurescript ones?
+                            console.log("JS: ", v);
+                            return v;
+                        }
+                    }
+                }
+            })
+        ];
+
+        var jsStepsFn = wf.steps_fn(test_fn);
+        var stepsFns = [jsStepsFn];
+
+        var optFns = [wf.default_opt_fn];
+
+        wf.run_js_workflow(
+            initFns,
+            ctxFns,
+            stepsFns,
+            optFns
+        );
+
+        // cljs.core.js__GT_clj
+    }, 1000)
+
+</script>
+
+</body>
+</html>
