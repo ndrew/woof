@@ -26,47 +26,16 @@
 
    })
 
-(defn init-fn [params]
-  ;; (info ::init-fn)
-  {
-   :t (u/now)
-   }
-  )
-
-(defn ctx-fn [params]
-  {
-   :id {:fn identity}
-   }
-  )
-
-(defn steps-fn [params]
-  {
-   ::ping [:id (:t params)]
-   }
-  )
-
-
-(defn wf-run! [wf]
-  (base/run-wf! wf identity))
-
-
-(defn wf-run-sync! [wf]
-  (base/sync-run-wf! wf identity))
-
-
 
 
 (defn ping-wf-sync []
-  (let [wf-impl (base/parametrized-wf!
-             (base/combine-init-fns [init-fn])
-             identity
-             identity
-             print-results-opts-fn
-             ctx-fn
-             steps-fn
-             )
-        ]
-    (wf-run-sync! wf-impl)))
+  (let [wf-impl (base/wf!
+             :init  { :t (u/now) }
+             :ctx   { :id {:fn identity} }
+             :steps (fn [params] {::ping [:id (:t params)] })
+             :opts  print-results-opts-fn)]
+
+    (base/sync-run-wf! wf-impl)))
 
 
 

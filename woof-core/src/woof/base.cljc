@@ -90,7 +90,7 @@
         (:params (reduce (fn [a x]
                           (merge-fn a (x (:params a))))
                       {:params {}}
-                      (vec (reverse init-fns))
+                      (vec (reverse init-fns)) ;; todo: whether reverse is needed?
                       ))
         )))
   )
@@ -216,7 +216,7 @@
      opts-fn        ;; provides opts map via opt params
      context-map-fn ;; provides context map from wf params
      steps-fn       ;; provides steps map from wf params
-     workflow-fn ;;
+     workflow-fn ;; todo: wft is workflow-fn?
      ]
     (let [wf-fn (fn [params]
                   (let [nu-params (wf-params-fn params)]
@@ -243,6 +243,41 @@
     )
   )
 
+
+(defn as-fn-list [v]
+  (cond
+    (or (vector? v) (seq? v)) v ;; leave vector as is
+    (map? v) [(fn [params] v)]  ;; wrap map as function
+    (fn? v) [v]                 ;; wrap fn into a vector
+    :else []
+    )
+  )
+
+
+
+;; shorter version of defining workflow
+(defn wf! [& {:keys [init ctx steps opts ] :as params}]
+
+  (let [init-fn (combine-init-fns (as-fn-list init))
+        opts-fn (combine-fns (as-fn-list opts) :merge-results merge-opts-maps)
+
+        ctx-fns  (as-fn-list ctx)
+        steps-fns (as-fn-list steps)]
+
+    (if (or (empty? steps-fns)
+            (empty? ctx-fns))
+      (utils/throw! ":steps and/or :ctx should be provided for a wf"))
+
+    (parametrized-wf!
+      init-fn
+      identity
+      identity
+      opts-fn
+      (combine-fns ctx-fns)
+      (combine-fns steps-fns))
+    )
+
+  )
 
 (defn WF [nu-params context-map-fn steps-fn wf-params]
   (reify WoofWorkflow
@@ -273,15 +308,19 @@
   (protocols/end! xtor))
 
 
-(defn do-run-wf! [processor wf xtor-fn]
-  (runner/run-wf
-    (:init-fn wf)
-    (:wf-fn wf)   ;; {:params {..}, :wf <wf-xtor>}
-    (:opts-fn wf) ;; {:params {..}, :opts {..}}
-    (fn [wf-impl opts]
-      (let [xtor (wfc/wf-xtor wf-impl)
-            xtor-impl (xtor-fn xtor)]
-           (wf/process-results! (processor xtor-impl opts)))))
+;; todo: make xtor-fn optional
+(defn do-run-wf!
+  ([processor wf]
+   (do-run-wf! processor wf identity))
+  ([processor wf xtor-fn]
+    (runner/run-wf
+      (:init-fn wf)
+      (:wf-fn wf)   ;; {:params {..}, :wf <wf-xtor>}
+      (:opts-fn wf) ;; {:params {..}, :opts {..}}
+      (fn [wf-impl opts]
+        (let [xtor (wfc/wf-xtor wf-impl)
+              xtor-impl (xtor-fn xtor)]
+             (wf/process-results! (processor xtor-impl opts))))))
   )
 
 (def run-wf! (partial do-run-wf! wf/->ResultProcessor))
@@ -472,6 +511,7 @@
 
 ;; state accessor
 (defn &state [params]
+  ;; todo: throw if no state is provided
   (::state params))
 
 ;; xtor accessor
@@ -491,7 +531,7 @@
 
            :state     *state
 
-           :start-wf! (fn [] (run-wf! wf identity))
+           :start-wf! (fn [] (run-wf! wf))
 
            :stop-wf!  (fn []
                         (if-let [xtor (state-get-xtor *state)]
