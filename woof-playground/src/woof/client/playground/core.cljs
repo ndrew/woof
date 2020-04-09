@@ -43,7 +43,7 @@
 ;; playground wf runner function
 ;;
 
-(defn init-alpha-wf! [update? wf-id wf-init-fn]
+(defn playground-wf! [update? wf-id wf-init-fn]
   (let [initial-state (state/empty-swf wf-id)]
 
     (st-wf/wf wf-id
@@ -95,14 +95,13 @@
   ;; or it should be called if the button is pressed
   {
 
-   :wf-sandbox (init-alpha-wf! update?
-                               :wf-sandbox sandbox-wf/sandbox-wf-init!)
+   :wf-sandbox  (playground-wf! update?
+                                :wf-sandbox sandbox-wf/sandbox-wf-init!)
    ;; workflow w state (keywords that start with wf-...)
-   :wf-basic-wf              (init-alpha-wf! update? :wf-basic-wf simple-wf/basic-wf-initializer)
-   :wf-with-ui               (init-alpha-wf! update? :wf-with-ui simple-w-ui/wf-with-ui-initializer)
+   :wf-basic-wf (playground-wf! update? :wf-basic-wf simple-wf/basic-wf-initializer)
+   :wf-with-ui  (playground-wf! update? :wf-with-ui simple-w-ui/wf-with-ui-initializer)
 
-   :wf-expand                (init-alpha-wf! update? :wf-expand expand-wf/expand-wf-init!)
-
+   :wf-expand   (playground-wf! update? :wf-expand expand-wf/expand-wf-init!)
 
    ;:wf-page                  (init-alpha-wf! update? :wf-page page-wf/initialize!)
    ;:wf-listings              (init-alpha-wf! update? :wf-listings listing-wf/initialize!)

@@ -481,7 +481,7 @@
        :wf        wf
        :state     *WS-STATE
        :start-wf! (fn []
-                    (base/run-wf! wf identity))
+                    (base/run-wf! wf))
 
        :stop-wf!  (fn []
                     (if-let [xtor (get-in @*WS-STATE [:xtor])]
@@ -764,7 +764,7 @@
      :wf        wf
      :state     STATE
      :start-wf! (fn []
-                  (base/run-wf! wf identity))
+                  (base/run-wf! wf))
 
      :stop-wf!  (fn []
                   (if-let [xtor (get-in @STATE [:xtor])]

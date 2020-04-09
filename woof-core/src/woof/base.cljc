@@ -249,7 +249,9 @@
     (or (vector? v) (seq? v)) v ;; leave vector as is
     (map? v) [(fn [params] v)]  ;; wrap map as function
     (fn? v) [v]                 ;; wrap fn into a vector
-    :else []
+    :else (do
+            ;; what should be returned if unknown type passed?
+            [])
     )
   )
 
@@ -257,6 +259,8 @@
 
 ;; shorter version of defining workflow
 (defn wf! [& {:keys [init ctx steps opts ] :as params}]
+
+
 
   (let [init-fn (combine-init-fns (as-fn-list init))
         opts-fn (combine-fns (as-fn-list opts) :merge-results merge-opts-maps)

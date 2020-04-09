@@ -81,7 +81,7 @@
                 ::error nil
                 }
                )
-        (base/run-wf! wf identity)
+        (base/run-wf! wf)
         )
       (catch js/Error e
         (.error js/console e)

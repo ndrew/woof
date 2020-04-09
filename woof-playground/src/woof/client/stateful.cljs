@@ -151,7 +151,6 @@
         opt-fns (get st :opt-fns [])
 
         merge-results-fn (get st :merge-results-fn merge)
-
         ]
 
     (if (= 0 (count ctx-fns))
@@ -179,7 +178,7 @@
       (swap! *swf assoc-in [:runtime :wf] wf)
       (swap! *swf assoc :status :running)
 
-      (base/run-wf! wf identity)
+      (base/run-wf! wf)
 
       )
     )

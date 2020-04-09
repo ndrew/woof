@@ -246,7 +246,7 @@
      :wf wf
      :state STATE
      :start-wf! (fn []
-             (base/run-wf! wf identity))
+             (base/run-wf! wf))
 
      :stop-server! (fn []
               (go

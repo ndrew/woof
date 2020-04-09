@@ -23,8 +23,6 @@
 (enable-console-print!)
 
 
-
-
 ;;
 ;; configure your browser wf here
 ;;
@@ -40,7 +38,7 @@
 
 (defn convert [a]
   (if (.isArray js/Array a)
-    (clj->js a)
+    (js->clj a)
     a)
   )
 
@@ -52,16 +50,13 @@
                                 ]
   ;; this will start the wf
   (let [
-        wf-impl
-        (base/parametrized-wf!
-          (base/combine-init-fns (convert init-fns))
-          identity ; wf-params-fn
-          identity ; opt-params-fn
-          (base/combine-fns (convert opt-fns) :merge-results base/merge-opts-maps)
-          (base/combine-fns (convert ctx-fns))
-          (base/combine-fns (convert steps-fns)))
+        wf-impl (base/wf!
+                  :init (convert init-fns)
+                  :opts (convert opt-fns)
+                  :ctx (convert ctx-fns)
+                  :steps (convert steps-fns))
         ]
-    (base/run-wf! wf-impl identity)
+    (base/run-wf! wf-impl)
     )
   )
 

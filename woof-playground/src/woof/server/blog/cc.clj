@@ -175,7 +175,7 @@
 
 
 (defn start-cc-wf! []
-  (base/run-wf! (get-in @STATE [:cc :wf]) identity))
+  (base/run-wf! (get-in @STATE [:cc :wf])))
 
 
 (defn end-cc-wf! []
@@ -207,7 +207,7 @@
                :merge-results base/merge-opts-maps)
 
     :run-fn (fn []
-              (base/run-wf! (get-in @STATE [:cc :wf]) identity)))
+              (base/run-wf! (get-in @STATE [:cc :wf]))))
 
 
   ;; assume that currently there is a single cc workflow, so take in chan from global state
