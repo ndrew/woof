@@ -1,9 +1,11 @@
 (ns woof.utils
   "helper and utils."
   (:require
-    [woof.data :as d]
     [woof.u :as base]
-    [clojure.core.async :as async :refer [go go-loop]]))
+    [clojure.core.async :as async :refer [go go-loop]]
+    [clojure.core.async.impl.protocols])
+  (:gen-class)
+  )
 
 
 (def sid base/sid)

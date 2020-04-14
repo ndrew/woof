@@ -1,5 +1,6 @@
 (ns woof.core.protocols
-  "woof protocols")
+  "woof protocols"
+  (:gen-class))
 
 
 ;

@@ -1,10 +1,5 @@
 (ns woof.wf-data
-  (:require [woof.data :as d]
-            [woof.cache :as cache]
-            [woof.graph :as g]
-
-
-            #?(:clj [woof.utils :as u :refer [put!? debug!]])
+  (:require #?(:clj [woof.utils :as u :refer [put!? debug!]])
             #?(:cljs [woof.utils :as u])
 
 
@@ -16,11 +11,13 @@
       (:require-macros
           [cljs.core.async.macros :refer [go go-loop]]
           [woof.utils-macros :refer [put!? debug!]]
-        )))
+        ))
+  (:gen-class)
+  )
 
 
 
-;; todo: migrate to wf
+;; todo: migrate to base
 
 
 (defn extract-result

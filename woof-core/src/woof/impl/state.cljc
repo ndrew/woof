@@ -5,9 +5,6 @@
             #?(:clj [woof.utils :as u :refer [put!? debug! inline--fn inline--fn1]])
             #?(:cljs [woof.utils :as u])
 
-
-            #?(:clj [io.aviso.ansi :as ansi])
-
             #?(:clj [clojure.core.async :as async :refer [go go-loop]])
             #?(:cljs [cljs.core.async :as async])
 
@@ -28,14 +25,14 @@
                      WoofBackPressure
                      start-producing? stop-producing?
                      ]]
-
             )
-
   #?(:cljs
      (:require-macros
        [cljs.core.async.macros :refer [go go-loop]]
        [woof.utils-macros :refer [put!? debug! inline--fn inline--fn1]]
-       )))
+       ))
+  (:gen-class)
+  )
 
 
 ;; shorthands

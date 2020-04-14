@@ -11,8 +11,9 @@
     [fipp.clojure :as fippc]
     [fipp.visit :refer [visit visit*]]
     [fipp.engine :refer (pprint-document)]
-    [fipp.ednize :refer [edn record->tagged override?]]
-))
+    [fipp.ednize :refer [edn record->tagged override?]])
+  (:gen-class)
+  )
 
 
 ;; TODO: use print-level as limiter

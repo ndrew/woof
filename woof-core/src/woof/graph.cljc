@@ -1,9 +1,9 @@
 (ns woof.graph
   "graph functions"
   (:require
-    [woof.data :as d]
-    [woof.utils :as u]
-    ))
+    [woof.utils :as u])
+  (:gen-class)
+  )
 
 
 (defn tarjan

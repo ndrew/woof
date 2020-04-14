@@ -1,6 +1,8 @@
 (ns woof.core
   (:require
-    [woof.data :as data]))
+    [woof.data :as data])
+  (:gen-class)
+  )
 
 ;; DATA
 ;;

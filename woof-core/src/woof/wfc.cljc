@@ -1,7 +1,6 @@
 (ns woof.wfc
   "woof workflow composition"
-  (:require [woof.data :as d]
-            [woof.wf :as wf]
+  (:require [woof.wf :as wf]
 
             #?(:clj [woof.utils :as u :refer [put!? debug! inline--fn inline--fn1]])
             #?(:cljs [woof.utils :as u])
@@ -12,12 +11,13 @@
 
             ; [woof.core.protocols :as protocols :refer [WoofWorkflow get-params get-context-map get-steps]]
             )
-
   #?(:cljs
       (:require-macros
           [cljs.core.async.macros :refer [go go-loop]]
           [woof.utils-macros :refer [put!? debug! inline--fn inline--fn1]]
-        )))
+        ))
+  (:gen-class)
+  )
 
 
 

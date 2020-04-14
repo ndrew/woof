@@ -4,7 +4,8 @@
    #?(:cljs [cljs.pprint :as cljs-pprint])
    #?(:cljs [cljs.reader])
 
-   #?(:clj [clojure.pprint :as clj-pprint])))
+   #?(:clj [clojure.pprint :as clj-pprint]))
+  (:gen-class))
 
 
 ;; placeholders/selectors

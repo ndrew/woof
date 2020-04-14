@@ -1,9 +1,8 @@
 (ns woof.core.runner
   (:require
     [woof.wf :as wf]
-    [woof.wfc :as wfc]
-    [woof.xform :as x]
-    [woof.utils :as u]))
+    [woof.wfc :as wfc])
+  (:gen-class))
 
 
 

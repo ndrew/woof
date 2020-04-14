@@ -23,7 +23,9 @@
      (:require-macros
        [cljs.core.async.macros :refer [go go-loop]]
        [woof.utils-macros :refer [put!? debug! inline--fn inline--fn1]]
-       )))
+       ))
+  (:gen-class)
+  )
 
 
 (defn- freq-map!

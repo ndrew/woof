@@ -1,15 +1,17 @@
 (ns woof.cache
   "cache for workflow executor"
   (:require
-    [woof.data :as d]
     [woof.utils :as u]
 
     #?(:clj  [clojure.core.async :as async :refer [go go-loop]])
     #?(:cljs [cljs.core.async :as async]))
 
   #?(:cljs
-      (:require-macros [cljs.core.async.macros :refer (go go-loop)])))
+      (:require-macros [cljs.core.async.macros :refer (go go-loop)]))
+  (:gen-class)
+  )
 
+;; is this still needed?
 
 (defprotocol ICache
 

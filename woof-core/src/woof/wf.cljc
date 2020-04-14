@@ -1,8 +1,6 @@
 (ns woof.wf
   "woof workflows"
   (:require [woof.data :as d]
-            [woof.cache :as cache]
-            [woof.graph :as g]
 
             #?(:clj [woof.utils :as u :refer [put!? debug! inline--fn inline--fn1]])
             #?(:cljs [woof.utils :as u])
@@ -36,15 +34,15 @@
             [woof.impl.backpressure :refer [make-backpressure!]]
 
             [woof.impl.async-executor :as async-executor]
-
-
             )
 
   #?(:cljs
      (:require-macros
        [cljs.core.async.macros :refer [go go-loop]]
        [woof.utils-macros :refer [put!? debug! inline--fn inline--fn1]]
-       )))
+       ))
+  (:gen-class)
+  )
 
 
 ;; debug stuff

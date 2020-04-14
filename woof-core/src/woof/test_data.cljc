@@ -1,15 +1,13 @@
 (ns woof.test-data
   (:require
-    [woof.data :as d]
-    [woof.wf :as exec]
     [woof.graph :as g]
     [woof.utils :as u]
 
     #?(:clj [clojure.core.async :as async :refer [go go-loop]])
     #?(:cljs [clojure.core.async :as async]))
 
-  #?(:cljs (:require-macros [cljs.core.async.macros :refer [go go-loop]])))
-
+  #?(:cljs (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
+  (:gen-class))
 
 
 (def DEBUG-TO-PRINT false)
@@ -22,6 +20,7 @@
 (defn gen-id [id]
   (keyword (str id)))
 
+;; todo: this doesn't seems to work in cljs
 (defn gen-ns-id [id]
   #?(:clj (keyword (str *ns* "/" id)))
   #?(:cljs

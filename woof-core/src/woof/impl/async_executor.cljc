@@ -11,8 +11,6 @@
             #?(:clj [clojure.core.async :as async :refer [go go-loop]])
             #?(:cljs [cljs.core.async :as async])
 
-            #?(:clj [io.aviso.ansi :as ansi])
-
     ;; for now refer all the protocols and all their methods
             [woof.core.protocols :as protocols
              :refer [WoofDebug dbg!
@@ -43,7 +41,9 @@
      (:require-macros
        [cljs.core.async.macros :refer [go go-loop]]
        [woof.utils-macros :refer [put!? debug! inline--fn inline--fn1]]
-       )))
+       ))
+  (:gen-class)
+  )
 
 ;; shorthands
 

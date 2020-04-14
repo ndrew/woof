@@ -1,8 +1,6 @@
 (ns woof.u
   "helper and utils base"
   (:require
-    [woof.data :as d]
-
     [compact-uuids.core :as uuid]
 
     #?(:clj [clojure.core.async :as async :refer [go go-loop]])
@@ -10,8 +8,10 @@
 
     )
   #?(:cljs
-      (:require-macros
-        [cljs.core.async.macros :refer [go go-loop]]))
+     (:require-macros
+       [cljs.core.async.macros :refer [go go-loop]]))
+  #?(:clj (:import (java.util UUID)))
+  (:gen-class)
   )
 
 
@@ -46,7 +46,7 @@
   (into (array-map) (map identity pairs)))
 
 (defn- gen-uuid []
-  #?(:clj  (java.util.UUID/randomUUID)
+  #?(:clj  (UUID/randomUUID)
      :cljs (random-uuid)))
 
 
