@@ -8,7 +8,7 @@
 
   #?(:cljs
       (:require-macros [cljs.core.async.macros :refer (go go-loop)]))
-  (:gen-class)
+  ;(:gen-class)
   )
 
 ;; is this still needed?

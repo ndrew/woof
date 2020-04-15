@@ -7,7 +7,8 @@
     #?(:cljs [clojure.core.async :as async]))
 
   #?(:cljs (:require-macros [cljs.core.async.macros :refer [go go-loop]]))
-  (:gen-class))
+  ;(:gen-class)
+  )
 
 
 (def DEBUG-TO-PRINT false)

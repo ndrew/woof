@@ -2,7 +2,7 @@
   "graph functions"
   (:require
     [woof.utils :as u])
-  (:gen-class)
+  ;(:gen-class)
   )
 
 

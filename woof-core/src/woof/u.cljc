@@ -1,7 +1,6 @@
 (ns woof.u
   "helper and utils base"
   (:require
-    [compact-uuids.core :as uuid]
 
     #?(:clj [clojure.core.async :as async :refer [go go-loop]])
     #?(:cljs [cljs.core.async :as async])
@@ -11,7 +10,7 @@
      (:require-macros
        [cljs.core.async.macros :refer [go go-loop]]))
   #?(:clj (:import (java.util UUID)))
-  (:gen-class)
+  ;(:gen-class)
   )
 
 
@@ -50,12 +49,20 @@
      :cljs (random-uuid)))
 
 
+;; todo: use uid shortener?
+
+(defn str-uuid [uuid]
+  ;(uuid/str uuid)
+  (str uuid)
+  )
+
+
 (defn rand-sid
   "generates random sid"
   ([]
-    (sid (uuid/str (gen-uuid))))
+    (sid (str-uuid (gen-uuid))))
   ([prefix]
-    (sid prefix (uuid/str (gen-uuid)))))
+    (sid prefix (str-uuid (gen-uuid)))))
 
 
 

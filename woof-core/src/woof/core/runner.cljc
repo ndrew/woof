@@ -2,7 +2,8 @@
   (:require
     [woof.wf :as wf]
     [woof.wfc :as wfc])
-  (:gen-class))
+  ;(:gen-class)
+  )
 
 
 

@@ -12,7 +12,7 @@
           [cljs.core.async.macros :refer [go go-loop]]
           [woof.utils-macros :refer [put!? debug!]]
         ))
-  (:gen-class)
+  ;(:gen-class)
   )
 
 

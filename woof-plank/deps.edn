@@ -1,0 +1,6 @@
+{
+    :deps {
+        woof-core {:local/root "../woof-core"}
+        andare {:mvn/version "1.1.587"}
+    }
+}

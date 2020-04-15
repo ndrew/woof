@@ -33,10 +33,10 @@
      (:require-macros
        [cljs.core.async.macros :refer [go go-loop]]
        ))
-  (:gen-class)
+  ;(:gen-class)
   )
 
-(set! *warn-on-reflection* true)
+;(set! *warn-on-reflection* true)
 
 ;; use aliases for some common functions
 (def pretty! d/pretty!)
