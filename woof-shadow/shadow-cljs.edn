@@ -1,0 +1,32 @@
+;; shadow-cljs configuration
+{
+ ;; using deps.edn, mostly for working with Cursive
+ :deps true
+
+; :source-paths ["src/dev" "src/main" "src/server" "src/test"  "../woof-core/src"]
+; :dependencies [[org.clojure/core.async "1.1.587"]]
+
+
+ ; :dev-http {8080 "public"}
+
+ :builds
+ {
+  :frontend
+  {:target  :browser
+   :modules {:main {:init-fn woof.app/init}}
+
+   :devtools
+            {:http-root "public"
+             :http-port 8020}
+   }
+
+  ;; nodejs server
+  :node {:target :node-script
+        :output-to "target/node.js"
+        :main woof.server/main
+        :devtools {
+                   :after-load woof.server/start
+                   :before-load-async woof.server/stop
+                   }}
+  }
+ }

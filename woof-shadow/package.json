@@ -1,0 +1,17 @@
+{
+  "name": "woof-shadow",
+  "version": "0.0.1",
+  "private": true,
+  "devDependencies": {
+    "shadow-cljs": "2.8.94",
+    "source-map-support": "^0.5.9",
+    "ws": "^7.2.3"
+  },
+  "dependencies": {},
+  "main": "index.js",
+  "scripts": {
+    "watch": "shadow-cljs watch frontend node",
+    "compile": "shadow-cljs compile node",
+    "build": "shadow-cljs release node"
+  }
+}
