@@ -24,11 +24,18 @@
    (sid (str prefix
              (if (keyword? id) (name id) id)))))
 
-;; predicates that check parameter in workflow is a link to other action
+
+;; use our version to support clojure 1.8
+(defn is-qualified-keyword?
+  "Return true if x is a keyword with a namespace"
+  [x] (boolean (and (keyword? x) (namespace x) true)))
+
+
+;; predicate that checks parameter in workflow is a link to other action
 (defn sid?
   "checks if id is sid: it should be qualified keyword. So we can distinguish it as parameter"
   [id]
-  (qualified-keyword? id))
+  (is-qualified-keyword? id))
 
 
 (defn sid-list?
