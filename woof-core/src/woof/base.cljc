@@ -528,7 +528,7 @@
 
 
 
-
+;; todo: on-stop is useless as we need to use last opt-fn for actually workflow ended
 (defn stateful-wf
   ([*state wf on-stop]
    (stateful-wf *state wf on-stop {}))
@@ -545,6 +545,7 @@
                         (if-let [xtor (state-get-xtor *state)]
                                 (do
                                   (end! xtor)
+                                  ;; how to call on stop after all opts were completed?
                                   (on-stop)
                                   ::stopped)
                                 (do
@@ -563,17 +564,14 @@
 ;; channel factory
 ;;
 
-(defn build-init-chan-factory-fn [cf]
+(defn build-init-chan-factory-fn [chan-factory]
   (fn [_]
-    {
-     ::channel-factory cf
-     }))
+    {::channel-factory chan-factory}))
 
 (defn &chan-factory [params]
   (if-let [cf (get params ::channel-factory)]
     cf
-    (utils/throw! "no ::cf provided in params. Ensure that chan-factory-init-fn had been called" )
-    ))
+    (utils/throw! "no ::cf provided in params. Ensure that build-init-chan-factory-fn had been called" )))
 
 
 (defn build-opts-chan-factory-fn [channel-factory]
@@ -583,3 +581,17 @@
       result)))
 
 
+
+;; common ctx
+
+;; add here re-occurring workflow steps
+
+(defonce BASE-CTX-MAP {
+                   :id       {:fn identity}
+                   :identity {:fn identity}
+
+                   :collect  {:fn       (fn [v] v)
+                              :collect? true}
+
+            ;;
+                   })
