@@ -3,13 +3,13 @@
     [clojure.core.async :as async :refer [go go-loop]]
     [clojure.test :refer :all]
 
+    [woof.base :as base]
     [woof.data :as d]
     [woof.core.processors :as p]
 
     [woof.wf :as wf]
     [woof.core.protocols :as proto]
 
-    [woof.wf-data :as wdata]
 
     [woof.utils :as u]
     [woof.test-data :as test-data]
@@ -53,8 +53,8 @@
       (is (not (nil? v)))
 
       ;; we can use exec/extract-results to get only step results we need
-      (is (= (wdata/extract-results v [::0]) {::0 "Hello World!"}))
-      (is (= (wdata/extract-results v [::1]) {::1 "Hello Woof!"}))))
+      (is (= (base/extract-results v [::0]) {::0 "Hello World!"}))
+      (is (= (base/extract-results v [::1]) {::1 "Hello Woof!"}))))
 )
 
 
@@ -81,7 +81,7 @@
         executor (wf/build-executor context steps)]
 
     (let [v @(p/sync-execute! executor)]
-      (is (= (wdata/extract-results v [::0]) {::0 "Hello world!"})))
+      (is (= (base/extract-results v [::0]) {::0 "Hello world!"})))
     )
 
   )
@@ -116,7 +116,7 @@
 
     (let [v @(p/sync-execute! executor 2000)
           ;; move added results into resulting map
-          results (wdata/inline-results v)]
+          results (base/inline-results v)]
 
       (is (= results {::0 '("Hello world!" "Hello universe!")}))
 
@@ -178,7 +178,7 @@
       ;; ensure the intermediary results are ommitted if the results are inlined
       (is (= {
                ::e* '(1 2 3)
-               ::ae* '(1 2 3)} (wdata/inline-results result)))
+               ::ae* '(1 2 3)} (base/inline-results result)))
       ;result
       ))
   )
@@ -243,14 +243,10 @@
             ::map-reduce-after-wf [:expand [1 2 3 4]]
           }
           result @(p/sync-execute! (wf/build-executor context steps))]
-      (is (= (wdata/inline-results result) {::map-reduce-after-wf '(1 2 3 4)})))
+      (is (= (base/inline-results result) {::map-reduce-after-wf '(1 2 3 4)})))
 
     )
-
-
   )
-
-
 
 
 

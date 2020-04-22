@@ -5,10 +5,10 @@
 
     [woof.core.processors :as p]
 
+    [woof.base :as base]
     [woof.data :as d]
     [woof.wf :as wf]
     [woof.xform :as x]
-    [woof.wf-data :as wdata]
 
     [woof.utils :as u :refer [inline--fn inline--fn1]]
     [woof.test-data :as test-data]
@@ -245,9 +245,9 @@
 
 
       (println (d/pretty v))
-      (println (d/pretty (wdata/inline-results v)))
+      (println (d/pretty (base/inline-results v)))
 
-      #_(let [result (wdata/inline-results v)]
+      #_(let [result (base/inline-results v)]
         ;(println (d/pretty result))
         (is (= "hello!!!" (last (::hello result))))
         (is (= "woof!!!" (last (::woof result))))

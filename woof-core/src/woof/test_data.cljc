@@ -10,6 +10,7 @@
   ;(:gen-class)
   )
 
+;; candidate for deprecation
 
 (def DEBUG-TO-PRINT false)
 

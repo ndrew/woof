@@ -4,11 +4,10 @@
 
     [woof.data :as d]
     [woof.wf :as wf]
-    [woof.wf-data :as wdata]
+    [woof.base :as base]
 
     [woof.utils :as u]
 ))
-
 
 
 
@@ -50,7 +49,7 @@
                                             "\nDONE:\n"
                                             (d/pretty [:done data])
                                             "\nRESULTS:\n"
-                                            (d/pretty (wdata/inline-results data))
+                                            (d/pretty (base/inline-results data))
                                             )))
 
             (do ; other events like :wf-update

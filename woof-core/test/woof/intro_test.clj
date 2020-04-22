@@ -10,7 +10,6 @@
 
     [woof.core.processors :as p]
 
-    [woof.wf-data :as wdata]
     [woof.wfc :as wfc]
     [woof.utils :as u]
 
@@ -138,8 +137,8 @@
       (is (not (nil? v)))
 
       ;; we can use exec/extract-results to get only step results we need
-      (is (= (wdata/extract-results v [::0]) {::0 "Hello World!"}))
-      (is (= (wdata/extract-results v [::1]) {::1 "Hello Woof!"}))))
+      (is (= (base/extract-results v [::0]) {::0 "Hello World!"}))
+      (is (= (base/extract-results v [::1]) {::1 "Hello Woof!"}))))
   )
 
 ;; todo: add test regarding steps linking to other steps and step handler types

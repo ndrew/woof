@@ -429,10 +429,8 @@
 ;; todo: recursive extract results
 
 
-
-
 (defn inline-results
-  "substitues expanded items and removes intermediary values from the result map"
+  "substitutes expanded items and removes intermediary values from the result map"
   [results]
 
   (let [new-results (reduce
