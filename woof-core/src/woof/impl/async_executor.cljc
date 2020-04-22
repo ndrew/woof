@@ -1,7 +1,6 @@
 (ns woof.impl.async-executor
   "AsyncExecutor impl"
   (:require [woof.data :as d]
-            [woof.cache :as cache]
             [woof.graph :as g]
 
             #?(:clj [woof.utils :as u :refer [put!? debug! inline--fn inline--fn1]])
@@ -396,7 +395,9 @@
                   (async/>! ready-channel [:done last-results])
                   (async/>! produce-chan [:done @*steps])
 
-                  (notify-ui! :stop last-results))
+                  ;; think of better name
+                  (notify-ui! :stop last-results)
+                  )
                 (recur (inc i) @*results @*steps @*steps-left))   ;; todo: add timeout/termination if i is growing
               )
             )
@@ -677,50 +678,4 @@
     (get-step-config context step-id)))
 
 
-
-;;
-
-;;
-;; TODO: to test cached executor, for infinite steps
-
-
-(defrecord
-  CachedAsyncExecutor [cache context model ready-channel process-channel]
-  WoofExecutor
-
-  (execute! [this]
-    (do-async-process-steps! context model ready-channel process-channel nil (context model this context) this ))
-
-  (execute-step! [this id step-id params]
-    (handle-commit! this context model id step-id params))
-
-  (end! [this]
-    (go
-      (async/>! process-channel [:stop this])))
-
-  WoofContext
-
-  (get-step-fn [this step-id]
-    (get-step-fn context step-id))
-
-  (get-step-config [this step-id]
-    (get-step-config context step-id)))
-
-
-(defn cached-executor
-  "workflow constuctor, step function results are memoized"
-  ([context steps]
-   (let [process-chan (u/make-channel)
-         inf-process-chan (async/chan 10)]
-     (cached-executor context
-                      (make-state! context (make-state-cfg steps process-chan inf-process-chan))
-                      (u/make-channel)
-                      process-chan)))
-  ([context model ready-channel process-channel]
-   (->CachedAsyncExecutor (cache/->Cache (atom {}))
-                          context model
-                          ready-channel
-                          process-channel)))
-
-;;;
 
