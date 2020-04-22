@@ -1,4 +1,4 @@
-(ns woof.core
+(ns woof.data.core
   (:require [woof.data :as data]))
 
 
