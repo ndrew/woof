@@ -4,7 +4,6 @@
 
     [clojure.core.async :as async :refer [go go-loop]]
 
-    [woof.core.runner :as runner]
     [woof.data :as d]
     [woof.wf :as wf]
 
@@ -173,7 +172,6 @@
 ;; handle its messages, like wf is completed, etc.
 ;;   TODO: maybe it should be executor-opts?
 
-;; TODO: describe runner/default-run-fn
 
 (deftest parametrized-wf-test
   (let [;; store wf run progress in atom
@@ -273,15 +271,12 @@
     ;; so we'll run a wf in a separate thead and wait some time for wf to be executed
 
     ;; TODO: use channel, instead of thread
-
     (async/thread
-      (runner/run-wf
-        init-fn ;; return the params from 'compile' stage
-        wf-fn ;; wf-fn -> (fn [params] -> {:wf <wf>, :params {}})
-        opts-fn ;; opts-fn
-        ;;
-        runner/default-run-fn
-        )
+
+      (base/run-wf-internal!
+        :init-fn init-fn
+        :wf-fn wf-fn
+        :opts-fn opts-fn)
       )
 
     (Thread/sleep 100)
@@ -345,22 +340,11 @@
                    })
         ]
 
-    (let [z (runner/run-wf
-              init-fn ;; defaults
-              wf-fn  ;; (fn [params] -> {:wf <wf>, :params {}})
-              opts-fn
-              (fn [wf-impl opts]
+    (let [z (base/run-wf-internal! :processor-fn (partial p/TimeoutFutureWF_ 1000)
+                                   :init-fn init-fn
+                                   :wf-fn wf-fn
+                                   :opts-fn opts-fn)
 
-                (prn wf-impl)
-
-                (let [xtor (wfc/wf-xtor wf-impl)
-                      processor (assoc
-                                  (p/->FutureWF xtor opts)
-                                  :woof.core.processors/timeout 1000)]
-                  (wf/process-results! processor)
-                  )
-                )
-              )
           result @z
           ]
 
@@ -381,180 +365,5 @@
   )
 
 
-;; TODO: write IN-OUT workflow using current workflow machinery
-#_(deftest ^:intro sync-IN-OUT-wf-test
-
-
-  (let [;; define which step handlers are available to a wf
-        context-fn (fn [& r] ;; & {:keys []}
-                     (println "->CTX: " r)
-                     {
-                      :log  {:fn (fn [a]
-                                   ;(/ 100 0)
-                                   (locking *out* (println "DBG:" a))
-                                   (identity a))}
-
-                      :log* {:fn       (fn [a]
-                                         (locking *out* (println "DBG:" a))
-                                         (identity a))
-                             :collect? true
-                             }
-
-                      })]
-
-    (let [r (sync-IN-OUT
-              {:data "SAMPLE DATA"}
-              context-fn
-              (fn [& {:keys [data] :as r}]  ;;
-                (println "->STEPS: " (into {} r))
-
-                (with-meta
-                  {
-                   ;;::data data
-                   ::hello [:log "HELLO"] ;;[:log ::data]
-                   }
-                  ;; todo: what if don't know which steps will be resulting
-                  ;; maybe via :op-handlers-map :done
-                    ;; but it doesn't change the data
-
-                  {:OUT #{::hello}}
-                  )
-                )
-              )]
-      (prn (meta r))
-      (prn-in-out r)
-      ))
-
-
-  #_(let [IN {:data "SAMPLE DATA"}
-        OUT (atom {})
-
-        META (atom {:IN #{}
-                    :OUT #{}
-                    })
-
-        init-fn (fn []
-          (println "INIT FN" IN)
-
-          (swap! META update :IN into (keys IN))
-          IN
-          )
-
-        ;; define which step handlers are available to a wf
-        context-fn (fn [& r] ;; & {:keys []}
-                     (println "->CTX: " r)
-                     {
-                      :log  {:fn (fn [a]
-                                   ;(/ 100 0)
-                                   (locking *out* (println "DBG:" a))
-                                   (identity a))}
-
-                      :log* {:fn       (fn [a]
-                                         (locking *out* (println "DBG:" a))
-                                         (identity a))
-                             :collect? true
-                             }
-
-                      })
-
-        ;; generate steps from the initial data
-        IN->steps (fn [& {:keys [data] :as r}]  ;;
-                    (println "->STEPS: " (into {} r))
-
-                    ;; mark which keys are OUT
-                    (swap! META update :OUT into #{::hello})
-
-                    {
-                     ::hello [:log data]
-                     })
-        ]
-
-    ;; do smth -> OUT
-
-    (let [
-          steps-fn IN->steps
-
-          ;;
-          wf-fn (fn [initial-params]
-                  {
-                   :wf     (fn [params]
-                             (wfc/params-wf params context-fn steps-fn)
-                             ) ;; (partial wwf in-chan> out-chan< *local) ;; wf constructor
-                   :params (merge initial-params {})
-                   }
-                  )
-
-
-          opts-fn (fn [params]
-                    (println "opts-fn: " params)
-                    {
-                     :params params
-                     :opts   {
-                              :before-process  (fn [wf-chan xtor]
-                                                 (locking *out* (println ":before-process"))
-                                                 ; (println "Hello World")
-
-                                                 :ok
-                                                 )
-                              :op-handlers-map {
-                                                :done  (fn [data]
-                                                         (println "DONE!\n" (d/pretty data))
-                                                         (reset! OUT data)
-                                                         )
-
-                                                :error (fn [data]
-                                                         (println "ERROR!\n" (d/pretty data))
-                                                         )
-                                                }
-                              }
-                     })
-          ]
-
-
-      ; take wf-impl + opts and process them with default processor
-
-      (let [z (runner/run-wf
-                init-fn ;; defaults
-                wf-fn  ;; (fn [params] -> {:wf <wf>, :params {}})
-                opts-fn
-                ;; runner/default-run-fn
-                (fn [wf-impl opts]
-                  (let [xtor (wfc/wf-xtor wf-impl)
-                        processor (assoc
-                                    (p/->FutureWF xtor opts)
-                                    :woof.core.processors/timeout 1000)
-
-                        ]
-                    (wf/process-results! processor)
-                    )
-                  )
-                )]
-
-        (let [result (with-meta
-                       (merge IN @z)
-                       @META)
-              ]
-          (println "IN: " (select-keys result (:IN @META)))
-          (println "OUT: " (select-keys result (:OUT @META)))
-
-          (locking *out* (println "\nfull map:\n" result))
-
-
-
-          )
-
-        ;;(locking *out* (println "META\n" @META))
-
-
-
-
-        )
-
-      ;;(/ 100 0)
-      )
-    )
-
-
-  )
 
 

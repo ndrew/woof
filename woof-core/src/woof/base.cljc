@@ -11,7 +11,6 @@
     [woof.core.processors :as p]
 
     [woof.utils :as utils]
-    [woof.core.runner :as runner]
 
     ;; higher level workflows
     [woof.wfc :as wfc
@@ -41,80 +40,45 @@
 ;; use aliases for some common functions
 (def pretty! d/pretty!)
 
+
+
+;;;;;;;;;;;;;;;;;;;;
+;; fn combination
+
 (defn arg-fn
   "wraps var-args fn to a single arity fn"
   [f]
   (fn [params]
     (let [args (apply concat params)]
-      ;(.log js/console args)
-      (apply f args)
-      )))
+      (apply f args))))
 
 
-(defprotocol Woof
-  (woof [this])
+
+(defn- init-combine
+  ([init-fns merge-fn]
+   (init-combine init-fns merge-fn {}))
+  ([init-fns merge-fn initial-params]
+   (doall
+     (:params (reduce (fn [a x]
+                        (merge-fn a (x (:params a))))
+                      {:params initial-params}
+                      (vec init-fns)))
+     ))
   )
 
-;; init fn
 
-(defn default-init-fn []
-  {::woof (reify Woof
-            (woof [this] "woof!"))}
-  )
-
-(defn stateful-init-fn [state* & {:keys [state-key] :or {state-key :STATE}}]
-  (fn [params]
-    (merge params
-           {state-key state*})))
-
-
-;; todo: check whether we need this here. if so - add the metadata merging function
-(defn default-meta-map []
-  {:IN  #{}
-   :OUT #{}}
-  )
-
-(defn build-init-meta-fn []
-  (fn [params]
-    (merge params
-           {:META (atom (default-meta-map))})))
-
-(defn &*meta [params]
-  (if-let [*meta (:META params)]
-    *meta
-    (utils/throw! "no :META provided in the params")))
-
-
-;; do we need this here?
-(defn combine-init-fns [init-fns]
+(defn combine-init-fns
+  "combines init-fns list into a single one init-fn"
+  [init-fns]
   (let [merge-fn (fn [{params :params} nu-params]
                    {:params (merge params nu-params)})]
-    (fn []
-      (doall
-        (:params (reduce (fn [a x]
-                          (merge-fn a (x (:params a))))
-                      {:params {}}
-                      (vec (reverse init-fns)) ;; todo: whether reverse is needed?
-                      ))
-        )))
-  )
+    (partial init-combine init-fns merge-fn)))
 
 
-(defn combine-init-fns-old [init-fns]
-  (apply comp
-         (conj (vec (reverse init-fns))
-               default-init-fn))
-  )
 
-;; do we need a keyed version of this?
-(defn combine-init-fns* [& init-fns]
-  (apply comp
-         (conj (vec (reverse init-fns))
-               default-init-fn))
-  )
-
-
-(defn combine-fns [fns & {:keys [merge-results] :or {merge-results merge}}]
+(defn combine-fns
+  "way of combining single-arity functions used in woof"
+  [fns & {:keys [merge-results] :or {merge-results merge}}]
   (let [state-map-fn (fn [params]
                        {:params params
                         :result    {}})
@@ -135,19 +99,15 @@
         (data-fn (reduce (fn [state-map f]
                            (merge-fn state-map
                                      (f (params-fn state-map))))
-                         (state-map-fn params) (vec (reverse fns))))
+                         (state-map-fn params) (vec
+                                                 fns
+                                                 ;(reverse fns)
+                                                 )))
         )))
   )
 
 (defn merge-opts-maps [a b]
-  (let [bp1 (get a :before-process (fn [wf-chan xtor] :ok))
-        bp2 (get b :before-process (fn [wf-chan xtor] :ok))
-
-        ap1 (get a :after-process identity)
-        ap2 (get b :after-process identity)
-
-
-        combine-bp (fn [b1 b2]
+  (let [combine-bp (fn [b1 b2]
                      (if (utils/channel? b1)
                        (let [chan (async/chan 1)]
                          (go
@@ -157,23 +117,36 @@
                        b2)
                      b2)
 
-        op1 (get a :op-handlers-map {})
-        op2 (get b :op-handlers-map {})
 
-        combine-ops (fn [o1 o2]
-                      (merge-with comp o1 o2))
+        combine-ops-maps (fn [o1 o2]
+                           ;; why not
+                           ;; (merge-with juxt op1 op2)
+                            (merge-with comp o1 o2))
+
+        bp-b (get b :before-process (fn [wf-chan xtor] :ok))
+        bp-a (get a :before-process (fn [wf-chan xtor] :ok))
+
+        ap-a (get b :after-process identity)
+        ap-b (get a :after-process identity)
+
+        op-b (get b :op-handlers-map {})
+        op-a (get a :op-handlers-map {})
 
         ]
-    {:before-process (fn [wf-chan xtor]
-                       (combine-bp (bp1 wf-chan xtor)
-                                   (bp2 wf-chan xtor))
+    {
+     :before-process (fn [wf-chan xtor]
+                       (combine-bp (bp-b wf-chan xtor)
+                                   (bp-a wf-chan xtor))
                        )
-     :after-process (comp ap1 ap2)
-     ;; todo: better way to combine opts
-     :op-handlers-map (combine-ops op1 op2)
+     :after-process (comp ap-b ap-a)
+
+     :op-handlers-map (combine-ops-maps op-b op-a)
      }
     )
   )
+
+
+
 
 (defn parametrized-wf!
   "parametrized wf implementation
@@ -191,6 +164,7 @@
                   {
                    :params nu-params
                    :wf     (fn [wf-params]
+                             ;; do we really need to reify it everytime? why not use constructor
                              (reify WoofWorkflow
                                (get-params [this] nu-params) ;; is this really needed
                                (get-context-map [this] (context-map-fn nu-params))
@@ -207,6 +181,7 @@
                      })
                   )
         ]
+    ;; todo: do we need a fn that will create this map.
     {
      :init-fn init-fn
      :wf-fn   wf-fn
@@ -264,8 +239,6 @@
 ;; shorter version of defining workflow
 (defn wf! [& {:keys [init ctx steps opts ] :as params}]
 
-
-
   (let [init-fn (combine-init-fns (as-fn-list init))
         opts-fn (combine-fns (as-fn-list opts) :merge-results merge-opts-maps)
 
@@ -286,6 +259,7 @@
     )
 
   )
+
 
 (defn WF [nu-params context-map-fn steps-fn wf-params]
   (reify WoofWorkflow
@@ -316,19 +290,70 @@
   (protocols/end! xtor))
 
 
+
+
+
+
 ;; todo: make xtor-fn optional
 (defn do-run-wf!
   ([processor wf]
    (do-run-wf! processor wf identity))
   ([processor wf xtor-fn]
-    (runner/run-wf
+
+   (let [
+         init-fn (:init-fn wf) ; (fn [] => defaults )
+         wf-fn   (:wf-fn wf)   ; (fn [params] -> {:wf <wf>, :params {}})
+         opts-fn (:opts-fn wf) ; (fn [params] -> {:opts <>, :params {}}
+
+         ;; 1. get initial params
+         initial-params (init-fn)
+
+         ;; 2. init wf with init params -> get wf xtor fn and new params
+         {
+          wf :wf                 ;; workflow xtor
+          wf-params :params      ;; (merge wf-def-params initial-params)
+          } (wf-fn initial-params)
+
+
+         ;; 3. get opts and opts params
+         ;; todo: may return channel
+         {
+          params :params
+          opts :opts
+          } (opts-fn wf-params)
+
+         wf-impl (wf params) ;; WoofWorkflow
+         ;; todo: may return channel
+
+         ]
+
+     (let [xtor (wfc/wf-xtor wf-impl)
+           xtor-impl (xtor-fn xtor)]
+       (wf/process-results! (processor xtor-impl opts)))
+     )
+
+   #_(runner/run-wf
       (:init-fn wf)
       (:wf-fn wf)   ;; {:params {..}, :wf <wf-xtor>}
       (:opts-fn wf) ;; {:params {..}, :opts {..}}
       (fn [wf-impl opts]
         (let [xtor (wfc/wf-xtor wf-impl)
               xtor-impl (xtor-fn xtor)]
-             (wf/process-results! (processor xtor-impl opts))))))
+             (wf/process-results! (processor xtor-impl opts)))))
+   )
+  )
+
+;; for now dont use
+(defn run-wf-internal! [& {:keys [processor-fn init-fn wf-fn opts-fn] :or {processor-fn wf/->ResultProcessor} :as params}]
+
+  (do-run-wf!
+      processor-fn
+      {
+       :init-fn init-fn
+       :wf-fn   wf-fn
+       :opts-fn opts-fn
+       })
+
   )
 
 (def run-wf! (partial do-run-wf! wf/->ResultProcessor))
@@ -502,6 +527,16 @@
 ;;
 ;; state wf aspect - injects atom into workflow
 ;;
+;;
+
+
+(defn stateful-init-fn [state* & {:keys [state-key] :or {state-key :STATE}}]
+  ;; todo: is this needed
+  (fn [params]
+    (merge params
+           {state-key state*})))
+
+
 
 (defn build-init-state-fn [*STATE]
   (fn [_] {::state *STATE}))
@@ -523,6 +558,8 @@
 ;; xtor accessor
 (defn state-get-xtor [*state]
   (get-in @*state [::xtor]))
+
+
 
 
 

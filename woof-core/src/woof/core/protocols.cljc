@@ -4,7 +4,7 @@
   )
 
 
-;
+; candidate for removal
 (defprotocol WoofDebug
   "quick hacky way of getting insides for debugging purposes"
 

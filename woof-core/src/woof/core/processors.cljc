@@ -77,10 +77,17 @@
               (process-wf-result (async/<!! timeout-chan)) ;; todo: close channel?
               ))
           )))
-
   ;; js promise?
   )
 
+(defn TimeoutFutureWF_
+  "partial FutureWF result processor with timeout as first argument"
+  [t xtor opts]
+  ;; wrap FutureProcessor to use timeout
+  (assoc
+    (->FutureWF xtor opts)
+    ::timeout t)
+  )
 
 #?(:clj
 
