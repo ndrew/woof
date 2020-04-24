@@ -166,6 +166,7 @@
   )
 
 
+
 (defn parametrized-wf!
   "defines maximally parametrized woof workflow
 
@@ -244,7 +245,13 @@
 
 (defn as-fn-list [v]
   (cond
-    (or (vector? v) (seq? v)) v ;; leave vector as is
+    (or (vector? v) (seq? v))
+      (map (fn [item]
+             (cond
+               (fn? item) item
+               (map? v)   (fn [params] v)
+               :else item)
+             ) v)
     (map? v) [(fn [params] v)]  ;; wrap map as function
     (fn? v) [v]                 ;; wrap fn into a vector
     :else (do
@@ -259,12 +266,16 @@
 (defn wf!
   "main way of defing a woof workflow
   required parameters are
-   :ctx context map, e.g {:s-handler-id <shandler-body>, ...}
-      | context map constructor, e.g. (fn [params] => {:s-handler-id <shandler-body>, ...})
+   :ctx - context map, e.g {:s-handler-id <shandler-body>, ...}
+        | context map constructor, e.g. (fn [params] => {:s-handler-id <shandler-body>, ...})
+        | sequence/vector of context maps or its constructors
    :steps
+        | steps map | step map constructor | seq/vector of step maps or its constructors
   optional
-  :init
-  :opts
+   :init
+        | params map | params map constructor | seq/vector of params maps or its constructors
+   :opts
+        | opts map | opts map constructor | seq/vector of opts maps or its constructors
   "
   [& {:keys [init ctx steps opts]}]
 
@@ -352,10 +363,14 @@
 
 
 
+;; todo: will it make sense to pass processor in wf map ??
+
 (defn do-run-wf!
   ([processor wf]
    (do-run-wf! processor wf identity))
-  ([processor wf xtor-fn]
+  ([processor-fn
+    wf
+    xtor-fn]
 
    (let [
          init-fn (:init-fn wf) ; (fn [] => defaults )
@@ -384,25 +399,30 @@
 
          ]
 
-     (let [ctx (wf/make-context (get-context-map wf-impl))
+     ;; todo: should this be also parametrized?
+     (let [ctx-map (get-context-map wf-impl)
+
+           ;; context is
+           ;; * WoofExecutorFactory
+           ;; * WoofContext
+           ctx (wf/make-context ctx-map)
            steps (get-steps wf-impl)
 
            xtor (wf/build-executor ctx steps)
-           xtor-impl (xtor-fn xtor)]
-       (wf/process-results! (processor xtor-impl opts)))
+           xtor-impl (xtor-fn xtor)
+
+           processor-impl (processor-fn xtor-impl opts)]
+
+       ;; processes results received from executor
+       (wf/process-results! processor-impl))
      )
    )
   )
 
 
+;; default result processor
 (defonce default-result-processor wf/->ResultProcessor)
 
-;; for now dont use
-(defn run-wf-internal! [& {:keys [processor-fn init-fn wf-fn opts-fn] :or {processor-fn default-result-processor} :as params}]
-  (do-run-wf!
-      processor-fn
-      (WF-impl init-fn wf-fn opts-fn))
-  )
 
 (def run-wf! (partial do-run-wf! default-result-processor))
 

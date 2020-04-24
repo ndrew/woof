@@ -5,6 +5,7 @@
 
 ;; protocols that are exposed to user
 
+;; todo: should this be in impl?
 
 (defprotocol WoofWorkflow
 
