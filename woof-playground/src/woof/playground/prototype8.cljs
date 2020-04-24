@@ -3,7 +3,7 @@
     [cljs.core.async :as async]
 
     [rum.core :as rum]
-    [sablono.core :as sablono :refer-macros [html]]
+    ;[sablono.core :as sablono :refer-macros [html]]
 
     ;; client core
     [woof.base :as base]
@@ -313,7 +313,14 @@
                (base/combine-fns opt-fns :merge-results base/merge-opts-maps)
                (base/combine-fns ctx-fns)
                (base/combine-fns steps-fns)
-               (partial base/capturing-WF *wf)
+               (base/capturing-workflow-fn
+                 :context-map-fn (fn [ctx-map]
+                                   (swap! *wf assoc ::ctx ctx-map)
+                                   ctx-map)
+                 :steps-fn (fn [steps]
+                             (swap! *wf assoc ::steps steps)
+                             steps)
+                 )
                )]
 
       ; store wf

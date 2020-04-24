@@ -5,9 +5,6 @@
     [clojure.data :as cd]
     [clojure.string :as str]
 
-    [woof.base :as base]
-    [woof.client.playground.ui :as ui]
-    [woof.data :as d]
     [woof.wf :as wf]
     [woof.utils :as u])
   (:require-macros
@@ -86,6 +83,9 @@
 
                      }]
 
+
+                ; (.log js/console root-sid (get ctx :expands?) (seq? res) (wf/sid-list? res))
+
                 (if (and (get ctx :expands?) (seq? res) (wf/sid-list? res))
                   (assoc kv
                     :children (map (fn [expanded-sid]
@@ -106,6 +106,8 @@
                   )
                 )
            ) initial-steps)]
+
+
 
       ;; now try to do 2-step process
       (if (:nest-expanded? ui-cfg)

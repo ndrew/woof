@@ -8,7 +8,6 @@
     [woof.data :as d]
     [woof.wf :as wf]
     [woof.utils :as utils]
-    [woof.test-data :as test-data]
     [woof.base :as base])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -192,9 +191,61 @@
      :title       "S A N D B O X"
 
      :explanation [:div.explanation
-                   [:p "return context map via " [:code "sandbox-ctx-fn"]]
-                   [:p "return steps via " [:code "sandbox-steps-fn"]]
-                   [:p "custom UI in " [:code "<custom-ui>"]]
+                   ;[:p "return context map via " [:code "sandbox-ctx-fn"]]
+                   ;[:p "return steps via " [:code "sandbox-steps-fn"]]
+                   ;[:p "custom UI in " [:code "<custom-ui>"]]
+
+                   [:div
+
+                    [:header "defining wf"]
+
+                    [:p "create new state map for wf-id"]
+                    [:p "generate init-fn/ctx-fn/steps-fn/opts-fn"]
+                    [:p "how to add subst step ids - via special s-handler, via modifying steps before running wf"]
+
+                    [:p "<?> should run be called after IN are configured??"]
+
+                    [:p "generate IN/UI/OUT"]
+
+                    [:p "<?>"]
+                    [:p "a) will the wf be started manually, and then ended"]
+
+
+                    [:header "IN"]
+                    [:ul
+                     [:li "can be returned via init-fn."]
+                     [:p "<?> chaining init-fns?/restarting/etc"]
+                     [:li "can be returned via s-handler."]
+
+                     [:p "{::value-needed-for-wf [:IN-UI :in-key]}"]
+                     [:p "in state: :in-cfg [ [:in-key :label 'Provide' :input-type '...' :etc] ...]"]
+                     ]
+                    [:p ]
+
+                    [:header "UI"]
+                    [:p ""]
+
+                    [:header "OUT"]
+                    [:p "::out in state set via done through opts-fn"]
+                    [:p "::out in state set via separate step handler"]
+
+                    [:p "duality between state change after wf ended/during wf execution"]
+                    [:p "if wf is infinite - use s-handlers, else opts-fn"]
+
+                    [:p "b) or this will be achieved via single infinite wf?"]
+
+                    [:header "IN"]
+                    [:p ""]
+
+                    [:header "UI"]
+                    [:p ""]
+
+                    [:header "OUT"]
+                    [:p ""]
+
+                    [:hr ]
+                    ]
+
 
                    ]
      }
@@ -254,9 +305,9 @@
 (defn init-sandbox-wf! [*wf]
   {
 
-   :init-fns   [sandbox-init-params-fn
+   :init-fns   [st-wf/chan-factory-init-fn
                 evt-init-fn
-                st-wf/chan-factory-init-fn]
+                sandbox-init-params-fn]
 
    :ctx-fns    [evt-ctx-fn
                 sandbox-ctx-fn]

@@ -1,6 +1,6 @@
 (ns ^:figwheel-hooks woof.devcards
   (:require [devcards.core :as devcards]
-            [sablono.core :as sab]
+            ;[sablono.core :as sab]
             )
   (:require-macros
     [devcards.core :refer [defcard]])
@@ -13,12 +13,14 @@
 
 
 (defcard my-first-card
-  (sab/html [:h1 "Testing dev cards"]))
+        "<h1>boo</h1>"
+         ;(sab/html [:h1 "Testing dev cards"])
+         )
 
 ;; todo: devcard for running the wf
 
 
-(defn ^:after-load render-on-relaod []
+#_(defn ^:after-load render-on-relaod []
   (render))
 
 (render)

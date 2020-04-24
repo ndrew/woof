@@ -6,13 +6,13 @@
 
     ;; testing alpha
     [woof.client.playground.core :as playground]
+    ;; [woof.client.playground.minimal :as playground]
     ))
 
 
 (enable-console-print!)
 
 
-;;
 ;; root ui component
 
 (rum/defcs <app-ui>
@@ -31,17 +31,20 @@
 
         <app> playground/<app> ;; (fn [] .. a rum component .. )
         init! playground/init! ;; (fn [mount-fn] .. initializer - call mount-fn to rebuild ui.. )
-        reload! playground/reload!
+        ;; reload! playground/reload!
 
         mount-app #(rum/mount (<app-ui> <app>) el)]
 
     (init! mount-app)
 
-    ;; will this be working?
-    (defn ^:after-load on-js-reload []
-      (reload!)
-      (mount-app)
-      ) ;; re-mount app on js reload
+    )
+  )
+
+;; will this be working?
+(defn ^:after-load on-js-reload []
+  (when (goog.object/get js/window "PLAYGROUND")
+    (playground/reload!)
+    (rum/mount (<app-ui> playground/<app>) (. js/document (getElementById "app")))
     )
   )
 

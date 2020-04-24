@@ -484,7 +484,9 @@
                           :epsilon epsilon-cfg
                           )
 
-              results-metadata (if-let [m (meta results)] m (base/default-meta-map))]
+              results-metadata (if-let [m (meta results)] m
+                                                          {:IN  #{} ;; todo: see wf.in-out for
+                                                           :OUT #{}})]
 
           [:div.wf-results
            (ui/menubar heading [
@@ -661,18 +663,24 @@
 ;;
 ;; UI wrapper for showing workflow results/progress
 ;; custom sub-component as a <body-fn>
-(rum/defc <wf-UI> < rum/reactive
-  [<body-fn> *wf]
+(rum/defcs <wf-UI> < rum/reactive
+                   { :will-mount (fn [state]
+                                   (let [[_ *wf] (get-in state [:rum/args])]
 
-  ;; enrich wf with ui-specific info for this component
-  (when (nil? (::ui @*wf))
-    (swap! *wf assoc  ::ui {
-                                :show-explanation? false
-                                :show-steps? false
-                                :show-params? false
+                                        ;; enrich wf with ui-specific info for this component
+                                        (when (nil? (::ui @*wf))
+                                          ;; this triggers an warning
+                                          (swap! *wf assoc  ::ui {
+                                                                  :show-explanation? false
+                                                                  :show-steps? false
+                                                                  :show-params? false
 
-                                :debug? false
-                               }))
+                                                                  :debug? false
+                                                                  })))
+                                   state
+                                   ) }
+  [state <body-fn> *wf]
+
 
   (let [wf @*wf
         toggle-handler (fn [k] (swap! *wf update-in [::ui k] not))]

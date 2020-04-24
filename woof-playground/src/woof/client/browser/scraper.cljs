@@ -1,5 +1,4 @@
-(ns ^:figwheel-hooks ^:figwheel-always
-  woof.client.browser.scraper
+(ns ^:figwheel-hooks woof.client.browser.scraper
   (:require
     [goog.object]
     [goog.dom :as dom]
@@ -8,9 +7,9 @@
     [goog.dom.classes :as classes]
 
     [cljs.core.async :as async]
-    [clojure.string :as str]
-
     [woof.base :as base]
+
+    [clojure.string :as str]
     [woof.data :as d]
 
     [woof.client.ws :as ws]
@@ -314,44 +313,41 @@
                       ::listings {}
                       })
 
+        gen-msg-handler  (fn []
+                       (let [first-ids (volatile! false)]
+                            (fn [msg]
+                              (let [[t body] (:msg msg)]
+                                   (when (= t :ids)
+                                     (swap! *state assoc :ids body)
+                                     (when-not @first-ids
+                                       ;; -->
+                                       (async/put! (:start-chan params) true)
+                                       (vswap! first-ids not)
+                                       )
+                                     )
+                                   (.log js/console "PAYLOAD" msg)
+                                   )
+                              )
+                            )
+                       )
+
+
         ]
     {
      :init-socket    {
                       :fn (fn [url]
-
                             (let [ch (async/chan)
-                                  first-ids (volatile! false)
-                                  socket (ws/connect url
-                                                     :on-open (fn []
-                                                                (.log js/console "opened")
-                                                                ;; strange, but working
-                                                                (async/put! ch (::socket @*state))
-                                                                )
-                                                     :on-message (fn [payload]
-
-                                                                   (let [[t body] (:msg payload)]
-                                                                        (when (= t :ids)
-                                                                          (swap! *state assoc :ids body)
-                                                                          (when-not @first-ids
-                                                                            (async/put! (:start-chan params) true)
-                                                                            (vswap! first-ids not)
-                                                                            )
-
-                                                                          )
-
-                                                                        (.log js/console "PAYLOAD" payload)
-                                                                        )
-
-                                                                   )
-                                                     )]
-
-                                 (swap! *state assoc ::socket socket)
-                                 ;{:socket socket}
-                                 ch
+                                  msg-handler (gen-msg-handler)
+                                  ]
+                                 (ws/chan-connect url
+                                                  :chan ch
+                                                  :on-message (fn [payload]
+                                                                (let [msg (ws/read-transit payload)]
+                                                                     (msg-handler msg)))
+                                                  )
                                  )
                             )
                       }
-
 
      :wait-rest      {
                       :fn       (fn [[v & rest]]
@@ -361,7 +357,7 @@
 
      :send-msg!      {
                       :fn (fn [msg]
-                            (ws/send! (:socket msg) (:msg msg))
+                            (ws/send-transit! (:socket msg) (:msg msg))
                             ::sent
                             )
                       }
@@ -402,7 +398,6 @@
 (defn scraper-steps [params]
   {
    ::ws [:init-socket "ws:localhost:8081/ws"]
-
 
    ::got-ids [:identity (:start-chan params)]
 

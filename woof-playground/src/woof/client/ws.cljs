@@ -40,38 +40,62 @@
 
 ;; ws
 
-(defn connect [url & {:keys [on-open on-close on-message ready-chan]}]
+
+(defn connect [url & {:keys [on-init
+                             on-open
+                             on-close
+                             on-message
+                             ] :or {on-init (fn [socket] socket)}}]
+
   (let [url    (ws-resolve-url url)
         socket (js/WebSocket. url)]
 
-    (.log js/console url)
-
     (set! (.-onopen socket)
           (fn [event]
-
-            (when ready-chan
-              (go
-                (async/put! ready-chan socket)))
-
             (when on-open
-              (on-open)
-
-              )))
+              (on-open))))
 
     (when on-message
       (set! (.-onmessage socket)
             (fn [event]
-              (let [msg (read-transit (.-data event))]
-                (on-message msg)))))
-
+              (on-message (.-data event)))))
 
     (when on-close
       (set! (.-onclose socket)
             (fn [event]
               (on-close))))
 
-    socket))
+    (on-init socket)
+    ))
+
+
+
+(defn chan-connect
+  "connect ws to url, return channel with socket after it's open"
+  [url & {:keys [chan on-init on-open] :as cfg}]
+  (let [ch (if chan chan (async/chan))
+        *socket (volatile! nil)
+
+        args (flatten (into [url] (merge cfg
+                                         {:on-init (fn [socket]
+                                                    (vreset! *socket socket)
+                                                    (if on-init
+                                                        (on-init socket))
+                                                    ch)
+                                         :on-open (fn []
+                                                    (if on-open
+                                                        (on-open))
+                                                    (async/put! ch @*socket))}
+                                         )))
+        ]
+
+    (apply connect args)
+    ))
+
 
 
 (defn send! [socket msg]
+  (.send socket msg))
+
+(defn send-transit! [socket msg]
   (.send socket (write-transit msg)))

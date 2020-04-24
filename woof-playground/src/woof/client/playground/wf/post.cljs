@@ -4,9 +4,6 @@
 
     [rum.core :as rum]
 
-    [woof.data :as d]
-
-    [woof.client.playground.ui :as ui]
     [woof.client.stateful :as st-wf]
     [woof.client.local-storage :as ls]
 

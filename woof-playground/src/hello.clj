@@ -1,6 +1,9 @@
 (ns hello
-  (:require [lib :as wf]))
+  (:require [woof.base :as base])
+  )
 
 
+;; ensure that base lib is avaialable
 (defn -main []
-  (println (wf/foo)))
+  (println (base/rand-sid))
+  )

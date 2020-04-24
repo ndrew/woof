@@ -8,7 +8,10 @@
   :css-dirs ["resources/public/css"]
 
   :auto-testing true
+
   :open-url "http://[[server-hostname]]:[[server-port]]/playground.html"
+  :ring-handler woof.server.playground/app
+  :css-dirs ["resources/public/css"]
 
   }
 {:main woof.playground}

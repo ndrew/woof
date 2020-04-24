@@ -18,6 +18,26 @@
     [cljs.core.async.macros :refer [go go-loop]]))
 
 
+;; in-out stuff from base
+
+;; todo: check whether we need this here. if so - add the metadata merging function
+(defn default-meta-map []
+  {:IN  #{}
+   :OUT #{}}
+  )
+
+(defn build-init-meta-fn []
+  (fn [params]
+    (merge params
+           {:META (atom (default-meta-map))})))
+
+(defn &*meta [params]
+  (if-let [*meta (:META params)]
+    *meta
+    (utils/throw! "no :META provided in the params")))
+
+
+
 ;; in-out stuff
 
 (defn merge-IN-OUT-maps [a b]
@@ -210,7 +230,7 @@
                    [:p "In this workflow we try maintaining meta data for workflow through full workflow lifecycle."]
 
                    [:p "We add the " [:code "init-fn"] " that creates a metadata atom via "
-                    [:code "base/build-init-meta-fn"] " (accessor " [:code "base/&*meta"] "), so consequent "
+                    [:code "base/build-init-meta-fn"] " (accessor " [:code "&*meta"] "), so consequent "
 
                     [:code "init-fn"] "s can pass some metadata further to " [:code "ctx-fn"]
                     " and " [:code "steps-fn"]]
@@ -233,12 +253,12 @@
                      (let [params-map {:some-numbers [1 2 3 4 5]}]
 
                           ;; store in meta params IN metadata
-                          (swap! (base/&*meta params) update :IN conj :some-numbers)
+                          (swap! (&*meta params) update :IN conj :some-numbers)
 
                           params-map
                           )
                      )
-                   (base/build-init-meta-fn)
+                   (build-init-meta-fn)
                    st-wf/chan-factory-init-fn
                    ]
 
@@ -267,7 +287,7 @@
      :steps-fns   [;
                    ;; combine that will preserve meta
                    (fn [params]
-                     (swap! (base/&*meta params) update :OUT conj ::step-1)
+                     (swap! (&*meta params) update :OUT conj ::step-1)
                      {
                       ::step-1        [:test "step-1"]
                       ::hidden-step-1 [:test "hidden-step"]
@@ -275,7 +295,7 @@
                      )
 
                    (fn [params]
-                     (swap! (base/&*meta params) update :OUT conj ::step-2)
+                     (swap! (&*meta params) update :OUT conj ::step-2)
 
                      {
                       ::step-2 [:test "step-2"]
@@ -287,7 +307,7 @@
                            sum-result-sid (wf/rand-sid "sum-")
                            ]
 
-                          (swap! (base/&*meta params) update :OUT conj sum-result-sid)
+                          (swap! (&*meta params) update :OUT conj sum-result-sid)
                           {
                            expander-sid   [:+< [1 2 3]]
                            sum-result-sid [:+> expander-sid]
@@ -298,7 +318,7 @@
 
                    ]
 
-     :opt-fns     [(base/build-opt-on-done (fn [params result] (with-meta result @(base/&*meta params))))
+     :opt-fns     [(base/build-opt-on-done (fn [params result] (with-meta result @(&*meta params))))
                    st-wf/chan-factory-opts-fn]
 
      ;; how to provide a custom ui for actions - we need to pass state here

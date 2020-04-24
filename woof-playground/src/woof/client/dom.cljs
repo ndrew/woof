@@ -1,5 +1,4 @@
-(ns ^:figwheel-hooks ^:figwheel-always
-  woof.client.dom
+(ns ^:figwheel-hooks woof.client.dom
   (:require
     [goog.object]
     [goog.dom :as dom]

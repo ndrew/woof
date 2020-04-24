@@ -6,12 +6,6 @@
 
     [woof.utils :as u]
 
-    [woof.wfc :as wfc
-     :refer [WoofWorkflow
-             get-params
-             get-context-map
-             get-steps]]
-
     )
 
   (:require-macros
@@ -123,22 +117,6 @@
    })
 
 
-(defn swf-capturing-WF [*swf params context-map-fn steps-fn wf-params]
-  (swap! *swf assoc-in [:runtime :initial :params] params)
-  (reify WoofWorkflow
-    (get-params [this]
-      ;; is this really needed
-      params)
-    (get-context-map [this]
-      (let [ctx-map (context-map-fn params)]
-        (swap! *swf assoc-in [:runtime :initial :context-map] ctx-map)
-        ctx-map))
-    (get-steps [this]
-      (let [steps (steps-fn params)]
-        (swap! *swf assoc-in [:runtime :initial :steps] steps)
-        steps
-        )))
-  )
 
 
 ;; todo: is this needed
@@ -171,7 +149,18 @@
                  :merge-results base/merge-opts-maps)
                (base/combine-fns ctx-fns     :merge-results merge-results-fn)
                (base/combine-fns steps-fns   :merge-results merge-results-fn)
-               (partial swf-capturing-WF *swf)
+
+               (base/capturing-workflow-fn
+                 :params-fn (fn [params]
+                              (swap! *swf assoc-in [:runtime :initial :params] params)
+                              params)
+                 :context-map-fn (fn [ctx-map]
+                                   (swap! *swf assoc-in [:runtime :initial :context-map] ctx-map)
+                                   ctx-map)
+                 :steps-fn (fn [steps]
+                             (swap! *swf assoc-in [:runtime :initial :steps] steps)
+                             steps)
+                 )
                )]
 
       ;; store prepared wf

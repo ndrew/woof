@@ -1,5 +1,4 @@
-(ns ^:figwheel-hooks ^:figwheel-always
-  woof.browser
+(ns ^:figwheel-hooks woof.browser
   (:require
     [woof.base :as base]
     [woof.client.dom :as dom]

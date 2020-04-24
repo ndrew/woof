@@ -116,23 +116,28 @@
 (defn global-action []
   ;(prn "I am a configurable global action")
 
+  (let [ch (async/chan)
+        *socket (volatile! nil)]
 
-  (let [socket (ws/connect "ws:localhost:8081/ws"
-                           :on-open (fn []
-                                      (.log js/console "opened")
-                                      )
-                           :on-message (fn [payload]
-                                         (.log js/console "PAYLOAD" payload)
-                                         )
-                           )]
+    (ws/connect "ws:localhost:8081/ws"
+                :on-init (fn [socket]
+                           (vreset! *socket socket)
+                           ch
+                           )
+                :on-open (fn []
+                           (async/put! ch @*socket)
+                           (.log js/console "opened"))
 
+                :on-message (fn [payload]
+                              (let [msg (ws/read-transit payload)]
+                                   (.log js/console "PAYLOAD" msg))))
 
-    (let [msg {:hello :woof!
-               :t     (u/now)}]
-      (js/setTimeout (fn [] (ws/send! socket msg) ) 1000)
-      )
+    (go
+      (let [socket (async/<! ch)]
+        (let [msg {:hello :woof!
+                   :t     (u/now)}]
 
-    ;; send a message
+          (ws/send-transit! socket msg))))
 
     )
 
@@ -367,7 +372,7 @@
     (js/addEventListener "keydown"
                          (fn [e]
                            (let [chord (into {} (for [[key attr] {:shift "shiftKey" :ctrl "ctrlKey" :alt "altKey" :meta "metaKey"
-                                                                  :code "keyCode"}]
+                                                                  :code  "keyCode"}]
                                                   [key (aget e attr)]))]
                                 (global-keydown chord)
                                 ))
@@ -375,28 +380,31 @@
 
     (reset! *initialized true)
     )
+  )
 
 
   (defn ^:after-load on-js-reload [d]
 
-    (let [tree @*TREE
-          curr (::current tree)]
+    (when (goog.object/get js/window "PLAYGROUND")
 
-      (if-let [curr-wf-id (first curr)]
-        (do
-          (prn "WF " curr-wf-id "is working - updating")
-          (if-not (:stop-wf-on-reload? @*INTERNAL)
-            (update-current-wf! tree curr)
-            ;; else
-            (stop-current-wf! tree curr curr)))
-        (do
-          (prn "NO WF is working - updating all workflows")
-          (swap! *TREE merge (init-test-wfs false) {::current []})
+      (let [tree @*TREE
+            curr (::current tree)]
+
+        (if-let [curr-wf-id (first curr)]
+          (do
+            (prn "WF " curr-wf-id "is working - updating")
+            (if-not (:stop-wf-on-reload? @*INTERNAL)
+              (update-current-wf! tree curr)
+              ;; else
+              (stop-current-wf! tree curr curr)))
+          (do
+            (prn "NO WF is working - updating all workflows")
+            (swap! *TREE merge (init-test-wfs false) {::current []})
+            )
           )
         )
       )
 
-
     )
-  )
+
 

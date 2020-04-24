@@ -6,7 +6,7 @@
 
     [rum.core :as rum]
 
-    [woof.core :as c]
+    ; [woof.data.core :as c]
     [woof.data :as d])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]
@@ -29,7 +29,7 @@
   [{*EDITING?   ::editing
     *NEW-VALUE  ::value} change-fn d]
 
-  (let [is-data (satisfies? c/DATA d)
+  (let [;is-data (satisfies? c/DATA d)
         change (fn [new-value] ; editor
                  (change-fn new-value)
                  (reset! *EDITING? false))]

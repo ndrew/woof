@@ -34,9 +34,9 @@
 
   (async ready
     (let [
-          nu-opts (conj
+          nu-opts (concat
                     (base/as-fn-list opt-fns)
-                    (partial test-wf-opts_ ready))
+                    [(partial test-wf-opts_ ready)])
 
           wf-impl
           (base/wf! :init init-fns

@@ -10,7 +10,6 @@
     [woof.base :as base]
 
     [woof.wf :as wf]
-    [woof.wf-data :as wdata]
 
 
     [woof.client.playground.ui :as ui]
@@ -200,12 +199,12 @@
 
                        :process (fn[data]
                                   (swap! (cursor [:history]) conj
-                                         (wdata/inline-results data))
+                                         (base/inline-results data))
                                   (swap! (cursor [:result]) merge data))
 
                        :done (fn [data]
                                (swap! (cursor [:history]) conj
-                                      (wdata/inline-results data))
+                                      (base/inline-results data))
                                (reset! (cursor [:status]) :woof.app/done))
 
                        :error (fn [data]

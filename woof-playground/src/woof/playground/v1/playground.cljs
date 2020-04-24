@@ -6,32 +6,12 @@
     [woof.base :as base]
     [woof.wf :as wf]
 
-    [woof.wfc :as wfc
-     :refer [WoofWorkflow
-             get-params
-             get-context-map
-             get-steps]]
-
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
 
 
-(defn capturing-WF [*wf nu-params context-map-fn steps-fn wf-params]
-  ;; todo: how to use here your ::ctx and ::steps - substitute via methods
-  ;; (swap! *wf assoc ::init-params nu-params)
-
-  (reify WoofWorkflow
-    (get-params [this] nu-params)                           ;; is this really needed
-    (get-context-map [this] (let [ctx-map (context-map-fn nu-params)]
-                              (swap! *wf assoc ::ctx ctx-map)
-                              ctx-map))
-    (get-steps [this] (let [steps (steps-fn nu-params)]
-                        (swap! *wf assoc ::steps steps)
-                        steps
-                        )))
-  )
 
 
 
@@ -70,7 +50,14 @@
                  (base/combine-fns opt-fns :merge-results base/merge-opts-maps)
                  (base/combine-fns ctx-fns)
                  (base/combine-fns steps-fns)
-                 (partial capturing-WF *wf)
+                 (base/capturing-workflow-fn
+                   :context-map-fn (fn [ctx-map]
+                                     (swap! *wf assoc ::ctx ctx-map)
+                                     ctx-map)
+                   :steps-fn (fn [steps]
+                               (swap! *wf assoc ::steps steps)
+                               steps)
+                   )
                  )]
 
         ; store wf
