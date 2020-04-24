@@ -9,7 +9,6 @@
 
     [woof.core.processors :as p]
 
-    [woof.wfc :as wfc]
     [woof.utils :as u]
 
     ;; internal protocols
@@ -256,7 +255,7 @@
                  :wf     (fn [params]
                            (track-progress! [:wf-xtor-fn params])
 
-                           (wfc/params-wf params
+                           (base/params-wf params
                                           context-fn ;; context-fn [& params]
                                           steps-fn)   ;; steps-fn [& params]
                            )
@@ -273,10 +272,10 @@
     ;; TODO: use channel, instead of thread
     (async/thread
 
-      (base/run-wf-internal!
-        :init-fn init-fn
-        :wf-fn wf-fn
-        :opts-fn opts-fn)
+      (base/do-run-wf!
+        base/default-result-processor
+        (base/WF-impl init-fn wf-fn opts-fn)
+        )
       )
 
     (Thread/sleep 100)
@@ -303,7 +302,7 @@
                 {
                  ;; wf constructor
                  :wf     (fn [params]
-                           (wfc/params-wf params context-fn
+                           (base/params-wf params context-fn
                                           (fn [& r]
                                             (let [res (apply steps-fn r)]
                                               (if-let [m (meta res)]
@@ -340,10 +339,8 @@
                    })
         ]
 
-    (let [z (base/run-wf-internal! :processor-fn (partial p/TimeoutFutureWF_ 1000)
-                                   :init-fn init-fn
-                                   :wf-fn wf-fn
-                                   :opts-fn opts-fn)
+    (let [z (base/do-run-wf! (partial p/TimeoutFutureWF_ 1000)
+                             (base/WF-impl init-fn wf-fn opts-fn))
 
           result @z
           ]

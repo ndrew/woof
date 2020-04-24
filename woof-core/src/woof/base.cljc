@@ -12,13 +12,11 @@
 
     [woof.utils :as utils]
 
-    ;; higher level workflows
-    [woof.wfc :as wfc
-     :refer [WoofWorkflow
-             get-params
-             get-context-map
-             get-steps]
-     ]
+
+    [woof.core.api :refer [WoofWorkflow
+                             get-params
+                             get-context-map
+                             get-steps]]
 
     [woof.core.protocols :as protocols]
 
@@ -148,15 +146,44 @@
 
 
 
+(defn WF-impl
+  "wf representation that could be run via run-wf!
+
+  init-fn   (fn [] => {..initial-params-map})                                - returns initial params map
+  wf-fn     (fn [{..initial-params-map}] => {:params {..initial-params-map}
+                                             :wf      WoofWorkflow})         - returns wf map (wf implementation + params)
+  opts-fn   (fn [{..initial-params-map}] => {:params {..initial-params-map}
+                                             :opts    {..opt-map}})          - returns opts map (opts map + params)
+  "
+  [init-fn
+   wf-fn
+   opts-fn]
+  {
+   :init-fn init-fn
+   :wf-fn   wf-fn
+   :opts-fn opts-fn
+   }
+  )
+
+
 (defn parametrized-wf!
-  "parametrized wf implementation
-  init-fn (fn []) => {..}
+  "defines maximally parametrized woof workflow
+
+  init-fn       (fn [] => {..initial-params-map})                   - returns initial params map
+
+  wf-params-fn  (fn [{..initial-params-map}] => {..wf-params-map})  - transforms initial params map to a wf params
+
+  opt-params-fn (fn [{..wf-params-map}] => {..opts-params})         - transforms wf params to opt params
+  opts-fn       (fn [{..opts-params}]   => {..opts-map})            - provides opts map via opt params
+
+  ctx-fn        (fn [{..wf-params-map}] => {..ctx-map})             - provides context map from wf params
+  steps-fn      (fn [{..wf-params-map}] => {..steps-map})           - provides steps map from wf params
   "
   ([init-fn        ;; returns initial maps
-   wf-params-fn   ;; transforms initial map to a wf params
-   opt-params-fn  ;; transforms wf params to opt params
+   wf-params-fn   ;;
+   opt-params-fn  ;;
    opts-fn        ;; provides opts map via opt params
-   context-map-fn ;; provides context map from wf params
+   ctx-fn ;; provides context map from wf params
    steps-fn       ;; provides steps map from wf params
    ]
   (let [wf-fn (fn [params]
@@ -167,7 +194,7 @@
                              ;; do we really need to reify it everytime? why not use constructor
                              (reify WoofWorkflow
                                (get-params [this] nu-params) ;; is this really needed
-                               (get-context-map [this] (context-map-fn nu-params))
+                               (get-context-map [this] (ctx-fn nu-params))
                                (get-steps [this] (steps-fn nu-params)))
                              )
                    }
@@ -182,11 +209,7 @@
                   )
         ]
     ;; todo: do we need a fn that will create this map.
-    {
-     :init-fn init-fn
-     :wf-fn   wf-fn
-     :opts-fn opts-fn
-     }
+    (WF-impl init-fn wf-fn opts-fn)
     )
   )
   ([init-fn        ;; returns initial maps
@@ -213,11 +236,7 @@
                        })
                     )
           ]
-      {
-       :init-fn init-fn
-       :wf-fn   wf-fn
-       :opts-fn opts-fn
-       }
+      (WF-impl init-fn wf-fn opts-fn)
       )
     )
   )
@@ -236,8 +255,18 @@
 
 
 
-;; shorter version of defining workflow
-(defn wf! [& {:keys [init ctx steps opts ] :as params}]
+;; shortest version of defining workflow
+(defn wf!
+  "main way of defing a woof workflow
+  required parameters are
+   :ctx context map, e.g {:s-handler-id <shandler-body>, ...}
+      | context map constructor, e.g. (fn [params] => {:s-handler-id <shandler-body>, ...})
+   :steps
+  optional
+  :init
+  :opts
+  "
+  [& {:keys [init ctx steps opts]}]
 
   (let [init-fn (combine-init-fns (as-fn-list init))
         opts-fn (combine-fns (as-fn-list opts) :merge-results merge-opts-maps)
@@ -261,30 +290,33 @@
   )
 
 
-(defn WF [nu-params context-map-fn steps-fn wf-params]
-  (reify WoofWorkflow
-    (get-params [this] nu-params) ;; is this really needed
-    (get-context-map [this] (context-map-fn nu-params))
-    (get-steps [this] (steps-fn nu-params)))
+
+
+
+;;
+(defn capturing-workflow-fn [& {:keys [params-fn
+                                       context-map-fn
+                                       steps-fn ]
+                                :or {params-fn identity
+                                     context-map-fn identity
+                                     steps-fn identity
+                                     }}]
+  (fn [params _context-map-fn _steps-fn wf-params]
+    ;; todo: why wf-params are needed
+    (let [nu-params (params-fn params)]
+      (reify WoofWorkflow
+
+        (get-params [this]
+          nu-params)
+
+        (get-context-map [this]
+          (context-map-fn (_context-map-fn nu-params)))
+
+        (get-steps [this]
+          (steps-fn (_steps-fn nu-params))))
+      )
+    )
   )
-
-
-(defn capturing-WF [*wf nu-params context-map-fn steps-fn wf-params]
-  ;; todo: how to use here your ::ctx and ::steps
-  ;; (swap! *wf assoc ::init-params nu-params)
-  (reify WoofWorkflow
-    (get-params [this]
-      nu-params) ;; is this really needed
-    (get-context-map [this] (let [ctx-map (context-map-fn nu-params)]
-                              (swap! *wf assoc ::ctx ctx-map)
-                              ctx-map))
-    (get-steps [this] (let [steps (steps-fn nu-params)]
-                        (swap! *wf assoc ::steps steps)
-                        steps
-                        )))
-  )
-
-
 
 (defn end! [xtor]
   (protocols/end! xtor))
@@ -293,8 +325,33 @@
 
 
 
+(defn wf-xtor [wwf]
+  (let [ctx (wf/make-context (get-context-map wwf))
+        steps (get-steps wwf)]
+    ;; returns executor
+    (wf/build-executor
+      ctx
+      steps)
+    )
+  )
 
-;; todo: make xtor-fn optional
+
+;; return
+(defn params-wf [params context-fn steps-fn]
+  (let [args (apply concat params)
+        context-map (apply context-fn args)
+        steps (apply steps-fn args)
+        ]
+    (reify WoofWorkflow
+      (get-params [this]         params)
+      (get-context-map [this]    context-map)
+      (get-steps [this]           steps)
+      )
+    )
+  )
+
+
+
 (defn do-run-wf!
   ([processor wf]
    (do-run-wf! processor wf identity))
@@ -327,36 +384,27 @@
 
          ]
 
-     (let [xtor (wfc/wf-xtor wf-impl)
+     (let [ctx (wf/make-context (get-context-map wf-impl))
+           steps (get-steps wf-impl)
+
+           xtor (wf/build-executor ctx steps)
            xtor-impl (xtor-fn xtor)]
        (wf/process-results! (processor xtor-impl opts)))
      )
-
-   #_(runner/run-wf
-      (:init-fn wf)
-      (:wf-fn wf)   ;; {:params {..}, :wf <wf-xtor>}
-      (:opts-fn wf) ;; {:params {..}, :opts {..}}
-      (fn [wf-impl opts]
-        (let [xtor (wfc/wf-xtor wf-impl)
-              xtor-impl (xtor-fn xtor)]
-             (wf/process-results! (processor xtor-impl opts)))))
    )
   )
 
-;; for now dont use
-(defn run-wf-internal! [& {:keys [processor-fn init-fn wf-fn opts-fn] :or {processor-fn wf/->ResultProcessor} :as params}]
 
+(defonce default-result-processor wf/->ResultProcessor)
+
+;; for now dont use
+(defn run-wf-internal! [& {:keys [processor-fn init-fn wf-fn opts-fn] :or {processor-fn default-result-processor} :as params}]
   (do-run-wf!
       processor-fn
-      {
-       :init-fn init-fn
-       :wf-fn   wf-fn
-       :opts-fn opts-fn
-       })
-
+      (WF-impl init-fn wf-fn opts-fn))
   )
 
-(def run-wf! (partial do-run-wf! wf/->ResultProcessor))
+(def run-wf! (partial do-run-wf! default-result-processor))
 
 #?(:clj
    (def sync-run-wf! (partial do-run-wf! p/->FutureWF)))

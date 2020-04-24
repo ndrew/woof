@@ -1,11 +1,8 @@
-(ns woof.a001-single-arity-fn-composition
+(ns woof.a001-single-arity-fn-composition-test
   (:require
-    [clojure.test :refer :all]
+    [clojure.test :refer [deftest testing is]]
 
     [woof.base :as base]
-
-    [woof.utils :as utils]
-    [woof.u :as u]
     ))
 
 ;; idea: use only functions **of** **arity 1**
@@ -18,7 +15,6 @@
 
 
 (deftest combining-fns-returning-map-test
-
 
   (testing "fn chaining: init-fn composition into zero-arity-fn"
 
