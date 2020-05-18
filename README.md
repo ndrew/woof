@@ -14,7 +14,7 @@ My research hypothesis is — if we organize computation into simple, yet compos
 
 The idea is that finite/infinite computations can be organized via **flat workflows**
 
-— TODO: *write about woof workflows in detail* .
+TODO: *write about woof workflows in detail* .
 
 ### Implementation
 
