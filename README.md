@@ -20,13 +20,13 @@ The idea is that finite/infinite computations can be organized via **flat workfl
 
 Woof is a working prototype that implements flat workflow in clojure/clojurescript. 
 
-Woof consists of **[core library](woof-core/README.md)** for defining *flat workflows* and **[prototype projects](#protypes)** that explore how workflows can be used .
+Woof consists of **[core library](woof-core/)** for defining *flat workflows* and **[prototype projects](#protypes)** that explore how workflows can be used .
 
 Check more details about development progress in [dev-log.md](dev-log.md).
 
 #### Prototypes
 
-##### [woof-playground](woof-playground/README.md)
+##### [woof-playground](woof-playground/)
 
 Sandbox for running/defying woof workflows. 
 

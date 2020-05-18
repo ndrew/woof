@@ -16,3 +16,4 @@ pom.xml
 .lein-failures
 woof-playground/target/public/cljs-out
 woof-core/cljs-test-runner-out
+research/papers
