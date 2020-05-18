@@ -1,6 +1,6 @@
-#woof-lumo
+### `woof-lumo`
 
-Proof for packaging woof workflow for node js via lumo
+Example of packaging woof workflow for node js via lumo
  
 run as 
 

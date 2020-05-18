@@ -1,8 +1,11 @@
 # woof dev log
 
+Architectural decisions record for the woof project.
+
 ## 2017
 
 ### May, 2017
+
 codename: gendarme (as ordnung muss sein)
 
 Initial idea, generic static blog engine (Setup-Content-Render-Deploy-Promote)

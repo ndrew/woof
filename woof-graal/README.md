@@ -1,4 +1,4 @@
-# woof-graal
+### `woof-graal`
 
 packaging your workflow as a binary via GraalVM — **WIP**
 

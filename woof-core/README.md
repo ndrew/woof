@@ -1,7 +1,6 @@
-# woof-core
+### `woof-core`
 
 woof core library.
-
 
 run tests in clojure: 
 
