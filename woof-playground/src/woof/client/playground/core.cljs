@@ -1,4 +1,5 @@
-(ns ^:figwheel-hooks woof.client.playground.core
+(ns ^:figwheel-hooks
+  woof.client.playground.core
   (:require
 
     [cljs.core.async :as async]
@@ -23,11 +24,14 @@
     [woof.client.playground.wf.sandbox :as sandbox-wf]
     [woof.client.playground.wf.expand :as expand-wf]
 
+
     [woof.client.playground.wf.page :as page-wf]
     [woof.client.playground.wf.listing :as listing-wf]
     [woof.client.playground.wf.post :as post-wf]
     [woof.client.playground.wf.preview :as preview-wf]
     [woof.client.playground.wf.in-out :as in-out-wf]
+
+    [woof.client.playground.wf.multi.wf :as multi-wf]
 
     [woof.client.stateful :as state]
 
@@ -43,45 +47,58 @@
 ;; playground wf runner function
 ;;
 
-(defn playground-wf! [update? wf-id wf-init-fn]
-  (let [initial-state (state/empty-swf wf-id)]
 
-    (st-wf/wf wf-id
-              (fn [*SWF]
-                (let [nu-wf-state (wf-init-fn *SWF)]
+(defn playground-wf-handler [{initial-state ::initial-state
+                              update? ::update?
+                              wf-init-fn ::init-fn
+                              auto-run? ::auto-run
+                              } *SWF]
+  (let [nu-wf-state (wf-init-fn *SWF)
 
-                     (if update?
-                       (do
-                         (swap! *SWF merge nu-wf-state)
-                         )
+        run-wf-fn! (partial state/swf-run! *SWF)
+        stop-wf-fn! (partial state/swf-stop! *SWF)
+        reset-wf-fn! (partial st-wf/wf-init! *SWF)
+        wf-state (if update? nu-wf-state
+                             (merge
+                               initial-state
+                               nu-wf-state
+                               {
+                                :title   (get nu-wf-state :title "Untitled WF")
 
-                       (do
-                         (swap! *SWF merge
-                                (merge
-                                  initial-state
-                                  nu-wf-state
-                                  {
-                                   :title   (get nu-wf-state :title "Untitled WF")
-                                   ;; todo: should run/stop fn be exposed
+                                :run!    run-wf-fn!
+                                :stop!   stop-wf-fn!
+                                :reset!  reset-wf-fn!
 
-                                   :actions (st-wf/default-actions-map
-                                              (partial st-wf/wf-init! *SWF)
-                                              (partial state/swf-run! *SWF)
-                                              (partial state/swf-stop! *SWF)
-                                              (get nu-wf-state :wf-actions {}))
+                                :actions (st-wf/default-actions-map
+                                           reset-wf-fn!
+                                           run-wf-fn!
+                                           stop-wf-fn!
+                                           (get nu-wf-state :wf-actions {}))
 
-                                   :ui-fn   (get nu-wf-state :ui-fn (partial wf-ui/<wf-UI>
-                                                                             wf-ui/<default-body>))
-                                   }))
+                                :ui-fn   (get nu-wf-state :ui-fn (partial wf-ui/<wf-UI>
+                                                                          wf-ui/<default-body>))
+                                }
+                               ))
+        ]
 
-                         )
-                       )
+    (swap! *SWF merge wf-state)
 
-
-                     )
-                ))
+    (when auto-run?
+      (.log js/console "auto-running wf")
+      (run-wf-fn!)
+      )
     )
   )
+
+(defn playground-wf!
+  [wf-cfg]
+  (let [wf-id (::wf-id wf-cfg)
+        initial-state (state/empty-swf wf-id)]
+    (st-wf/wf wf-id (partial playground-wf-handler
+                             (merge
+                               {::initial-state initial-state}
+                               wf-cfg)))))
+
 
 ;; updatible storage
 
@@ -89,19 +106,30 @@
 ;; * each node starting with wf- is a separate workflow
 ;; * internal - internal woof stuff
 
-(defn init-test-wfs [update?]
+(defn init-test-wfs [update?] {
 
-  ;; todo: is it needed to call init-alpha-wf! here?
-  ;; or it should be called if the button is pressed
-  {
+   :wf-sandbox  (playground-wf! {::wf-id   :wf-sandbox
+                                 ::init-fn sandbox-wf/sandbox-wf-init!
+                                 ::update? update?})
 
-   :wf-sandbox  (playground-wf! update?
-                                :wf-sandbox sandbox-wf/sandbox-wf-init!)
-   ;; workflow w state (keywords that start with wf-...)
-   :wf-basic-wf (playground-wf! update? :wf-basic-wf simple-wf/basic-wf-initializer)
-   :wf-with-ui  (playground-wf! update? :wf-with-ui simple-w-ui/wf-with-ui-initializer)
+   :wf-basic-wf (playground-wf! {::wf-id   :wf-basic-wf
+                                 ::init-fn simple-wf/basic-wf-initializer
+                                 ::update? update?})
 
-   :wf-expand   (playground-wf! update? :wf-expand expand-wf/expand-wf-init!)
+   :wf-with-ui  (playground-wf! {::wf-id   :wf-with-ui
+                                 ::init-fn simple-w-ui/wf-with-ui-initializer
+                                 ::update? update?}
+                                )
+
+   :wf-expand   (playground-wf! {::wf-id   :wf-expand
+                                 ::init-fn expand-wf/expand-wf-init!
+                                 ::update? update?})
+
+   :wf-multi    (playground-wf! {::wf-id   :wf-multi
+                                 ::init-fn multi-wf/multi-wf-initializer
+                                 ::update? update?
+                                 ::auto-run true
+                                 })
 
    ;:wf-page                  (init-alpha-wf! update? :wf-page page-wf/initialize!)
    ;:wf-listings              (init-alpha-wf! update? :wf-listings listing-wf/initialize!)
@@ -253,7 +281,6 @@
 
 (defn update-current-wf! [tree curr]
 
-
   (let [[wf-id] curr
         updated-wfs (init-test-wfs true)
         updated-wf (get-in updated-wfs curr)
@@ -279,7 +306,7 @@
                                      _upd-map))
             ]
         ;; what of wf map can be updated for running workflow
-        (prn "updating the selected workflow " wf-id )
+        (.log js/console "updating the selected workflow " wf-id )
         ;(.warn js/console upd-map)
         (swap! *TREE update-in curr merge upd-map)
 
@@ -383,28 +410,30 @@
   )
 
 
-  (defn ^:after-load on-js-reload [d]
+(defn do-js-reload []
+  (let [tree @*TREE
+        curr (::current tree)]
 
-    (when (goog.object/get js/window "PLAYGROUND")
-
-      (let [tree @*TREE
-            curr (::current tree)]
-
-        (if-let [curr-wf-id (first curr)]
-          (do
-            (prn "WF " curr-wf-id "is working - updating")
-            (if-not (:stop-wf-on-reload? @*INTERNAL)
-              (update-current-wf! tree curr)
-              ;; else
-              (stop-current-wf! tree curr curr)))
-          (do
-            (prn "NO WF is working - updating all workflows")
-            (swap! *TREE merge (init-test-wfs false) {::current []})
-            )
-          )
+    (if-let [curr-wf-id (first curr)]
+      (do
+        (.log js/console (str "WF " curr-wf-id "is working - updating"))
+        (if-not (:stop-wf-on-reload? @*INTERNAL)
+          (update-current-wf! tree curr)
+          ;; else
+          (stop-current-wf! tree curr curr)))
+      (do
+        (prn "NO WF is working - updating all workflows")
+        (swap! *TREE merge (init-test-wfs false) {::current []})
         )
       )
+    ))
 
+(defn ^:after-load on-js-reload [d]
+
+  (when (goog.object/get js/window "PLAYGROUND")
+    (do-js-reload)
     )
+
+  )
 
 

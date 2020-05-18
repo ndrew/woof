@@ -1,5 +1,4 @@
 (ns ^:figwheel-hooks
-    ^:figwheel-always
   woof.playground
   (:require
     [rum.core :as rum]

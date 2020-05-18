@@ -34,7 +34,8 @@
     [l <k> <v> cfg]
 
   (when (nil? @(::ui l))
-    (.warn js/console "setting ui property")
+
+    ;; (.warn js/console "setting ::ui property")
     (reset! (::ui l)
             ((get cfg :ui-defaults (fn [] {})))
             )

@@ -44,9 +44,8 @@
         ]
     {
 
-     :init-fns  [init-evt-loop
-                 st-wf/chan-factory-init-fn
-                 ]
+     :init-fns  [st-wf/chan-factory-init-fn
+                 init-evt-loop]
 
      :ctx-fns   [ctx-evt-fn
 
