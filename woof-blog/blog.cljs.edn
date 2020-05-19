@@ -1,0 +1,13 @@
+^{
+
+  ;; notify backend to reload
+  :post-build-hooks [blog.backend/-post-build-hook]
+
+  :watch-dirs ["src" "test" ]
+;  :css-dirs ["resources/public/css"]
+;  :auto-testing true
+
+ :open-url "http://[[server-hostname]]:[[server-port]]/index.html"
+
+  }
+{:main blog.frontend}

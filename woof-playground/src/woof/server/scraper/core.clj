@@ -266,12 +266,14 @@
              identity                                       ; opt-params-fn
              (base/combine-fns opt-fns :merge-results base/merge-opts-maps)
              (base/combine-fns ctx-fns)
-             (base/combine-fns steps-fn))]
+             (base/combine-fns steps-fn))
+
+        on-wf-stop (fn [stop-chan]
+                     (info ::wf-stopped))
+        ]
 
     (base/stateful-wf
-      *STATE wf
-      (fn []
-        (info ::wf-stopped))
+      *STATE wf on-wf-stop
       {
 
        :send-msg! (fn [msg]

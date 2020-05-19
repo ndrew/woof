@@ -1,0 +1,74 @@
+{:deps
+ {
+
+  ;; woof libraries
+  woof-core {:local/root "../woof-core"}
+  woof-playground {:local/root "../woof-playground"}
+
+  ;; clojure
+  org.clojure/clojure        {:mvn/version "1.10.1"}
+  org.clojure/clojurescript  {:mvn/version "1.10.597"}
+  org.clojure/core.async     {:mvn/version "1.1.587"}
+
+
+  ;; web stack
+
+  ring                       {:mvn/version "1.8.0"}, ;; this one is needed to be added for running standalone version
+  http-kit                   {:mvn/version "2.3.0"},
+  compojure                  {:mvn/version "1.6.1", :exclusions [commos-codec]},
+
+  com.cognitect/transit-clj  {:mvn/version "0.8.313"},
+  com.cognitect/transit-cljs {:mvn/version "0.8.256"},
+
+  ;; filesystem stuff
+  me.raynes/fs               {:mvn/version "1.4.6"},
+  clojure-watch               {:mvn/version "LATEST"}
+
+  ;; frontend
+  rum                        {:mvn/version "0.11.5"},
+
+  ;; templating
+  ;;sablono                    {:mvn/version "0.8.1"} ;; use same version as in rum
+  hiccup                     {:mvn/version "1.0.5"}
+
+  ;; todo: which markdown version to use
+  markdown-clj               {:mvn/version "1.10.2"}
+  markdown-to-hiccup         {:mvn/version "0.6.2"}
+  com.atlassian.commonmark/commonmark {:mvn/version "0.14.0"}
+
+  ;;
+  clj-rss {:mvn/version "0.2.5"}
+  cljsjs/commonmark {:mvn/version "0.29.0-1"}
+  ;  org.clojure/data.json      {:mvn/version "0.2.6"},
+
+
+  ;; logging
+  com.taoensso/timbre         {:mvn/version "4.10.0"}
+
+  }
+
+ ;:npm-deps {:commonmark ""}
+
+ :aliases {
+
+           :fig      {:extra-deps
+                                   {com.bhauman/figwheel-main       {:mvn/version "0.2.4"},
+                                    com.bhauman/rebel-readline-cljs {:mvn/version "0.1.4"}}
+                      :extra-paths ["target" "test"]
+                      }
+
+           :blog { :main-opts   ["-m" "figwheel.main" "-b" "blog" "-r"]  }
+           :blog-min { :main-opts   ["-m" "figwheel.main" "-O" "advanced" "-b" "blog"] }
+
+
+           :dev { :main-opts   ["-i" "src/blog/backend.clj"
+                                     "-m" "figwheel.main" "-b" "blog" "-r"]  }
+
+           }
+
+ ;; setup some development paths
+ :paths ["src" "resources" "test"]
+ ;; setup target as a resource path
+ :resource-paths ["target" "resources"]
+
+ }

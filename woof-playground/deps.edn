@@ -81,8 +81,6 @@
            ;; this generates the code that can be run in browser
            :browser-min { :main-opts   ["-m" "figwheel.main" "-O" "advanced" "-b" "browser" ] }
 
-           :blog { :main-opts   ["-m" "figwheel.main" "-b" "blog" "-r"]  }
-
            :server {
                     :main-opts ["-i" "scripts/server.clj"]
                     }

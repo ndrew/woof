@@ -630,8 +630,6 @@
 
 
 
-
-;; todo: on-stop is useless as we need to use last opt-fn for actually workflow ended
 (defn stateful-wf
   ([*state wf on-stop]
    (stateful-wf *state wf on-stop {}))
@@ -646,13 +644,12 @@
 
            :stop-wf!  (fn []
                         (if-let [xtor (state-get-xtor *state)]
-                                (do
-                                  (end! xtor)
-                                  ;; how to call on stop after all opts were completed?
-                                  (on-stop)
+                                (let [stop-ch (end! xtor)]
+                                  (on-stop stop-ch)
+                                  ;; don't return the stop channel, as it might be depleted by on-stop
                                   ::stopped)
                                 (do
-                                  ;;(prn ::no-wf-running)
+                                  ;; <?> should we treat this as an error? or it's okay to do nothing in this case?
                                   ::no-wf-running)))
            }
           )

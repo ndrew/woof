@@ -123,9 +123,12 @@
              (base/combine-fns ctx-fns)
              (base/combine-fns steps-fns))
 
+        on-wf-stop (fn [stop-chan]
+                     ;;
+                     )
         ]
 
-    (base/stateful-wf *state wf on-stop)
+    (base/stateful-wf *state wf on-wf-stop)
     )
   )
 
