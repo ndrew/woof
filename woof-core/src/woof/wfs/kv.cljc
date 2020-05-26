@@ -35,7 +35,9 @@
                               :expands? true}
 
                   :*kv-zip   {:fn       (fn [[[k] vs]]
-                                          (let [ks (:k k)]
+                                          (let [_ks (:k k)
+                                                ks (if (vector? _ks) _ks (vec _ks))
+                                                ]
                                             (apply assoc {} (interleave ks vs))
                                             ))
                               :collect? true}
