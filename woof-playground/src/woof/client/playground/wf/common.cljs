@@ -5,7 +5,10 @@
 
     [woof.base :as wf]
     [woof.utils :as u]
-  )
+    [woof.base :as base]
+    [woof.wfs.kv :as kv]
+
+    )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -28,15 +31,17 @@
 
 
 (defn common-ctx-fn [params]
-  {
-   :id {:fn identity}
-
-   :evt-loop {
-              :fn       (fn [in-chan] in-chan)
-              :infinite true
-              :expands? true
-              }
-   }
+  (merge {
+          ;; todo: use other evt loop handler
+          :evt-loop {
+                     :fn       (fn [in-chan] in-chan)
+                     :infinite true
+                     :expands? true
+                     }
+          }
+         base/BASE-CTX-MAP
+         kv/KV-CTX-MAP
+         )
   )
 
 #_(defn ^:after-load my-after-reload-callback []

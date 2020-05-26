@@ -32,6 +32,7 @@
     [woof.client.playground.wf.in-out :as in-out-wf]
 
     [woof.client.playground.wf.multi.wf :as multi-wf]
+    [woof.client.playground.wf.multi.templating-wf :as templating-wf]
 
     [woof.client.stateful :as state]
 
@@ -108,37 +109,44 @@
 
 (defn init-test-wfs [update?] {
 
-   :wf-sandbox  (playground-wf! {::wf-id   :wf-sandbox
-                                 ::init-fn sandbox-wf/sandbox-wf-init!
-                                 ::update? update?})
+                               :wf-sandbox    (playground-wf! {::wf-id   :wf-sandbox
+                                                               ::init-fn sandbox-wf/sandbox-wf-init!
+                                                               ::update? update?})
 
-   :wf-basic-wf (playground-wf! {::wf-id   :wf-basic-wf
-                                 ::init-fn simple-wf/basic-wf-initializer
-                                 ::update? update?})
+                               :wf-basic-wf   (playground-wf! {::wf-id   :wf-basic-wf
+                                                               ::init-fn simple-wf/basic-wf-initializer
+                                                               ::update? update?})
 
-   :wf-with-ui  (playground-wf! {::wf-id   :wf-with-ui
-                                 ::init-fn simple-w-ui/wf-with-ui-initializer
-                                 ::update? update?}
-                                )
+                               :wf-with-ui    (playground-wf! {::wf-id   :wf-with-ui
+                                                               ::init-fn simple-w-ui/wf-with-ui-initializer
+                                                               ::update? update?}
+                                                              )
 
-   :wf-expand   (playground-wf! {::wf-id   :wf-expand
-                                 ::init-fn expand-wf/expand-wf-init!
-                                 ::update? update?})
+                               :wf-expand     (playground-wf! {::wf-id   :wf-expand
+                                                               ::init-fn expand-wf/expand-wf-init!
+                                                               ::update? update?})
 
-   :wf-multi    (playground-wf! {::wf-id   :wf-multi
-                                 ::init-fn multi-wf/multi-wf-initializer
-                                 ::update? update?
-                                 ::auto-run true
-                                 })
+                               :wf-multi      (playground-wf! {::wf-id    :wf-multi
+                                                               ::init-fn  multi-wf/wf-as-process-initializer
+                                                               ::update?  update?
+                                                               ::auto-run true
+                                                               })
 
-   ;:wf-page                  (init-alpha-wf! update? :wf-page page-wf/initialize!)
-   ;:wf-listings              (init-alpha-wf! update? :wf-listings listing-wf/initialize!)
+                               :wf-templating (playground-wf! {::wf-id    :wf-templating
+                                                               ::init-fn  templating-wf/hiccup-template-wf-initializer
+                                                               ::update?  update?
+                                                               ::auto-run true
+                                                               })
 
-   ;:wf-local-storage-post    (init-alpha-wf! update? :wf-local-storage-post post-wf/init-post-wf!)
-   ;:wf-local-storage-preview (init-alpha-wf! update? :wf-local-storage-preview preview-wf/init-preview-wf!)
 
-   ;:wf-IN-OUT                (init-alpha-wf! update? :wf-IN-OUT in-out-wf/initialize-in-out-wf)
-   }
+                               ;:wf-page                  (init-alpha-wf! update? :wf-page page-wf/initialize!)
+                               ;:wf-listings              (init-alpha-wf! update? :wf-listings listing-wf/initialize!)
+
+                               ;:wf-local-storage-post    (init-alpha-wf! update? :wf-local-storage-post post-wf/init-post-wf!)
+                               ;:wf-local-storage-preview (init-alpha-wf! update? :wf-local-storage-preview preview-wf/init-preview-wf!)
+
+                               ;:wf-IN-OUT                (init-alpha-wf! update? :wf-IN-OUT in-out-wf/initialize-in-out-wf)
+                               }
   )
 
 (defn global-action []

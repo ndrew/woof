@@ -26,6 +26,7 @@
 
 ;  org.clojure/data.json      {:mvn/version "0.2.6"},
   rum                        {:mvn/version "0.11.5"},
+  cljsjs/react-dom-server    {:mvn/version "16.6.0-0"}
   ;; use same version as in rum
   ;;sablono                    {:mvn/version "0.8.1"}
 
