@@ -34,9 +34,17 @@
                                           {(base/rand-sid "mem-k-") [:identity {:k o}]})
                               :expands? true}
 
-                  :*kv-zip   {:fn       (fn [[[k] vs]]
+
+
+                  :*kv-zip   {:fn       (fn [[[k] _vs]]
                                           (let [_ks (:k k)
-                                                ks (if (vector? _ks) _ks (vec _ks))
+                                                [ks vs] (cond
+
+                                                     (vector? _ks) [_ks _vs]
+                                                     (= _ks :nil) [[] []]
+                                                     ;; for sid-list
+                                                     :else [(vec _ks) _vs]
+                                                     )
                                                 ]
                                             (apply assoc {} (interleave ks vs))
                                             ))
