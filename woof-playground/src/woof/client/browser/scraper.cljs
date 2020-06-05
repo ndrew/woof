@@ -13,8 +13,15 @@
     [woof.data :as d]
 
     [woof.client.ws :as ws]
+    [woof.client.dom :as woof-dom]
     ))
 
+;;
+;; mapping decisions for wf
+
+(defn &ws? [params] (get params :ws? false))
+(defn &skip-processed? [params] (get params :ws/skip-processed? false))
+(defn &display-results-fn [params] (get params :wf/display-results-fn identity))
 
 
 
@@ -212,12 +219,62 @@
 (defn common-ctx [params]
   {
    :log {:fn (fn[v]
-               ;(prn v)
                (.log js/console v)
                v)}
-   :export-edn {:fn (fn[v]
+
+
+   :prn {:fn (fn[v]
                       (prn v)
                       "")}
+
+
+   :copy-to-clipboard {:fn (fn [v]
+
+                             ;; focus()
+
+                          (when js/navigator.clipboard.writeText
+                                (let [clipboard js/navigator.clipboard
+
+                                      copy-handler (fn []
+                                                     (-> (.writeText clipboard (d/pretty! v))
+                                                         (.then (fn [response](.log js/console "Copied to clipboard - " response))
+                                                                (fn [err]     (.warn js/console "Failed to copy to clipboard" err))))
+                                                     )
+                                      ]
+
+                                  (let [btn-el (dom/createDom "button" ""
+                                                               "copy results to clipboard")]
+
+                                    (goog.events.listen btn-el goog.events.EventType.CLICK copy-handler)
+                                    (woof-dom/ui-add-el! btn-el)
+
+                                    (.focus btn-el)
+
+                                    )
+
+
+                                  )
+                              )
+
+                          )}
+
+   :wait-rest      {
+                    :fn       (fn [[v & rest]]
+                                v)
+                    :collect? true
+                    }
+
+   :ui-progress {
+                 :fn (fn [v]
+                        ;; todo: use value
+                       (let [el (dom/createDom "div" ""
+                                               "READY!")]
+
+
+                            (woof-dom/ui-add-el! el)
+                            )
+                       )
+                 }
 
    }
   )
@@ -228,13 +285,11 @@
   {
    :op-handlers-map {
                      :done  (fn [result]
+                              (.log js/console "WF DONE: " result)
 
-                              (.log js/console result)
-
-                              (.log js/console
-                                    "RESULT"
-                                    (::RESULT result))
-
+                              ;; handle wf results if needed
+                              (let [wf-done (&display-results-fn params)]
+                                   (wf-done result))
 
                               )
 
@@ -246,9 +301,14 @@
    })
 
 
+
 (defn scraper-init [params]
-  ;; FIXME: ugly
-  {:start-chan (async/chan)}
+
+  (let [ws? (&ws? params)]
+    (if ws?
+      {:start-chan (async/chan)}
+      {})
+    )
   )
 
 (defn scraper-ctx [params]
@@ -349,11 +409,6 @@
                             )
                       }
 
-     :wait-rest      {
-                      :fn       (fn [[v & rest]]
-                                  v)
-                      :collect? true
-                      }
 
      :send-msg!      {
                       :fn (fn [msg]
@@ -396,43 +451,81 @@
 
 
 (defn scraper-steps [params]
-  {
-   ::ws [:init-socket "ws:localhost:8081/ws"]
+  (let [ws? (&ws? params)
+        skip-processed? (&skip-processed? params)
 
-   ::got-ids [:identity (:start-chan params)]
+        server-steps {
+                           :ws/socket [:init-socket "ws:localhost:8081/ws"]
+                           :ws/save-results [:store-listings [:ws/socket :domik/LISTINGS]]
+                      
+                         :ws/already-processed-ids [:identity (:start-chan params)]}
+        no-server-steps {:ws/already-processed-ids [:identity true]}
 
-   ::selector [:query-selector-all ".cnt .objava"]
-   ::all [:wait-rest [::selector ::got-ids]]
+        css-steps {
+                   ; :css/hide-listings [:css-rule ".cnt { display: none; }"]
+                   :css/css-1 [:css-rule ".woof-custom-listing-ui { font-family: 'DejaVu Sans Mono'; font-size: 7pt; }" ]
+                   :css/css-2 [:css-rule ".woof-listing-hide { opacity: 0.25;}" ]
+                   :css/css-3 [:css-rule ".woof-listing-show { outline: 3px solid crimson;  }" ]
 
-   ;::expand-id [:expand* ::all]
-
-   ;::processed-elements [:process* ::expand-id]
-   ::processed-elements [:process* ::all]
-   ::RESULT [:collect ::processed-elements]
-
-   ;;
-   ;   ::css-1 [:css-rule ".objava { background: #fff; }" ]
-   ::css-1 [:css-rule ".woof-custom-listing-ui { font-family: 'DejaVu Sans Mono'; font-size: 7pt; }" ]
-   ::css-2 [:css-rule ".woof-listing-hide { opacity: 0.25;}" ]
-   ::css-3 [:css-rule ".woof-listing-show { outline: 3px solid crimson;  }" ]
-
+                   :css/scraping-ui [:css-rules* [".woof-scraper-ui" "position: fixed;
+                                                                      bottom: 0;
+                                                                      left: 0;
+                                                                      width: 100%;
+                                                                      padding-left: .5rem;
+                                                                      background-color: rgba(188, 143, 143, 0.1);"]]
+                   }
 
 
+        parse-steps {
+               ;; find listing els for further parsing
+               :domik/__listing-els* [:query-selector-all ".cnt .objava"]
 
-   ;; hacky way to pass the key as a value
+               ;; expose listing els for parser, after we've got list of already processed listings from server
+               :domik/listing-els* [:wait-rest [:domik/__listing-els*
+                                                :ws/already-processed-ids]]
 
-   ::k [:mem-k* ::processed-elements]
-   ::KV [:*kv-zip [::k ::processed-elements]]
+               :domik/parsed-listings* [:process* :domik/listing-els*]
+               }
 
-   ::new-listings [:filter-scraped ::KV]
 
-   ::new-ui [:listing-ui* ::new-listings]
+        filter-results-steps {
+                              ;; hacky way to pass the key as a value
+                              ::k [:mem-k* :domik/parsed-listings*]
+                              ::KV [:*kv-zip [::k :domik/parsed-listings*]]
 
-   ::save-results [:store-listings [::ws ::new-listings]]
+                              :domik/LISTINGS [:filter-scraped ::KV]
 
-   ;; ::export2console [:export-edn ::new-listings]
+                              }
+        no-filter-results-steps {
+                                 :domik/LISTINGS [:collect :domik/parsed-listings*]
+                                 }
+        ui-steps {
 
-   ;; ::post-process [:post-process ::RESULT]
+                  ;; ::new-ui [:listing-ui* :domik/LISTINGS]
 
-   }
+
+                  ;; so they can be copy pasted
+                  ;; :ui/print_results [:prn :domik/LISTINGS]
+
+                  :clipboard/copy-results [:copy-to-clipboard :domik/LISTINGS]
+
+                  ;; ::ui-progress [:ui-progress :domik/LISTINGS]
+                  ;; ::post-process [:post-process ::RESULT]
+                  }
+
+        ]
+
+    (merge
+      (if ws? server-steps
+              no-server-steps)
+      parse-steps
+      (if skip-processed? filter-results-steps
+                          no-filter-results-steps)
+
+      ui-steps
+        css-steps
+      )
+
+    )
+
   )

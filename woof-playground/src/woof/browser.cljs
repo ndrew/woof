@@ -1,13 +1,23 @@
 (ns ^:figwheel-hooks woof.browser
   (:require
     [woof.base :as base]
+
+    [goog.dom :as gdom]
     [woof.client.dom :as dom]
-    ;[woof.client.browser.scraper :as scraper]
+
+    ;; todo: use ns per url
+
+    [woof.client.browser.scraper :as scraper]
     [woof.client.browser.scraper2 :as scraper2]
 
     [cljs.core.async :refer [go] :as async]
     [cljs.core.async.interop :refer-macros [<p!]]
-    [woof.utils :as u]))
+    [woof.utils :as u]
+    ))
+
+
+;; whether to run wf automatically, or display run button
+(defonce AUTO-START-WF? true)
 
 
 ;; ns for doing in-browser scraping
@@ -18,193 +28,116 @@
 ;; or copy page contents into browser.html
 
 
-
 (enable-console-print!)
 
 
-;;
-;; configure your browser wf here
-;;
 
-;(def init-fns   [])  ;; [scraper/scraper-init]
-;(def ctx-fns    [dom/dom-ctx scraper2/ctx-fn])  ;; [dom/dom-ctx scraper/common-ctx scraper/scraper-ctx scraper/ws-ctx-fn]
-;(def steps-fns  [scraper2/steps-fn])  ;; [scraper/scraper-steps]
-;(def opt-fns    [scraper2/opt-fn])  ;; [scraper/common-opt]
+;; adds a workflow ui panel
+(defn run-wf! [wf-impl]
+  (let [run-fn! (fn []
+                  (.log js/console "RUNNING SCRAPING WF!")
+                  (base/run-wf! wf-impl))]
 
 
+    (if AUTO-START-WF?
+      (run-fn!)
+      (let [btn-el (gdom/createDom "button" ""
+                               "run!")]
 
+        (goog.events.listen btn-el goog.events.EventType.CLICK run-fn!)
+        (dom/ui-add-el! btn-el)
+        )
+      )
 
-
-(defn convert [a]
-  (if (.isArray js/Array a)
-    (js->clj a)
-    a)
+    )
   )
 
-(defn ^:export run_js_workflow [
-                                init-fns
-                                ctx-fns
-                                steps-fns
-                                opt-fns
-                                ]
-  ;; this will start the wf
-  (let [
-        wf-impl (base/wf!
-                  :init (convert init-fns)
-                  :opts (convert opt-fns)
-                  :ctx (convert ctx-fns)
-                  :steps (convert steps-fns))
-        ]
-    (base/run-wf! wf-impl)
+
+
+(defn lun-scraping! []
+  ;; todo: meta workflow
+  (run-wf!
+    (base/wf!
+      :init []
+      :ctx [dom/dom-ctx
+            scraper2/ctx-fn]
+      :steps [scraper2/steps-fn]
+      :opts [scraper2/opt-fn]
+      )
     )
+  )
+
+
+(defn domik-scraping! []
+
+  ;; pass configuration to the workflow
+  (let [meta-init-fn (fn [params]
+                       {
+                        :ws? false
+                        :ws/skip-processed? false
+
+                        :wf/display-results-fn (fn [wf-results]
+
+                                                 (let [listings (get wf-results :domik/LISTINGS)]
+
+                                                      ; todo: handle listings here if needed
+                                                      ;; (.clear js/console)
+                                                      ;; (.log js/console listings)
+
+                                                      )
+
+                                                 )
+                        })]
+
+    (run-wf!
+      (base/wf!
+        :init [meta-init-fn
+               scraper/scraper-init]
+        :ctx [dom/dom-ctx
+              scraper/common-ctx
+              scraper/scraper-ctx]
+        :steps [scraper/scraper-steps]
+        :opts [scraper/common-opt]
+        )
+      )
+    )
+
   )
 
 
 
 (defn ^:export run_workflow []
 
-  (run_js_workflow
-    []
-    [dom/dom-ctx scraper2/ctx-fn]
-    [scraper2/steps-fn]
-    [scraper2/opt-fn]
-    )
-  )
+  (let [url (.. js/document -location -href)]
+    (dom/<scraping-ui>)
 
+    (cond
 
+      ;; map localhost to a specific wf
+      (clojure.string/starts-with? url "http://localhost:9500")   (domik-scraping!)
 
+      (clojure.string/starts-with? url "http://domik.ua/")        (domik-scraping!)
 
-(defn ^:export default_ctx_fn [params]
-  {
-   :identity {:fn identity}
-   }
-  )
+      ;; todo: check this
+      (clojure.string/starts-with? url "https://lun.ua/")         (lun-scraping!)
+      :else (do
+              (let [el (gdom/createDom "h3" ""
+                                       (str "can't find scraping wf for URL: " url))]
 
-(defn ^:export default_opt_fn [params]
-  {
-   :op-handlers-map {
-                     :done  (fn [result]
-                              (.groupCollapsed js/console "Workflow ended.")
-                              (.log js/console
-                                    "Full results map: " result)
-                              (.groupEnd js/console)
-                              )
+                (dom/ui-add-el! el)
+                )
 
-                     :error (fn [result]
-                              (.error js/console result))
-
-                     }
-
-   })
-
-
-(defn ^:export k [s]
-  (keyword s))
-
-
-(defn ^:export qk
-  ([k]
-   (let [s (str k)
-         [raw-ns n] (clojure.string/split s #"/")
-         ns (if (clojure.string/starts-with? raw-ns ":")
-              (if (clojure.string/starts-with? raw-ns "::")
-                (subs raw-ns 2)
-                (subs raw-ns 1))
-              raw-ns)
-         ]
-     (if (nil? n)
-       (keyword (namespace ::boo) ns)
-       (keyword ns n)
-       )
-     )
-   )
-  ([ns k]
-   (keyword ns k)
-   ))
-
-(defn ^:export kv []
-  {})
-
-
-
-;; wraps js function into a step fn
-(defn ^:export steps_fn [js-fn]
-  (fn [params]
-    (let [js-res (js-fn (clj->js params))]
-
-         ;; convert js result to
-         (into {} (for [k (.keys js/Object js-res)]
-                    (do
-                      ;(js-debugger)
-
-                      (let [nu-k (if (qualified-keyword? k) k (qk k))
-                            raw-v (aget js-res k)
-                            raw-step (aget raw-v 0)
-                            step (if (keyword? raw-step) raw-step (k raw-step))
-                            v (aget raw-v 1)
-                            ]
-                        [nu-k [step v]]
-                        )
-
-                      )
-
-                    ))
-         )))
-
-
-
-;; !!obj && (typeof obj === 'object' || typeof obj === 'function') && typeof obj.then === 'function';
-
-(defn ^:export promise2chan [v]
-  (let [ch (async/chan)]
-    (go
-      (let [v (<p! v)]
-        (async/put! ch (if (nil? v) :nil v)))
+              )
       )
-    ch
+
     )
+
   )
 
+;;
+;; side-effects, start wf automatically if there is certain var on the page
 
-
-#_(defn wrap-ctx-fn [cfg ctx-fn]
-  (fn [v]
-    (let [params v
-          js-result (ctx-fn params)
-          ]
-
-
-         ;; by default do not convert params to js or ?
-
-         )
-    )
-  )
-
-(defn ^:export ctx_fn [js-fn]
-  (fn [params]
-    (let [js-res (js-fn (clj->js params))]
-
-         ;; convert js result to
-         (into {} (for [k (.keys js/Object js-res)]
-                    (do
-                      (let [nu-k (if (keyword? k) k (keyword k))
-                            raw-cfg (aget js-res k)
-                            cfg (js->clj raw-cfg :keywordize-keys true)
-                            ]
-                        ;; (.log js/console cfg)
-                        [nu-k cfg]
-                        )
-
-                      )
-
-                    ))
-         )))
-
-
-
-;; for now - auto-run wf, if we are not in the playground
-#_(when-not (goog.object/get js/window "PLAYGROUND")
-  ; (.clear js/console)
+(when (goog.object/get js/window "BROWSER_PLAYGROUND")
+  (.log js/console "auto-starting browser workflow")
   (run_workflow)
-
   )

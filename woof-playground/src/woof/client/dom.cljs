@@ -27,6 +27,21 @@
     (dom/appendChild (.-body js/document) el)))
 
 
+(defn add-el! [el-present-selector el]
+  "dynamically adds or replaces element to dom"
+
+  (let [
+        els (array-seq (.querySelectorAll (.-body js/document)
+                                          el-present-selector
+                                          ))]
+
+    (if-not (empty? els)
+      (dom/replaceNode el (first els))          ;; replace el from dom
+      (dom/appendChild (.-body js/document) el) ;; append element
+      )
+    )
+  )
+
 (defn add-stylesheet [src]
 
   (let [el (dom/createElement "link")]
@@ -38,7 +53,6 @@
                           ; todo: check
                           ;(js-debugger)
                           ))
-
 
     (dom/appendChild (.-head js/document) el)
 
@@ -82,6 +96,19 @@
                                    )
                               true)
                         }
+
+   ;; newline separated css ruls [".sector" "rule: aaa;\n rule: bbb;" ]
+   :css-rules* { :fn (fn [[selector body]]
+                      (let [lines (str/split-lines body)]
+                           (reduce (fn [a line]
+                                     (assoc a (base/rand-sid "css-") [:css-rule (str selector " { " line " }")])
+                                     )
+                             {} lines)
+                           )
+                      )
+               :expands? true
+               }
+
    ;; todo: convenience wrapper for working with collection instead single css rule
 
    :mem-k*             {
@@ -111,4 +138,25 @@
 
 
    }
+  )
+
+
+(defn <scraping-ui> []
+  (let [el (dom/createDom "div" "woof-scraper-ui"
+                          "")]
+
+    #_(set! (-> el .-style )
+          "")
+    ;;
+    ;; add a placeholder element to dom
+    (add-el! ".woof-scraper-ui" el)
+    )
+  )
+
+(defn ui-add-el! [el]
+  (let [scraper-ui (.querySelector (.-body js/document) ".woof-scraper-ui")]
+
+
+    (dom/appendChild scraper-ui el)
+    )
   )
