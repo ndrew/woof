@@ -1,18 +1,22 @@
 (ns ^:figwheel-hooks woof.browser
   (:require
     [woof.base :as base]
+    [woof.client.dom :as woof-dom]
+    [woof.data :as d]
+    [woof.utils :as u]
 
-    [goog.dom :as gdom]
-    [woof.client.dom :as dom]
+    [goog.dom :as dom]
 
     ;; todo: use ns per url
-
+    ;; domik
     [woof.client.browser.scraper :as scraper]
+    ;; lun
     [woof.client.browser.scraper2 :as scraper2]
+    ;; blagovist.ua
+    [woof.client.browser.scraper3 :as scraper3]
 
     [cljs.core.async :refer [go] :as async]
     [cljs.core.async.interop :refer-macros [<p!]]
-    [woof.utils :as u]
     ))
 
 
@@ -31,6 +35,81 @@
 (enable-console-print!)
 
 
+;; common step handlers
+
+(defn copy-to-clipboard [v]
+  (when js/navigator.clipboard.writeText
+        (let [clipboard js/navigator.clipboard
+
+              copy-handler (fn []
+                             (-> (.writeText clipboard (d/pretty! v))
+                                 (.then (fn [response] (.log js/console "Copied to clipboard - " response))
+                                        (fn [err]      (.warn js/console "Failed to copy to clipboard" err))))
+                             )
+              ]
+
+          (let [btn-el (dom/createDom "button" ""
+                                      "copy results to clipboard")]
+
+            (goog.events.listen btn-el goog.events.EventType.CLICK copy-handler)
+            (woof-dom/ui-add-el! btn-el)
+
+            (.focus btn-el)
+            )
+          )
+        )
+
+  )
+
+(defn common-ctx [params]
+  {
+   :log     {:fn (fn[v] (.log js/console v) v)}
+   :prn     {:fn (fn[v] (prn v) "")}
+
+   :copy-to-clipboard   {:fn copy-to-clipboard}
+
+   :wait-rest      {
+                    :fn       (fn [[v & rest]] v)
+                    :collect? true
+                    }
+
+   :ui-progress {
+                 :fn (fn [v]
+                       ;; todo: use value
+                       (let [el (dom/createDom "div" ""
+                                               "READY!")]
+
+
+                            (woof-dom/ui-add-el! el)
+                            )
+                       )
+                 }
+
+   }
+  )
+
+(defn &display-results-fn [params] (get params :wf/display-results-fn identity))
+
+(defn common-opts[params]
+  {
+   :op-handlers-map {
+                     :done  (fn [result]
+                              (.log js/console "WF DONE: " result)
+
+                              ;; handle wf results if needed
+                              (let [wf-done (&display-results-fn params)]
+                                   (wf-done result))
+
+                              )
+
+                     :error (fn [result]
+                              (.error js/console result))
+
+                     }
+
+   })
+
+
 
 ;; adds a workflow ui panel
 (defn run-wf! [wf-impl]
@@ -38,28 +117,23 @@
                   (.log js/console "RUNNING SCRAPING WF!")
                   (base/run-wf! wf-impl))]
 
-
     (if AUTO-START-WF?
       (run-fn!)
-      (let [btn-el (gdom/createDom "button" ""
-                               "run!")]
-
+      (let [btn-el (dom/createDom "button" "" "run!")]
         (goog.events.listen btn-el goog.events.EventType.CLICK run-fn!)
-        (dom/ui-add-el! btn-el)
-        )
-      )
-
+        (woof-dom/ui-add-el! btn-el)
+        ))
     )
   )
 
 
 
 (defn lun-scraping! []
-  ;; todo: meta workflow
+  ;; todo: use meta workflow
   (run-wf!
     (base/wf!
       :init []
-      :ctx [dom/dom-ctx
+      :ctx [woof-dom/dom-ctx
             scraper2/ctx-fn]
       :steps [scraper2/steps-fn]
       :opts [scraper2/opt-fn]
@@ -73,9 +147,11 @@
   ;; pass configuration to the workflow
   (let [meta-init-fn (fn [params]
                        {
+
                         :ws? false
                         :ws/skip-processed? false
 
+                        ;; on-done
                         :wf/display-results-fn (fn [wf-results]
 
                                                  (let [listings (get wf-results :domik/LISTINGS)]
@@ -93,7 +169,7 @@
       (base/wf!
         :init [meta-init-fn
                scraper/scraper-init]
-        :ctx [dom/dom-ctx
+        :ctx [woof-dom/dom-ctx
               scraper/common-ctx
               scraper/scraper-ctx]
         :steps [scraper/scraper-steps]
@@ -106,28 +182,59 @@
 
 
 
-(defn ^:export run_workflow []
+(defn blagovist-scraping! []
 
+  ;; pass configuration to the workflow
+  (let [meta-init-fn (fn [params]
+                       {
+
+                        :ws? false
+                        :ws/skip-processed? false
+
+                        ;; on-done
+                        :wf/display-results-fn (fn [wf-results]
+                                                 (.log js/console wf-results)
+                                                 )
+                        })]
+
+    (run-wf!
+      (base/wf!
+        :init [meta-init-fn
+               scraper3/scraper-init]
+        :ctx [woof-dom/dom-ctx
+              common-ctx
+              scraper3/scraper-ctx]
+        :opts [common-opts]
+
+        :steps [scraper3/scraper-steps]
+        )
+      )
+    )
+  )
+
+
+
+
+(defn ^:export run_workflow []
   (let [url (.. js/document -location -href)]
-    (dom/<scraping-ui>)
+    (woof-dom/<scraping-ui>)
 
     (cond
-
       ;; map localhost to a specific wf
-      (clojure.string/starts-with? url "http://localhost:9500")   (domik-scraping!)
+      (clojure.string/starts-with? url "http://localhost:9500")   (blagovist-scraping!)
+
+      (clojure.string/starts-with? url "https://blagovist.ua")    (blagovist-scraping!)
 
       (clojure.string/starts-with? url "http://domik.ua/")        (domik-scraping!)
 
       ;; todo: check this
       (clojure.string/starts-with? url "https://lun.ua/")         (lun-scraping!)
       :else (do
-              (let [el (gdom/createDom "h3" ""
-                                       (str "can't find scraping wf for URL: " url))]
+              (let [el (dom/createDom "h3" ""
+                                      (str "can't find scraping wf for URL: " url))]
 
-                (dom/ui-add-el! el)
-                )
-
-              )
+                (woof-dom/ui-add-el! el)
+                ))
       )
 
     )
@@ -141,3 +248,18 @@
   (.log js/console "auto-starting browser workflow")
   (run_workflow)
   )
+
+
+(defonce *initialized (volatile! false))
+
+(.requestIdleCallback js/window
+                      (fn []
+                        (when-not @*initialized
+                                  (.log js/console "auto-start scraping workflow")
+                                  (vswap! *initialized not)
+                                  (run_workflow)
+                                  )
+
+                        )
+                      )
+; window(callback[, options])

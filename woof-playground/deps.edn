@@ -78,7 +78,7 @@
            :playground { :main-opts   ["-m" "figwheel.main" "-b" "playground" "-r"] }
 
            ;; browser extension
-           :browser { :main-opts   ["-m" "figwheel.main" "-b" "browser" "-r"] }
+           :browser { :main-opts   ["-m" "figwheel.main" "-b" "browser" "-r" "--run-backend-wf"] }
            ;; this generates the code that can be run in browser
            :browser-min { :main-opts   ["-m" "figwheel.main" "-O" "advanced" "-b" "browser" ] }
 

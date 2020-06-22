@@ -20,6 +20,26 @@
   </head>
   <body>
 
+  <script>
+
+    function copyToClipboard(str, url) {
+      // console.log(str);
+
+      navigator.clipboard.writeText(str)
+              .then(() => {
+                console.log('Text copied to clipboard');
+
+                if (url) {
+                  window.open(url, '_blank')
+                }
+              })
+              .catch(err => {
+                // This can happen if the user denies clipboard permissions:
+                console.error('Could not copy text: ', err);
+              });
+
+    }
+  </script>
     <div id="app">
       <h2>🐶 woof-woof!</h2>
 
@@ -30,13 +50,43 @@
       </article>
 
       <article>
+        <h3>Scraping scripts:</h3>
+
+          <p>Run compilation for scraping: </p>
+          <code>clj -m cljs.main -w src -o resources/public/scraper.js --optimizations whitespace -c woof.browser</code>
+          <p>Run figwheel</p>
+          <code>clojure -A:fig:browser</code>
+
+          <h4>Scraping playgrounds</h4>
         <header><a href="/browser.html">Browser</a></header>
-        Figwheel sandbox for developing workflow that should run as a content script.
+        <header><a href="/browser_1.html">Browser</a></header>
+        <header><a href="/browser_2.html">blagovist</a></header>
 
-        <header style="margin-top: 1rem"><a href="/js-interop.html">JS interop</a></header>
-        Defining and running workflow from JS
+          <h4>Open site for scraping:</h4>
+
+        <pre id="injector">
+<button onclick="copyToClipboard(this.parentElement.children[this.parentElement.children.length-1].innerText.trim(), 'http://domik.ua/nedvizhimost/kiev/kupit-kvartiry.html?lim=&order=&seq=&realtType=novostrojki&extSrch=&url_region=kiev&REGIONS%5B%5D=8038500006&search_type=kupit-kvartiry&codeSearch=&PRICE_FROM=&PRICE_TO=&PRICE_CLASS=0&DAYS_AGO=1&MITRO_DISTANCE=&streetSearch=&HOUSE_NUM=&STOREY_FROM=&STOREY_TO=&ALL_AREA_FROM=&ALL_AREA_TO=&LIV_AREA_FROM=&KIT_AREA_FROM=&LAND_AREA_FROM=&LAND_AREA_TO=')">domik</button>
+<button onclick="copyToClipboard(this.parentElement.children[this.parentElement.children.length-1].innerText.trim(), 'https://blagovist.ua/uk/search/apartment/sale/r_1003091/nr_2/cur_3/kch_2')">blagovist</button>
+<!--<button onclick="copyToClipboard(this.parentElement.children[1].innerText.trim())">To Clipboard</button><code>-->
+<code>
+(function() { var $script = document.createElement('script'); $script.setAttribute("type","text/javascript"); $script.setAttribute("src", "http://localhost:9500/scraper.js"); document.body.appendChild($script); })()
+</code>
+        </pre>
+
+          <p>run wf via</p>
+          <code>woof.browser.run_workflow()</code>
+
+          <hr>
+
+
+
+        <!--  Figwheel sandbox for developing workflow that should run as a content script.-->
+
+        <!--
+          <header style="margin-top: 1rem"><a href="/js-interop.html">JS interop</a></header>
+          Defining and running workflow from JS
+        -->
       </article>
-
 
       <article>
         <header><a href="/figwheel-extra-main/auto-testing">Tests</a></header>

@@ -141,12 +141,24 @@
   )
 
 
+;;
+
 (defn <scraping-ui> []
   (let [el (dom/createDom "div" "woof-scraper-ui"
-                          "")]
+                          "")
+        ]
 
-    #_(set! (-> el .-style )
-          "")
+    ;; provide default styling
+    (set! (-> el .-style .-zIndex) "10000")
+    (set! (-> el .-style .-position) "fixed")
+    (set! (-> el .-style .-bottom) "0px")
+    (set! (-> el .-style .-left) "0px")
+    (set! (-> el .-style .-width) "100%")
+    (set! (-> el .-style .-paddingLeft) ".5rem")
+    (set! (-> el .-style .-backgroundColor) "rgba(255, 240, 240, 1)")
+    (set! (-> el .-style .-borderTop) "1px solid #000")
+
+
     ;;
     ;; add a placeholder element to dom
     (add-el! ".woof-scraper-ui" el)
@@ -155,8 +167,6 @@
 
 (defn ui-add-el! [el]
   (let [scraper-ui (.querySelector (.-body js/document) ".woof-scraper-ui")]
-
-
     (dom/appendChild scraper-ui el)
     )
   )
