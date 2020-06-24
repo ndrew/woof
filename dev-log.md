@@ -123,8 +123,30 @@ next iteration of woof alpha
 
 ## April, 2020
 
-...
+* running woof workflows on different platforms
+    - graalvm 
+    - lumo
+    - plank
+    - shadow-cljs
+    * better deps management 
+* figuring out generic key-value UI for displaying wf result
+* investigating defining workflows from JS
+* core
+    - api adjustments: proper order of init-fn chaining, better naming 
+    - started moving common woof workflows to core
+    - reducing number of files
+
 
 ## May, 2020
 
-..
+* reorganizing playground 
+* started woof-blog example
+* documentation
+
+## June, 2020
+
+* working on woof-scraper
+    - figuring out how to work with multiple woof workflows at once 
+        - treating workflows as processes 
+* figuring out project mgmt and priorities
+    - documentation
