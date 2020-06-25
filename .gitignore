@@ -26,3 +26,15 @@ woof-blog/target/**
 woof-playground/out/
 
 woof-playground/woof-server.log
+
+woof-lumo/workflow.js
+
+woof-graal/workflow
+
+woof-graal/woof-graal.iml
+
+research/
+
+woof-blog/woof-blog.iml
+
+woof-blog/blog.log
