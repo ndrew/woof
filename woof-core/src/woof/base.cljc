@@ -165,6 +165,13 @@
    }
   )
 
+(defn _default-wf-impl [init-params ctx-fn steps-fn wf-params]
+  ;; do we really need to reify it everytime? why not use constructor
+  (reify WoofWorkflow
+    (get-params [this] init-params) ;; is this really needed
+    (get-context-map [this] (ctx-fn init-params))
+    (get-steps [this] (steps-fn init-params)))
+  )
 
 
 (defn parametrized-wf!
@@ -181,45 +188,21 @@
   steps-fn      (fn [{..wf-params-map}] => {..steps-map})           - provides steps map from wf params
   "
   ([init-fn        ;; returns initial maps
-   wf-params-fn   ;;
-   opt-params-fn  ;;
-   opts-fn        ;; provides opts map via opt params
-   ctx-fn ;; provides context map from wf params
-   steps-fn       ;; provides steps map from wf params
+   wf-params-fn    ;; transforms initial map to a wf params
+   opt-params-fn   ;; transforms wf params to opt params
+   opts-fn         ;; provides opts map via opt params
+   ctx-fn          ;; provides context map from wf params
+   steps-fn        ;; provides steps map from wf params
    ]
-  (let [wf-fn (fn [params]
-                (let [nu-params (wf-params-fn params)]
-                  {
-                   :params nu-params
-                   :wf     (fn [wf-params]
-                             ;; do we really need to reify it everytime? why not use constructor
-                             (reify WoofWorkflow
-                               (get-params [this] nu-params) ;; is this really needed
-                               (get-context-map [this] (ctx-fn nu-params))
-                               (get-steps [this] (steps-fn nu-params)))
-                             )
-                   }
-                  )
-                )
-        opts-fn (fn [opts-params]
-                  (let [nu-opt-params (opt-params-fn opts-params)]
-                    {
-                     :params nu-opt-params
-                     :opts   (opts-fn nu-opt-params)
-                     })
-                  )
-        ]
-    ;; todo: do we need a fn that will create this map.
-    (WF-impl init-fn wf-fn opts-fn)
-    )
+   (parametrized-wf! init-fn wf-params-fn opt-params-fn opts-fn ctx-fn steps-fn _default-wf-impl)
   )
-  ([init-fn        ;; returns initial maps
+  ([init-fn         ;; returns initial maps
      wf-params-fn   ;; transforms initial map to a wf params
      opt-params-fn  ;; transforms wf params to opt params
      opts-fn        ;; provides opts map via opt params
      context-map-fn ;; provides context map from wf params
      steps-fn       ;; provides steps map from wf params
-     workflow-fn ;; todo: wft is workflow-fn?
+     workflow-fn    ;; provides a WoofWorkflow protocol funtion
      ]
     (let [wf-fn (fn [params]
                   (let [nu-params (wf-params-fn params)]
@@ -276,14 +259,20 @@
         | params map | params map constructor | seq/vector of params maps or its constructors
    :opts
         | opts map | opts map constructor | seq/vector of opts maps or its constructors
+   :wf-impl
+       custom wf implementation - for capturing workflows
   "
-  [& {:keys [init ctx steps opts]}]
+  [& {:keys [init ctx steps opts wf-impl]}]
 
   (let [init-fn (combine-init-fns (as-fn-list init))
         opts-fn (combine-fns (as-fn-list opts) :merge-results merge-opts-maps)
 
         ctx-fns  (as-fn-list ctx)
-        steps-fns (as-fn-list steps)]
+        steps-fns (as-fn-list steps)
+
+        wf-fn (if (nil? wf-impl) _default-wf-impl wf-impl)
+        ]
+
 
     (if (or (empty? steps-fns)
             (empty? ctx-fns))
@@ -295,7 +284,8 @@
       identity
       opts-fn
       (combine-fns ctx-fns)
-      (combine-fns steps-fns))
+      (combine-fns steps-fns)
+      wf-fn)
     )
 
   )

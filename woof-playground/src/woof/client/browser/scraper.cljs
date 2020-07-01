@@ -3,7 +3,6 @@
     [goog.object]
     [goog.dom :as dom]
     [goog.object]
-    [goog.dom.query :as query]
     [goog.dom.classes :as classes]
 
     [cljs.core.async :as async]

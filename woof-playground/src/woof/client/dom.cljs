@@ -1,10 +1,8 @@
-(ns ^:figwheel-hooks woof.client.dom
+(ns woof.client.dom
   (:require
     [goog.object]
     [goog.dom :as dom]
     [goog.object]
-    [goog.dom.query :as query]
-    [goog.dom.classes :as classes]
 
     [cljs.core.async :as async]
     [clojure.string :as str]
@@ -12,7 +10,6 @@
     [woof.base :as base]
     [woof.data :as d]
     [woof.utils :as u]
-
     ))
 
 
@@ -42,6 +39,7 @@
     )
   )
 
+
 (defn add-stylesheet [src]
 
   (let [el (dom/createElement "link")]
@@ -51,7 +49,6 @@
 
     (set! (.-onload el) (fn []
                           ; todo: check
-                          ;(js-debugger)
                           ))
 
     (dom/appendChild (.-head js/document) el)
@@ -72,7 +69,6 @@
                            (add-script src (fn []
                                              (async/put! ch {:loaded src})
                                              ))
-
                            ch
                            )
                       )
@@ -110,38 +106,11 @@
                }
 
    ;; todo: convenience wrapper for working with collection instead single css rule
-
-   :mem-k*             {
-                        :fn       (fn [o]
-                                    {(base/rand-sid "mem-k-") [:identity {:k o}]})
-                        :expands? true
-                        }
-
-   ;; kv zipping - joins keys with values
-   :*kv-zip            {
-                        :fn       (fn [[[k] vs]]
-                                    (let [ks (:k k)]
-                                         (apply assoc {} (interleave ks vs))
-                                         ))
-                        :collect? true
-                        }
-
-   :identity {:fn identity }
-
-   :collect  {
-              :fn       (fn [xs]
-                          ; (.warn js/console xs)
-                          xs)
-              :collect? true
-              }
-
-
-
    }
   )
 
 
-;;
+;; vanilla js
 
 (defn <scraping-ui> []
   (let [el (dom/createDom "div" "woof-scraper-ui"

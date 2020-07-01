@@ -1,9 +1,8 @@
-(ns ^:figwheel-hooks woof.client.browser.scraper3
+(ns woof.client.browser.scraper3
   (:require
     [goog.object]
     [goog.dom :as dom]
     [goog.object]
-    [goog.dom.query :as query]
     [goog.dom.classes :as classes]
 
     [cljs.core.async :as async]
@@ -13,10 +12,10 @@
     [woof.data :as d]
 
     [woof.client.ws :as ws]
-    [woof.client.dom :as woof-dom]
     ))
 
 
+;; accessors
 (defn &ws? [params] (get params :ws? false))
 (defn &skip-processed? [params] (get params :ws/skip-processed? false))
 
@@ -223,8 +222,6 @@
       {:start-chan (async/chan)}
       {})
     )
-
-  (.clear js/console)
   )
 
 (defn expand-limited [step-id n ]

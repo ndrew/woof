@@ -1,7 +1,9 @@
 (ns ^:figwheel-hooks woof.browser
   (:require
+
     [woof.base :as base]
     [woof.client.dom :as woof-dom]
+    [woof.client.dbg :as dbg :refer [__log]]
     [woof.data :as d]
     [woof.utils :as u]
 
@@ -22,7 +24,6 @@
 
 ;; whether to run wf automatically, or display run button
 (defonce AUTO-START-WF? true)
-
 
 ;; ns for doing in-browser scraping
 
@@ -85,6 +86,31 @@
                        )
                  }
 
+   :mem-k*             {
+                        :fn       (fn [o]
+                                    {(base/rand-sid "mem-k-") [:identity {:k o}]})
+                        :expands? true
+                        }
+
+   ;; kv zipping - joins keys with values
+   :*kv-zip            {
+                        :fn       (fn [[[k] vs]]
+                                    (let [ks (:k k)]
+                                         (apply assoc {} (interleave ks vs))
+                                         ))
+                        :collect? true
+                        }
+
+   :identity {:fn identity }
+
+   :collect  {
+              :fn       (fn [xs]
+                          ; (.warn js/console xs)
+                          xs)
+              :collect? true
+              }
+
+
    }
   )
 
@@ -114,7 +140,7 @@
 ;; adds a workflow ui panel
 (defn run-wf! [wf-impl]
   (let [run-fn! (fn []
-                  (.log js/console "RUNNING SCRAPING WF!")
+                  (__log "🚀 starting scraping wf!")
                   (base/run-wf! wf-impl))]
 
     (if AUTO-START-WF?
@@ -133,7 +159,8 @@
   (run-wf!
     (base/wf!
       :init []
-      :ctx [woof-dom/dom-ctx
+      :ctx [common-ctx
+            woof-dom/dom-ctx
             scraper2/ctx-fn]
       :steps [scraper2/steps-fn]
       :opts [scraper2/opt-fn]
@@ -197,16 +224,21 @@
                                                  )
                         })]
 
+
+    ;; (.clear js/console)
     (run-wf!
       (base/wf!
         :init [meta-init-fn
                scraper3/scraper-init]
-        :ctx [woof-dom/dom-ctx
-              common-ctx
+        :ctx [common-ctx
+              woof-dom/dom-ctx
               scraper3/scraper-ctx]
         :opts [common-opts]
 
         :steps [scraper3/scraper-steps]
+
+        ;; think better name
+        :wf-impl (dbg/dbg-wf)
         )
       )
     )
@@ -244,22 +276,33 @@
 ;;
 ;; side-effects, start wf automatically if there is certain var on the page
 
+
+;; run wf - if we are in browser playground
 (when (goog.object/get js/window "BROWSER_PLAYGROUND")
-  (.log js/console "auto-starting browser workflow")
+  (dbg/__log-start)
+  (dbg/__log-once "auto-starting browser workflow")
   (run_workflow)
   )
 
 
+
+
+;; run wf - if we are auto-scraping
 (defonce *initialized (volatile! false))
 
-(.requestIdleCallback js/window
-                      (fn []
-                        (when-not @*initialized
-                                  (.log js/console "auto-start scraping workflow")
-                                  (vswap! *initialized not)
-                                  (run_workflow)
-                                  )
+(when-not (goog.object/get js/window "BROWSER_PLAYGROUND")
+  (.requestIdleCallback js/window
+                        (fn []
+                          (when-not @*initialized
+                                    (dbg/__log-once "auto-starting browser workflow")
+                                    (vswap! *initialized not)
+                                    (run_workflow)
+                                    )
 
+                          )
                         )
-                      )
-; window(callback[, options])
+  )
+
+(defn ^:after-load on-js-reload []
+  (dbg/__log "JS RELOAD")
+  )
