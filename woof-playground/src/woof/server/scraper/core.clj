@@ -4,7 +4,7 @@
     [clojure.core.async :as async :refer [go go-loop]]
 
     [taoensso.timbre :as timbre
-     :refer [log  trace  debug  info  warn  error  fatal  report
+     :refer [log trace debug info warn error fatal report
              logf tracef debugf infof warnf errorf fatalf reportf
              spy get-env]]
 
@@ -13,14 +13,23 @@
     [compojure.route :as route]
     [compojure.handler :refer [site]]
 
+    [ring.util.response :as response]
+
+    [clojure.core.async :as async :refer [go go-loop]]
+
+
     [org.httpkit.server :as httpkit]
 
     [woof.base :as base]
     [woof.data :as d]
     [woof.utils :as u]
-    [woof.server.transport :as tr]))
+    [woof.server.transport :as tr]
+    [clojure.java.io :as io]))
 
-;; browser workflow
+
+
+
+;; browser workflow backend
 
 ;; scraping server is needed for storing scraped data on the filesystem.
 ;; currently saving will be done via websockets
@@ -42,8 +51,7 @@
 (defn build-init-evt-loop-fn [evt-loop-chan]
   (fn [_]
     {
-     ;; keep the evt loop chan
-     ::evt-loop-chan evt-loop-chan
+     ::evt-loop-chan evt-loop-chan ;; keep the evt loop chan
      }))
 
 (defn &evt-loop [params]
@@ -52,6 +60,8 @@
     (u/throw! "no ::evt-loop-chan provided in params. Ensure that init-evt-loop_ had been called" )
     )
   )
+
+
 (defn evt-loop-ctx-fn [params]
   {
    :evt-loop {
@@ -71,55 +81,58 @@
 (defn ids-msg [*state]
   [:ids (into #{} (keys (:listings @*state)))])
 
+
 (defn ws-request-fn [params request]
-  ;; per each request
-  (if-not (:websocket? request)
-    (do
-      (warn ::no-ws-support "server running not in http-kit?")
-      {:status 200 :body "websocket connecting..."})
 
-    (httpkit/with-channel
-      request ch
+  ;; fixme: figwheel doesn't pass a http kit request here, so no ws
 
-      (let [ws-id (base/rand-sid "ws-")
-            msg-out (base/make-chan (base/&chan-factory params) ws-id)
-            evt-loop (&evt-loop params)
-            *state (base/&state params)
-            ]
+  (httpkit/with-channel
+    request ch
 
-        ;; re-route out msg from wf onto a websocket
-        (go-loop []
-          (when-let [v (async/<! msg-out)]
-            (httpkit/send! ch (tr/write-transit-str v))
-            (recur)))
+    (let [ws-id (base/rand-sid "ws-")
+          msg-out (base/make-chan (base/&chan-factory params) ws-id)
+          evt-loop (&evt-loop params)
+          *state (base/&state params)
+          ]
 
-        (httpkit/on-receive ch (fn [msg]
-                                 (let [msg (tr/read-transit-str msg)]
-                                   (go
-                                     (async/put! evt-loop
-                                                 {(base/rand-sid "msg-") [:ws-msg {:ws-id ws-id
-                                                                                   :msg msg}]})
-                                     )
-
-                                   )))
-
-        (httpkit/on-close ch (fn [status]
-                               (trace ::ws-closed)
-
-                               ;; will this work for second wf?
-                               (async/close! msg-out)
-                               ))
+      (info request)
+      (info ch)
 
 
-        ;; send stored ids as initial message to client
-        (httpkit/send! ch (tr/write-transit-str {:ws-id ws-id
-                                                 :msg (ids-msg *state)
-                                                 }))
+
+      ;; re-route out msg from wf onto a websocket
+      (go-loop []
+        (when-let [v (async/<! msg-out)]
+          (httpkit/send! ch (tr/write-transit-str v))
+          (recur)))
+
+      ;; which ws impl figwheel is using
+      (httpkit/on-receive ch (fn [msg]
+                               (let [msg (tr/read-transit-str msg)]
+                                 (go
+                                   (async/put! evt-loop
+                                               {(base/rand-sid "msg-") [:ws-msg {:ws-id ws-id
+                                                                                 :msg   msg}]})
+                                   )
+
+                                 )))
+
+      (httpkit/on-close ch (fn [status]
+                             (trace ::ws-closed)
+
+                             ;; will this work for second wf?
+                             (async/close! msg-out)
+                             ))
 
 
-        )
+      ;; send stored ids as initial message to client
+      (httpkit/send! ch (tr/write-transit-str {:ws-id ws-id
+                                               :msg   (ids-msg *state)
+                                               }))
 
-      )))
+      )
+
+    ))
 
 (defn ws-init-fn [params]
   ; provide initial config here, ignore the params
@@ -128,6 +141,7 @@
             :route (compojure/routes
                      ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
                      ;(route/resources "/" {:root "public"})
+                     ;;
                      (compojure/GET "/ws" [:as req]
                        (ws-request-fn params req)
                        )
@@ -136,6 +150,7 @@
             }
    }
   )
+
 (defn &server [params]
   (::server params))
 
@@ -220,7 +235,7 @@
 ;;
 ;; wf implementation
 ;;
-(defn scraper-wf! []
+(defn scraper-wf! [& {:keys [on-stop] :or {on-stop (fn [stop-chan] (info ::wf-stopped))}}]
 ;; build-... vs
   (let [; wf dependencies
         *STATE (atom {
@@ -232,12 +247,24 @@
         EVT-LOOP (base/make-chan CHAN-FACTORY (base/rand-sid "server-loop"))
 
 
+        ;; ugly way to pass params to into api-map
+        *params (atom {})
+
         init-fns [
                   ws-init-fn
                   (build-init-evt-loop-fn EVT-LOOP)
                   (base/build-init-chan-factory-fn CHAN-FACTORY)
                   (base/build-init-state-fn *STATE)
+
+                  (fn [params]
+                    (info "peek params" params)
+                    (reset! *params params)
+                    {})
+
                   ]
+
+
+
         opt-fns [
                  (base/build-opt-state-fn *STATE)
                  (base/build-opts-chan-factory-fn CHAN-FACTORY)
@@ -260,6 +287,7 @@
                        ::start! [:start-server (&server params)]
                        })
                   ]
+        ;; todo: migrate from base/parametrized-wf!
         wf (base/parametrized-wf!
              (base/combine-init-fns init-fns)
              identity                                       ; wf-params-fn
@@ -268,24 +296,35 @@
              (base/combine-fns ctx-fns)
              (base/combine-fns steps-fn))
 
-        on-wf-stop (fn [stop-chan]
-                     (info ::wf-stopped))
+
+
         ]
 
     (base/stateful-wf
-      *STATE wf on-wf-stop
-      {
+      *STATE wf
+      :on-stop on-stop
+      ;; todo: what is nicer way to pass params to api?
+      :api {
+            ;; handle ws-request
+            :handle-ws  (fn [request]
+                          (ws-request-fn
+                            @*params
+                            request)
+                          )
 
-       :send-msg! (fn [msg]
-                    (go
-                      (async/put! EVT-LOOP {(base/rand-sid) [:test msg]})
-                      )
-                    )
-       }
+            :handle-get (fn []
+                          "Test BBBB"
+                          )
+
+
+            :send-msg!  (fn [msg]
+                          (go
+                            (async/put! EVT-LOOP {(base/rand-sid) [:test msg]})
+                            )
+                          )
+            }
       )
 
     )
   )
 
-
-;; tre

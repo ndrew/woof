@@ -361,7 +361,8 @@
                    ;; :some-api-method (fn [msg] (prn "boo"))
                    }]
 
-      (base/stateful-wf *STATE wf on-wf-stop api-map)
+      (base/stateful-wf *STATE wf :on-stop on-wf-stop
+                                  :api api-map)
       )
     )
   )

@@ -621,29 +621,45 @@
 
 
 (defn stateful-wf
-  ([*state wf on-stop]
-   (stateful-wf *state wf on-stop {}))
-  ([*state wf on-stop api-map]
-   (merge api-map
-          {
-           :wf        wf
+  [*state wf & {:keys [on-stop api] :or {on-stop (fn [stop-chan]) api {}}}]
 
-           :state     *state
+  (merge api
+         {
+          :wf        wf
 
-           :start-wf! (fn [] (run-wf! wf))
+          :state     *state
 
-           :stop-wf!  (fn []
+          :start-wf! (fn [] (run-wf! wf))
+
+          :stop-wf!  (fn
+                       ([]
                         (if-let [xtor (state-get-xtor *state)]
-                                (let [stop-ch (end! xtor)]
-                                  (on-stop stop-ch)
-                                  ;; don't return the stop channel, as it might be depleted by on-stop
-                                  ::stopped)
-                                (do
-                                  ;; <?> should we treat this as an error? or it's okay to do nothing in this case?
-                                  ::no-wf-running)))
-           }
-          )
-   )
+                          (let [stop-ch (end! xtor)]
+                            ;; use global on-stop
+                            (on-stop stop-ch)
+                            ;; don't return the stop channel, as it might be depleted by on-stop
+                            ::wf-stop-started)
+                          (do
+                            ;; <?> should we treat this as an error? or it's okay to do nothing in this case?
+                            ::no-wf-running))
+
+                        )
+                       ([on-stop]
+                        (if-let [xtor (state-get-xtor *state)]
+                          (let [stop-ch (end! xtor)]
+                            ;; use stop specific on-stop
+                            (on-stop stop-ch)
+                            ;; don't return the stop channel, as it might be depleted by on-stop
+                            ::wf-stop-started)
+                          (do
+                            ;; <?> should we treat this as an error? or it's okay to do nothing in this case?
+                            ::no-wf-running))
+                        )
+                       )
+          }
+         )
+
+
   )
 
 

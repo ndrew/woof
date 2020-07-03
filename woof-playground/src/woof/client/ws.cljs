@@ -4,7 +4,8 @@
     [cognitect.transit :as transit]
 
     [woof.data :as d]
-    [woof.utils :as u])
+    [woof.utils :as u]
+    [woof.base :as base])
 
   (:import
     goog.net.XhrIo)
@@ -12,6 +13,8 @@
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
+
+;; WEB-SOCKET COMMUNICATION
 
 ;; transit stuff
 
@@ -99,3 +102,55 @@
 
 (defn send-transit! [socket msg]
   (.send socket (write-transit msg)))
+
+
+;;
+
+;; todo: handling multiple ws-ctx
+
+(defn ws-ctx-fn [params]
+  ;; "ws:localhost:8081/ws"
+  (let [ws-chan (get params
+                     :ws/chan-fn
+                     (fn [] (base/make-chan (base/&chan-factory params) (base/rand-sid "ws-"))))
+
+
+        gen-msg-handler (get params
+                             :ws/gen-msg-handler)
+
+        msg-handler (get params
+                         :ws/msg-handler
+                         (fn [msg]))
+
+        ]
+    {
+     :ws-socket    {
+                      :fn (fn [url]
+                            (let [ch (ws-chan)
+                                  ws-msg-handler (if gen-msg-handler (gen-msg-handler)
+                                                                      msg-handler)
+
+                                  ]
+                                 ;; returns socket
+                                 (chan-connect url
+                                               :chan ch
+                                                  :on-message (fn [payload]
+                                                                (let [msg (read-transit payload)]
+                                                                     (ws-msg-handler msg)))
+                                                  )
+                                 )
+                            )
+                      }
+
+
+     :send-msg!      {
+                      :fn (fn [msg]
+                            (send-transit! (:socket msg) msg)
+
+                            (u/now)
+                            )
+                      }
+     }
+    )
+
+  )

@@ -14,80 +14,114 @@
     [clojure.core.async :as async :refer [go go-loop]]
 
     ; logging
-    [taoensso.timbre :as timbre]
-
-    [woof.server.blog.cc :as cc]
+    [taoensso.timbre :as timbre
+     :refer [;; log
+             trace debug info warn error fatal report
+             logf tracef debugf infof warnf errorf fatalf reportf
+             spy get-env]]
 
     [woof.server.log :refer [init-logging!]]
     [woof.server.transport :as tr]
-
-    ;; prototypes
-    ;[blog.preview :as preview]
+    [woof.server.scraper.core :as scraper-wf]
     )
   (:gen-class))
 
 
-;; OLD CORE TODO: migrate core
+;; this ns is used as an endpoint.
 
+
+(defonce *INITBLOCK (do
+                      (init-logging!)
+                      (timbre/info ::initialized)
+                      :logging/initialized
+                      ))
 ;;
 
-;; start command center
-(defonce *dev (atom true))
+(defn has-cli-arg? [arg]
+  (filter #(= % arg) *command-line-args*))
+
+
+(defonce *dev (atom true))            ;; whether to wrap reload ring-handler
+
+(defonce AUTO-RUN-WF?
+         (has-cli-arg? "--run-backend-wf"))
+
+
+(defonce *SERVER (atom nil))  ; store server instance
+
+
 
 (defn in-dev?
   "whether we are in dev mode, so there will be wrap-reload used"
   [] @*dev)
 
 
-; server handle
-(defonce *SERVER (atom nil))
 
-; woof command center workflow
-(defonce *cc-wf (atom nil))
+;; ----------------- reloadable wf here --------------------
 
 
+;; how to handle reloadable workflow based  ws handler?
+
+(defonce *server-wf (atom nil))
+
+(defn- init-wf! []
+  (info "[Backend]  Initializing WF")
+  (reset! *server-wf (scraper-wf/scraper-wf!))
+  (info "[Backend]  Starting WF")
+  ((:start-wf! @*server-wf)))
+
+(info (seq AUTO-RUN-WF?))
 
 
+(when (seq AUTO-RUN-WF?)
+  (if-let [old-instance @*server-wf]
+    ;; re-start wf if it's already running
+    (let [stop-wf-fn! (:stop-wf! old-instance)]
+      (info "[Backend]  Stopping WF - started")
+      (stop-wf-fn! (fn [stop-chan]
+                     (go
+                       (let [stop-signal (async/<! stop-chan)] ;; todo: timeout if stop-signal is not being sent?
+                         (info "[Backend]  Stopping WF - done!")
+                         (init-wf!)
+                         )
+                       )
+                     (info "[Backend]  Stopping WF - callback")
+                     )
+                   ))
+    ;; else
+    (init-wf!))
+    )
 
-(defonce INITIALIZATION-BLOCK
-         (do
-            (init-logging!)
-            (timbre/info ::init-server)
 
-            ;; INIT WF
-            (reset! *cc-wf (cc/cc-wf!))
-
-            ::initialized
-            ))
+;; ---------------------------------------------------------
 
 
-
+;; ring-handler for figwheel
 (compojure/defroutes
-  app
+  ring-handler
   ;; serve the application
   (compojure/GET "/" [] (response/resource-response "public/index.html"))
   ;; and it's resources
   (route/resources "/" {:root "public"})
 
-  ;; cc websocket api
-  ;; todo: wait for the wf
-  (compojure/GET "/cc" [:as req] ((:response-handler @*cc-wf) req))
-
-  (compojure/GET "/reload-cc" [:as req] (do
-                                          (reset! *cc-wf (cc/cc-wf!)
-                                          )
-
-  ;; websocket
-  #_(compojure/GET "/api/files" [:as req]
-                   (httpkit/with-channel req chan
-                                         (ws-wf! chan files-wf/prepare-content-map
-                                                 files-wf/prepare-steps)))
+  (compojure/GET "/scraper-ws" [:as request]
+    ;; call currently running server workflow
+    ((:handle-ws @*server-wf) request)
+    )
 
   ;; testing ajax calls
-  (compojure/GET "/test" [] (tr/write-transit-str "Hello from AJAX"))
+  (compojure/GET "/test" []
+    (tr/write-transit-str
+      ((:handle-get @*server-wf))
+      )
+    )
   )
 
 
+
+
+;;
+;; standalone server
 
 (defn stop-server []
   (when-not (nil? @*SERVER)
@@ -99,8 +133,8 @@
 
 (defn run-server [port]
   (let [handler (if (in-dev?)
-                  (reload/wrap-reload (site #'app)) ;; only reload when dev
-                  (site app))]
+                  (reload/wrap-reload (site #'ring-handler)) ;; only reload when dev
+                  (site ring-handler))]
 
     (reset! *SERVER (httpkit/run-server handler {:port port}))
     (info ::started port)
@@ -111,6 +145,7 @@
 
 ;; server entry point, for standalone running
 (defn -main [& args]
+  (debug ::-main)
 
   (reset! *dev false)
   (run-server 8080)

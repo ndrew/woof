@@ -7,7 +7,7 @@
     [taoensso.timbre.appenders.core :as appenders]
     ))
 
-(def log-file-name "woof.log")
+(def log-file-name "woof-server.log")
 
 (defn init-logging! []
   ; Set up the name of the log output file and delete any contents from previous runs (the
@@ -30,6 +30,11 @@
      ;; Clj only:
      ; :timestamp-opts default-timestamp-opts ; {:pattern _ :locale _ :timezone _}
      ; :output-fn default-output-fn ; (fn [data]) -> string
+
+     :timestamp-opts (assoc timbre/default-timestamp-opts
+                        :pattern "yyyy-MM-dd HH:mm:ss")
+
+     :hostname_ ""
 
      :appenders {;; The standard println appender:
                  :println {:enabled? true}

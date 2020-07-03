@@ -17,6 +17,8 @@
     ;; blagovist.ua
     [woof.client.browser.scraper3 :as scraper3]
 
+    [woof.client.ws :as ws]
+
     [cljs.core.async :refer [go] :as async]
     [cljs.core.async.interop :refer-macros [<p!]]
     ))
@@ -34,6 +36,11 @@
 
 
 (enable-console-print!)
+
+;; state
+
+(defonce chan-factory (base/chan-factory (atom {})))
+
 
 
 ;; common step handlers
@@ -208,14 +215,16 @@
   )
 
 
-
 (defn blagovist-scraping! []
 
   ;; pass configuration to the workflow
-  (let [meta-init-fn (fn [params]
+  (let [WS? true
+        meta-init-fn (fn [params]
                        {
 
-                        :ws? false
+                        ;; meta params
+                        :ws? WS?
+
                         :ws/skip-processed? false
 
                         ;; on-done
@@ -228,14 +237,38 @@
     ;; (.clear js/console)
     (run-wf!
       (base/wf!
-        :init [meta-init-fn
+        :init [(base/build-init-chan-factory-fn chan-factory)
+               meta-init-fn
+               ;; ws-init
+               (fn [params]
+                 {:ws/chan-fn (fn []
+                                (base/make-chan (base/&chan-factory params)
+                                                (base/rand-sid "ws-")))
+
+                  :ws/msg-handler (fn [msg]
+                                    (.log js/console "[WS]" msg))
+                  }
+                 )
+
                scraper3/scraper-init]
         :ctx [common-ctx
               woof-dom/dom-ctx
-              scraper3/scraper-ctx]
+              ws/ws-ctx-fn
+
+              scraper3/scraper-ctx
+              ]
         :opts [common-opts]
 
-        :steps [scraper3/scraper-steps]
+        :steps [scraper3/scraper-steps
+
+                (fn [params]
+                  (.log js/console "WWWWWWWWWWWSSSSSSSSSSSSSSSS")
+                  {
+                   ::ws [:ws-socket "ws://localhost:9500/scraper-ws"]
+                   }
+                  )
+
+                ]
 
         ;; think better name
         :wf-impl (dbg/dbg-wf)
