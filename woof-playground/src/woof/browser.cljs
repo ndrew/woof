@@ -264,7 +264,7 @@
                 (fn [params]
                   (.log js/console "WWWWWWWWWWWSSSSSSSSSSSSSSSS")
                   {
-                   ::ws [:ws-socket "ws://localhost:9500/scraper-ws"]
+                   ::ws [:ws-socket "ws://localhost:8081/scraper-ws"]
                    }
                   )
 
@@ -286,7 +286,7 @@
 
     (cond
       ;; map localhost to a specific wf
-      (clojure.string/starts-with? url "http://localhost:9500")   (blagovist-scraping!)
+      (clojure.string/starts-with? url "http://localhost")       (blagovist-scraping!)
 
       (clojure.string/starts-with? url "https://blagovist.ua")    (blagovist-scraping!)
 

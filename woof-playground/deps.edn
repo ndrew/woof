@@ -4,7 +4,7 @@
   woof-core {:local/root "../woof-core"}
 
   org.clojure/clojure        {:mvn/version "1.10.1"}
-  org.clojure/clojurescript  {:mvn/version "1.10.773"}
+  org.clojure/clojurescript  {:mvn/version "1.10.597"}
   org.clojure/core.async     {:mvn/version "1.1.587"}
 
   hiccup                     {:mvn/version "1.0.5"}
@@ -82,12 +82,19 @@
            ;; browser extension
            :browser {
                      :jvm-opts ["-Dorg.eclipse.jetty.util.log.announce=false"]
-                     :main-opts   ["-m" "figwheel.main" "-b" "browser" "-r"  "--run-backend-wf" ] }
+                     :main-opts   ["-m" "figwheel.main" "-b" "browser"
+                                   "-r"  "--run-backend-wf"
+                                   ] }
            ;; this generates the code that can be run in browser
            :browser-min { :main-opts   ["-m" "figwheel.main" "-O" "advanced" "-b" "browser" ] }
 
+           ;; not working yet
            :server {
-                    :main-opts ["-i" "scripts/server.clj"]
+                    :main-opts ["-i"
+                                "src/woof/server/core.clj"
+                                ;"scripts/server.clj"
+                                "-r"  "--run-backend-wf"
+                                ]
                     }
            }
 

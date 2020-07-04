@@ -6,11 +6,6 @@
     [compojure.route :as route]
     [compojure.handler :refer [site]]
 
-    [org.httpkit.server :as httpkit]
-
-    [ring.util.response :as response]
-    [ring.middleware.reload :as reload]
-
     [clojure.core.async :as async :refer [go go-loop]]
 
     ; logging
@@ -40,22 +35,8 @@
 (defn has-cli-arg? [arg]
   (filter #(= % arg) *command-line-args*))
 
-
-(defonce *dev (atom true))            ;; whether to wrap reload ring-handler
-
 (defonce AUTO-RUN-WF?
          (has-cli-arg? "--run-backend-wf"))
-
-
-(defonce *SERVER (atom nil))  ; store server instance
-
-
-
-(defn in-dev?
-  "whether we are in dev mode, so there will be wrap-reload used"
-  [] @*dev)
-
-
 
 ;; ----------------- reloadable wf here --------------------
 
@@ -64,13 +45,19 @@
 
 (defonce *server-wf (atom nil))
 
-(defn- init-wf! []
+;; todo: read port from command line args
+(defonce ws-cfg { :port 8081 })
+
+(info (seq AUTO-RUN-WF?) ws-cfg)
+
+
+
+;; runs the workflow
+(defn- WF! [cfg]
   (info "[Backend]  Initializing WF")
-  (reset! *server-wf (scraper-wf/scraper-wf!))
+  (reset! *server-wf (scraper-wf/scraper-wf! cfg))
   (info "[Backend]  Starting WF")
   ((:start-wf! @*server-wf)))
-
-(info (seq AUTO-RUN-WF?))
 
 
 (when (seq AUTO-RUN-WF?)
@@ -82,71 +69,34 @@
                      (go
                        (let [stop-signal (async/<! stop-chan)] ;; todo: timeout if stop-signal is not being sent?
                          (info "[Backend]  Stopping WF - done!")
-                         (init-wf!)
+                         (WF! ws-cfg)
                          )
                        )
                      (info "[Backend]  Stopping WF - callback")
                      )
                    ))
     ;; else
-    (init-wf!))
-    )
-
+    (WF! ws-cfg)
+    ))
 
 ;; ---------------------------------------------------------
 
 
-;; ring-handler for figwheel
+;; ring-handler doesn't work with websockets, but we leave this here to serve figwheel
 (compojure/defroutes
   ring-handler
-  ;; serve the application
-  (compojure/GET "/" [] (response/resource-response "public/index.html"))
-  ;; and it's resources
-  (route/resources "/" {:root "public"})
-
-  (compojure/GET "/scraper-ws" [:as request]
-    ;; call currently running server workflow
-    ((:handle-ws @*server-wf) request)
-    )
-
-  ;; testing ajax calls
-  (compojure/GET "/test" []
-    (tr/write-transit-str
-      ((:handle-get @*server-wf))
-      )
-    )
-  )
+  (route/resources "/" {:root "public"}))
 
 
-
-
-;;
-;; standalone server
-
-(defn stop-server []
-  (when-not (nil? @*SERVER)
-    ;; graceful shutdown: wait 100ms for existing requests to be finished
-    ;; :timeout is optional, when no timeout, stop immediately
-    (@*SERVER :timeout 100)
-    (reset! *SERVER nil)))
 
 
 (defn run-server [port]
-  (let [handler (if (in-dev?)
-                  (reload/wrap-reload (site #'ring-handler)) ;; only reload when dev
-                  (site ring-handler))]
-
-    (reset! *SERVER (httpkit/run-server handler {:port port}))
-    (info ::started port)
-
-    )
+  ;; run wf
+  ;; (WF! {:port port}) ;; todo: pass port into wf
   )
 
 
 ;; server entry point, for standalone running
 (defn -main [& args]
   (debug ::-main)
-
-  (reset! *dev false)
-  (run-server 8080)
-  )
+  (run-server 8081))

@@ -27,8 +27,6 @@
     [clojure.java.io :as io]))
 
 
-
-
 ;; browser workflow backend
 
 ;; scraping server is needed for storing scraped data on the filesystem.
@@ -95,8 +93,8 @@
           *state (base/&state params)
           ]
 
-      (info request)
-      (info ch)
+      ;;(info request)
+      ;;(info ch)
 
 
 
@@ -140,13 +138,16 @@
    ::server {
             :route (compojure/routes
                      ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
-                     ;(route/resources "/" {:root "public"})
+                     (route/resources "/" {:root "public"})
                      ;;
-                     (compojure/GET "/ws" [:as req]
-                       (ws-request-fn params req)
+                     (compojure/GET "/scraper-ws" [:as request]
+                       ;; (info "/scraper-ws" request)
+                       ;; (info "params" params)
+
+                       (ws-request-fn params  request)
                        )
                      )
-            :port 8081
+            :port (get params :port 8081)
             }
    }
   )
@@ -161,6 +162,8 @@
      ;; start server with the specified configuration
      :start-server {
                     :fn (fn [server]
+                          (info "[SRV] :start-server")
+
                           (let [{route :route
                                  port  :port} server]
                             ;; port
@@ -235,7 +238,7 @@
 ;;
 ;; wf implementation
 ;;
-(defn scraper-wf! [& {:keys [on-stop] :or {on-stop (fn [stop-chan] (info ::wf-stopped))}}]
+(defn scraper-wf! [cfg & {:keys [on-stop] :or {on-stop (fn [stop-chan] (info ::wf-stopped))}}]
 ;; build-... vs
   (let [; wf dependencies
         *STATE (atom {
@@ -250,20 +253,18 @@
         ;; ugly way to pass params to into api-map
         *params (atom {})
 
-        init-fns [
-                  ws-init-fn
+        init-fns [(fn [_] cfg)
                   (build-init-evt-loop-fn EVT-LOOP)
                   (base/build-init-chan-factory-fn CHAN-FACTORY)
                   (base/build-init-state-fn *STATE)
 
                   (fn [params]
-                    (info "peek params" params)
+                    ;; (info "peek params" params)
                     (reset! *params params)
                     {})
+                  ws-init-fn
 
                   ]
-
-
 
         opt-fns [
                  (base/build-opt-state-fn *STATE)
@@ -280,7 +281,6 @@
                  ]
         steps-fn [
                   ;; although we can combine steps, but let's use single step for clarity
-
                   (fn [params] ;; evt-loop-steps-fn + ws-steps-fn
                       {
                        ::evt-loop [:evt-loop (&evt-loop params)]

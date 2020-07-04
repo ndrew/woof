@@ -1,12 +1,19 @@
 ^{
   :watch-dirs ["test" "src"
-               ; "../woof-core/src"
+               ; "../woof-core/src" ;; will watcher for core work?
                ]
 
   :css-dirs ["resources/public/css"]
 
-  :auto-testing true
-  :open-url "http://[[server-hostname]]:[[server-port]]/browser.html"
+  :auto-testing false
 
+  ;; open current wf
+  :open-url "http://localhost:8081/browser_2.html"
+
+  ;; use dummy ring handler for handling reload
+  :ring-handler woof.server.core/ring-handler
+  ;; :connect-url "ws://localhost:8081/figwheel-connect"
   }
-{:main woof.browser}
+{
+ :main woof.browser
+ }
