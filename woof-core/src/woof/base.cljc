@@ -631,6 +631,7 @@
 
           :start-wf! (fn [] (run-wf! wf))
 
+          ;; todo: how to handle waiting for resources from opts-handler
           :stop-wf!  (fn
                        ([]
                         (if-let [xtor (state-get-xtor *state)]
@@ -658,8 +659,27 @@
                        )
           }
          )
+  )
 
 
+(defn auto-run-wf!
+  "runs workflow, if wf is already running, stops, waits until it is finished and then started"
+  [*wf-instance wf-constructor-fn]
+  (let [WF! (fn []
+              (reset! *wf-instance (wf-constructor-fn))
+              ;; todo: check whether wf had been properly initialized
+              ((:start-wf! @*wf-instance)))]
+    (if-let [old-instance @*wf-instance]
+      ;; re-start wf if it's already running
+      (let [stop-wf-fn! (:stop-wf! old-instance)]
+        (stop-wf-fn! (fn [stop-chan]
+                       (go
+                         (let [stop-signal (async/<! stop-chan)] ;; todo: timeout if stop-signal is not being sent?
+                           (WF!))))))
+      ;; else
+      (WF!)
+      )
+    )
   )
 
 

@@ -10,6 +10,7 @@
 
     [clojure.string :as str]
     [woof.data :as d]
+    [woof.utils :as u]
 
     [woof.client.ws :as ws]
     ))
@@ -214,15 +215,36 @@
                    }))
 
 
-
 (defn scraper-init [params]
-
   (let [ws? (&ws? params)]
     (if ws?
-      {:start-chan (async/chan)}
+      {
+       :ws/chan-fn (fn []
+                     (let [ws-chan (base/make-chan (base/&chan-factory params)
+                                                   (base/rand-sid "ws-"))]
+
+                          ws-chan)
+                     )
+
+
+       :ws/gen-msg-handler (fn []
+                             (fn [msg]
+                               (.log js/console "!!!-[WS]" msg))
+                             )
+
+       ;; what is a good way of sending message to socket
+        ;; via separate channel
+        ;; or via socket directly
+
+       ;                  :ws/msg-handler (fn [msg]
+       ;                                    (.log js/console "[WS]" msg))
+       }
+      ;{:start-chan (async/chan)}
       {})
     )
   )
+
+
 
 (defn expand-limited [step-id n ]
   {
@@ -236,6 +258,21 @@
 
 (defn scraper-ctx [params]
   {
+
+
+   :scraping-url {:fn (fn[_]
+                        [:scraping/session
+                         (str (.-location js/window))
+                         ]
+                        )}
+
+   :ws-send! {:fn (fn [[socket msg]]
+                    (ws/send-transit! socket msg)
+
+                    (u/now)
+                    )
+                 :collect? true}
+   ;;;;;;;;;;;;;;;
 
    ;; splits sid-list into
    ;; :process*           (base/expand-into :process)
@@ -331,6 +368,17 @@
                   ;; ::post-process [:post-process ::RESULT]
                   }
 
+        ws-steps {
+
+                   ;; websocket
+                   ::ws-socket [:ws-socket "ws://localhost:8081/scraper-ws"]
+
+                   ::current-url [:scraping-url nil]
+
+                   :ws/init-scraping-session [:ws-send! [::ws-socket ::current-url]]
+                   ;;::log [:log ::ws]
+                  }
+
         ]
 
     (merge
@@ -340,6 +388,8 @@
 
       ui-steps
       css-steps
+
+      ws-steps
       )
 
     )

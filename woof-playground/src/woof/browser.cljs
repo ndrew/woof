@@ -231,26 +231,21 @@
                         :wf/display-results-fn (fn [wf-results]
                                                  (.log js/console wf-results)
                                                  )
-                        })]
+                        })
+        *internal-state (atom {})
+        ]
 
+
+    ;; how to send message via ws
 
     ;; (.clear js/console)
     (run-wf!
       (base/wf!
         :init [(base/build-init-chan-factory-fn chan-factory)
+               (base/build-init-state-fn *internal-state)
                meta-init-fn
-               ;; ws-init
-               (fn [params]
-                 {:ws/chan-fn (fn []
-                                (base/make-chan (base/&chan-factory params)
-                                                (base/rand-sid "ws-")))
-
-                  :ws/msg-handler (fn [msg]
-                                    (.log js/console "[WS]" msg))
-                  }
-                 )
-
-               scraper3/scraper-init]
+               scraper3/scraper-init
+               ]
         :ctx [common-ctx
               woof-dom/dom-ctx
               ws/ws-ctx-fn
@@ -259,16 +254,7 @@
               ]
         :opts [common-opts]
 
-        :steps [scraper3/scraper-steps
-
-                (fn [params]
-                  (.log js/console "WWWWWWWWWWWSSSSSSSSSSSSSSSS")
-                  {
-                   ::ws [:ws-socket "ws://localhost:8081/scraper-ws"]
-                   }
-                  )
-
-                ]
+        :steps [scraper3/scraper-steps]
 
         ;; think better name
         :wf-impl (dbg/dbg-wf)

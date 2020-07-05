@@ -2,6 +2,7 @@
   "woof scraper server"
   (:require
     [clojure.core.async :as async :refer [go go-loop]]
+    [clojure.string :as str]
 
     [taoensso.timbre :as timbre
      :refer [log trace debug info warn error fatal report
@@ -23,8 +24,12 @@
     [woof.base :as base]
     [woof.data :as d]
     [woof.utils :as u]
+
     [woof.server.transport :as tr]
-    [clojure.java.io :as io]))
+    [woof.server.state :as state]
+
+    [clojure.java.io :as io]
+    ))
 
 
 ;; browser workflow backend
@@ -76,14 +81,12 @@
 ;; ws
 ;;
 
+
 (defn ids-msg [*state]
   [:ids (into #{} (keys (:listings @*state)))])
 
 
 (defn ws-request-fn [params request]
-
-  ;; fixme: figwheel doesn't pass a http kit request here, so no ws
-
   (httpkit/with-channel
     request ch
 
@@ -91,12 +94,18 @@
           msg-out (base/make-chan (base/&chan-factory params) ws-id)
           evt-loop (&evt-loop params)
           *state (base/&state params)
+
+          initial-data (ids-msg *state)
           ]
 
-      ;;(info request)
-      ;;(info ch)
+      (state/new-scraping-session ws-id)
+      (swap! *state assoc-in [:sessions ws-id] {:ws-id ws-id
+                                                :created (u/now)})
 
+      ;(info (d/pretty! request))
+      ;;(info (d/pretty! @*state))
 
+      ;; new-scraping-session
 
       ;; re-route out msg from wf onto a websocket
       (go-loop []
@@ -104,7 +113,6 @@
           (httpkit/send! ch (tr/write-transit-str v))
           (recur)))
 
-      ;; which ws impl figwheel is using
       (httpkit/on-receive ch (fn [msg]
                                (let [msg (tr/read-transit-str msg)]
                                  (go
@@ -123,23 +131,39 @@
                              ))
 
 
-      ;; send stored ids as initial message to client
-      (httpkit/send! ch (tr/write-transit-str {:ws-id ws-id
-                                               :msg   (ids-msg *state)
-                                               }))
+      (if initial-data
+        (httpkit/send! ch
+                       (tr/write-transit-str {:ws-id ws-id
+                                              :msg   initial-data
+                                              }))
+
+        )
 
       )
 
     ))
 
 (defn ws-init-fn [params]
-  ; provide initial config here, ignore the params
   {
    ::server {
             :route (compojure/routes
                      ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
                      (route/resources "/" {:root "public"})
                      ;;
+                     (compojure/GET "/scraping-session" []
+                       (d/pretty! @state/*scraping-session))
+
+                     (compojure/GET "/test" []
+
+                       (let [EVT-LOOP (&evt-loop params)
+                             msg (u/now)]
+                         (go
+                           (async/put! EVT-LOOP {(base/rand-sid) [:test msg]})
+                           )
+
+                         (pr-str msg)
+                         ))
+
                      (compojure/GET "/scraper-ws" [:as request]
                        ;; (info "/scraper-ws" request)
                        ;; (info "params" params)
@@ -154,6 +178,8 @@
 
 (defn &server [params]
   (::server params))
+
+
 
 (defn ws-ctx-fn [params]
   (let [chan-factory (base/&chan-factory params)
@@ -175,22 +201,8 @@
                           )
                     }
 
-     ;; wf message handling
 
-     :test         {:fn (fn [v]
-                          (prn v)
-                          v)}
-
-     :send-ids {
-                :fn (fn [server]
-
-                      #_(async/put! out-chan
-                                  [:ids (keys (:listings @*state))]
-                                  )
-
-                      )
-                }
-
+     ;;
      :ws-msg       {
                     :fn       (fn [ws-msg]
                                 (let [{ws-id :ws-id
@@ -199,9 +211,14 @@
                                       out-chan (base/get-chan chan-factory ws-id)
                                       ]
 
-
                                   (let [[t body] msg]
                                     (cond
+                                      (= :scraping/session t) (do
+                                                                (state/new-scraping-session body)
+
+                                                                {}
+                                                                )
+
                                       (= :listings t) (do
                                                         (swap! *state update-in [:listings] #(merge % body))
 
@@ -223,14 +240,41 @@
 
                                     )
 
-
-
                                   )
                                 )
                     :expands? true
                     }
 
+     ;; wf message handling
+
+     :test         {:fn (fn [v]
+                          (prn v)
+                          v)}
+
+     :send-ids {
+                :fn (fn [server]
+
+                      #_(async/put! out-chan
+                                    [:ids (keys (:listings @*state))]
+                                    )
+
+                      )
+                }
+
      }
+    )
+  )
+
+
+(defn pretty-steps [steps]
+  (let [re-curr-ns #":woof.server.scraper.core/"]
+    (reduce (fn [a [k [step-id v]]]
+              (str a
+                   (str/replace (pr-str k) re-curr-ns "::")
+                   "\t"
+                   "[" (pr-str step-id) "\t" (pr-str v) "]"
+                   "\n")
+              ) "\n" steps )
     )
   )
 
@@ -240,83 +284,68 @@
 ;;
 (defn scraper-wf! [cfg & {:keys [on-stop] :or {on-stop (fn [stop-chan] (info ::wf-stopped))}}]
 ;; build-... vs
-  (let [; wf dependencies
+  (let [
+        ;; state
         *STATE (atom {
                       :listings {}
+                      :sessions {}
                       })
-        *CHAN-STORAGE (atom {})
 
+        *CHAN-STORAGE (atom {})
         CHAN-FACTORY (base/chan-factory *CHAN-STORAGE)
+
         EVT-LOOP (base/make-chan CHAN-FACTORY (base/rand-sid "server-loop"))
 
+        wf (base/wf! :init [(fn [_] cfg)
+                            (build-init-evt-loop-fn EVT-LOOP)
+                            (base/build-init-chan-factory-fn CHAN-FACTORY)
+                            (base/build-init-state-fn *STATE)
 
-        ;; ugly way to pass params to into api-map
-        *params (atom {})
+                            ws-init-fn ;; needs to be last
+                            ]
+                     :ctx [
+                           evt-loop-ctx-fn
+                           ws-ctx-fn
+                           ]
+                     :steps [
+                             ;; although we can combine steps, but let's use single step for clarity
+                             (fn [params] ;; evt-loop-steps-fn + ws-steps-fn
+                               {
+                                ::evt-loop [:evt-loop (&evt-loop params)]
+                                ::start!   [:start-server (&server params)]
+                                })
+                             ]
+                     :opts [
+                            (base/build-opt-state-fn *STATE)
+                            (base/build-opts-chan-factory-fn CHAN-FACTORY)
+                            error-handling-opts
+                            (base/build-opt-on-done (fn [_ _]
+                                                      (info ::shutdown-server)
+                                                      ;; force instant server shutdown
+                                                      ((:shutdown @*STATE) :timeout 0)))
+                            ]
 
-        init-fns [(fn [_] cfg)
-                  (build-init-evt-loop-fn EVT-LOOP)
-                  (base/build-init-chan-factory-fn CHAN-FACTORY)
-                  (base/build-init-state-fn *STATE)
+                     :wf-impl (base/capturing-workflow-fn
+                                :context-map-fn (fn [ctx-map]
+                                                  ;; (log-ctx ctx-map)
+                                                  ctx-map)
+                                :steps-fn (fn [steps]
 
-                  (fn [params]
-                    ;; (info "peek params" params)
-                    (reset! *params params)
-                    {})
-                  ws-init-fn
+                                            (info ::steps
+                                                  (pretty-steps steps))
 
-                  ]
-
-        opt-fns [
-                 (base/build-opt-state-fn *STATE)
-                 (base/build-opts-chan-factory-fn CHAN-FACTORY)
-                 error-handling-opts
-                 (base/build-opt-on-done (fn [_ _]
-                                             (info ::shutdown-server)
-                                             ((:shutdown @*STATE))
-                                             ))
-                 ]
-        ctx-fns [
-                 evt-loop-ctx-fn
-                 ws-ctx-fn
-                 ]
-        steps-fn [
-                  ;; although we can combine steps, but let's use single step for clarity
-                  (fn [params] ;; evt-loop-steps-fn + ws-steps-fn
-                      {
-                       ::evt-loop [:evt-loop (&evt-loop params)]
-                       ::start! [:start-server (&server params)]
-                       })
-                  ]
-        ;; todo: migrate from base/parametrized-wf!
-        wf (base/parametrized-wf!
-             (base/combine-init-fns init-fns)
-             identity                                       ; wf-params-fn
-             identity                                       ; opt-params-fn
-             (base/combine-fns opt-fns :merge-results base/merge-opts-maps)
-             (base/combine-fns ctx-fns)
-             (base/combine-fns steps-fn))
-
-
-
+                                            steps)
+                                :params (fn [params]
+                                          ;;(log-init-params params)
+                                          params
+                                          )
+                                )
+                     )
         ]
-
     (base/stateful-wf
       *STATE wf
       :on-stop on-stop
-      ;; todo: what is nicer way to pass params to api?
       :api {
-            ;; handle ws-request
-            :handle-ws  (fn [request]
-                          (ws-request-fn
-                            @*params
-                            request)
-                          )
-
-            :handle-get (fn []
-                          "Test BBBB"
-                          )
-
-
             :send-msg!  (fn [msg]
                           (go
                             (async/put! EVT-LOOP {(base/rand-sid) [:test msg]})
@@ -328,3 +357,12 @@
     )
   )
 
+
+;; ----------------- reloadable wf here --------------------
+
+
+
+(when state/AUTO-RUN-WF?
+  (base/auto-run-wf! state/*server-wf #(scraper-wf! state/ws-cfg)))
+
+;; ---------------------------------------------------------
