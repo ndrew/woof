@@ -32,17 +32,11 @@ Sandbox for running/defying woof workflows.
 
 Idea is to explore possibilities of using a generic UI for presenting workflow results/definining workflows/etc. 
 
+
 ##### [woof-blog](woof-blog/)
 
 static site generator example
 
-
-#### Examples of running woof workflows in different runtimes
-
-* [woof-graal](woof-graal/README.md)
-* [woof-lumo](woof-lumo/README.md)
-* [woof-plank](woof-plank/README.md)
-* [woof-shadow](woof-shadow/README.md)
 
 ### License
 

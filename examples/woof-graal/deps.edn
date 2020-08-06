@@ -10,8 +10,8 @@
         org.clojure/clojure        {:mvn/version "1.10.2-alpha1"}
         org.clojure/core.async     {:mvn/version "1.1.587"}
 
-
-        woof-core {:local/root "../woof-core"}
+        ;; refer woof localy 
+        woof-core {:local/root "../../woof-core"}
         }
 
  :aliases {

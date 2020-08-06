@@ -1,4 +1,4 @@
-## `woof-shadow`
+### `woof-shadow`
 
 Example of running woof workflow with [shadow-cljs](https://shadow-cljs.org/)
 
