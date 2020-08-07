@@ -42,3 +42,7 @@ woof-blog/blog.log
 woof-core/woof-core.iml
 
 woof-playground/woof-playground.iml
+
+examples/woof-graal/woof-graal.iml
+
+examples/woof-graal/workflow

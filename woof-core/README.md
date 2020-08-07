@@ -8,4 +8,4 @@ run tests in clojure:
     
 run tests in cljs:
 
-    clojure -A:dev:clsj-test 
+    clojure -A:dev:cljs-test 

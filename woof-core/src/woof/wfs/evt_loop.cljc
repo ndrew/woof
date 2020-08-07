@@ -3,12 +3,17 @@
     [woof.utils :as u]))
 
 
+(defn build-evt-loop-init-map [evt-loop-chan]
+  {
+   ;; keep the evt loop chan
+   ::evt-loop-chan evt-loop-chan
+   })
+
+
 (defn build-evt-loop-init-fn [evt-loop-chan]
-  (fn [_]
-    {
-     ;; keep the evt loop chan
-     ::evt-loop-chan evt-loop-chan
-     }))
+  (let [init-map (build-evt-loop-init-map evt-loop-chan)]
+    (fn [_] init-map)))
+
 
 ;; params-getter
 (defn &evt-loop [params]
