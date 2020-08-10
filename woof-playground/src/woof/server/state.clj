@@ -24,15 +24,21 @@
 
 (defonce ws-cfg { :port 8081 }) ;; todo: read port from command line args
 
-(defonce *server-wf (atom nil)) ;; move this to separate ns
 
+;; todo: routing of which backend wf to run
+
+(defonce *server-wf (atom nil)) ;; move this to separate ns
 
 (defonce *scraping-session (atom {}))
 
-
-(defn new-scraping-session [id]
-  (swap! *scraping-session assoc id {
-                                     :id id
-                                     :created (u/now)
-                                     })
-  )
+(defn get-scraping-session [id]
+  (if-let [session (get @*scraping-session id)]
+    session
+    (swap! *scraping-session assoc id {
+                                       :id id
+                                       :created (u/now)
+                                       :data []
+                                       :summary {}
+                                       })
+    )
+ )

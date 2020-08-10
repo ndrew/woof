@@ -84,6 +84,9 @@
                      :jvm-opts ["-Dorg.eclipse.jetty.util.log.announce=false"]
                      :main-opts   ["-m" "figwheel.main" "-b" "browser"
                                    "-r"  "--run-backend-wf"
+                                   ;; todo: pass port here
+                                   ;; todo: maybe use more specific key instead of '--run-backend-wf'
+                                      ;; or implement dispatching by wf id
                                    ] }
            ;; this generates the code that can be run in browser
            :browser-min { :main-opts   ["-m" "figwheel.main" "-O" "advanced" "-b" "browser" ] }

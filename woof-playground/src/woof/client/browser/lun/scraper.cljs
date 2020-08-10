@@ -1,5 +1,5 @@
 (ns ^:figwheel-hooks ^:figwheel-always
-  woof.client.browser.scraper2
+  woof.client.browser.lun.scraper
   (:require
     [goog.object]
     [goog.dom :as dom]

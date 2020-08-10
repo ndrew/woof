@@ -9,13 +9,23 @@
 
     [goog.dom :as dom]
 
-    ;; todo: use ns per url
+
+    [woof.client.browser.scraper.ws :as scraping-test-ws]
+
+    ;; auto.ria.com
+    [woof.client.browser.autoria.scraper :as autoria-scraper]
     ;; domik
-    [woof.client.browser.scraper :as scraper]
+    [woof.client.browser.domik.scraper :as domik-scraper]
     ;; lun
-    [woof.client.browser.scraper2 :as scraper2]
+    [woof.client.browser.lun.scraper :as lun-scraper]
     ;; blagovist.ua
-    [woof.client.browser.scraper3 :as scraper3]
+    [woof.client.browser.blago.scraper :as blago-scraper]
+
+
+    ;; common wf
+
+    [woof.wfs.evt-loop :as evt-loop]
+
 
     [woof.client.ws :as ws]
 
@@ -24,74 +34,46 @@
     ))
 
 
-;; whether to run wf automatically, or display run button
-(defonce AUTO-START-WF? true)
-
 ;; ns for doing in-browser scraping
 
 ;; for now, build as :browser-min and inject in the host page as
 ;   (function() { var $script = document.createElement('script'); $script.setAttribute("type","text/javascript"); $script.setAttribute("src", "http://localhost:9500/cljs-out/browser-main.js"); document.body.appendChild($script); })()
-
 ;; or copy page contents into browser.html
 
-
 (enable-console-print!)
+
+
+;; whether to run wf automatically, or display run button
+(defonce AUTO-START-WF? true)
+
+
+
 
 ;; state
 
 (defonce chan-factory (base/chan-factory (atom {})))
 
 
-
 ;; common step handlers
 
-(defn copy-to-clipboard [v]
-  (when js/navigator.clipboard.writeText
-        (let [clipboard js/navigator.clipboard
-
-              copy-handler (fn []
-                             (-> (.writeText clipboard (d/pretty! v))
-                                 (.then (fn [response] (.log js/console "Copied to clipboard - " response))
-                                        (fn [err]      (.warn js/console "Failed to copy to clipboard" err))))
-                             )
-              ]
-
-          (let [btn-el (dom/createDom "button" ""
-                                      "copy results to clipboard")]
-
-            (goog.events.listen btn-el goog.events.EventType.CLICK copy-handler)
-            (woof-dom/ui-add-el! btn-el)
-
-            (.focus btn-el)
-            )
-          )
-        )
-
-  )
 
 (defn common-ctx [params]
   {
    :log     {:fn (fn[v] (.log js/console v) v)}
    :prn     {:fn (fn[v] (prn v) "")}
 
-   :copy-to-clipboard   {:fn copy-to-clipboard}
-
    :wait-rest      {
                     :fn       (fn [[v & rest]] v)
                     :collect? true
                     }
 
-   :ui-progress {
-                 :fn (fn [v]
-                       ;; todo: use value
-                       (let [el (dom/createDom "div" ""
-                                               "READY!")]
-
-
-                            (woof-dom/ui-add-el! el)
-                            )
-                       )
-                 }
+   :wait-steps {
+                :fn (fn [[steps & rest]]
+                      steps
+                      )
+                :collect? true
+                :expands? true
+                }
 
    :mem-k*             {
                         :fn       (fn [o]
@@ -117,14 +99,63 @@
               :collect? true
               }
 
-
    }
   )
 
+(defn copy-to-clipboard [v]
+  (when js/navigator.clipboard.writeText
+    (let [clipboard js/navigator.clipboard
+
+          copy-handler (fn []
+                         (-> (.writeText clipboard (d/pretty! v))
+                             (.then (fn [response] (.log js/console "Copied to clipboard - " response))
+                                    (fn [err]      (.warn js/console "Failed to copy to clipboard" err))))
+                         )
+          ]
+
+      (let [btn-el (dom/createDom "button" ""
+                                  "copy results to clipboard")]
+
+        (goog.events.listen btn-el goog.events.EventType.CLICK copy-handler)
+        (woof-dom/ui-add-el! btn-el)
+
+        (.focus btn-el)
+        )
+      )
+    )
+
+  )
+
+(defn browser-ctx [params]
+  {
+   :copy-to-clipboard   {:fn copy-to-clipboard}
+
+   :ui-progress {
+                 :fn (fn [v]
+                       ;; todo: use value
+                       (let [el (dom/createDom "div" ""
+                                               "READY!")]
+
+
+                            (woof-dom/ui-add-el! el)
+                            )
+                       )
+                 }
+   }
+  )
+
+
 (defn &display-results-fn [params] (get params :wf/display-results-fn identity))
+
+(defonce *running-wf (atom nil))
 
 (defn common-opts[params]
   {
+   :before-process  (fn [wf-chan xtor]   ;; swf-bp-store-xtor
+                      (reset! *running-wf xtor)
+                      ;; (swap! *state assoc-in [:runtime :xtor] xtor)
+                      :ok)
+
    :op-handlers-map {
                      :done  (fn [result]
                               (.log js/console "WF DONE: " result)
@@ -167,10 +198,11 @@
     (base/wf!
       :init []
       :ctx [common-ctx
+            browser-ctx
             woof-dom/dom-ctx
-            scraper2/ctx-fn]
-      :steps [scraper2/steps-fn]
-      :opts [scraper2/opt-fn]
+            lun-scraper/ctx-fn]
+      :steps [lun-scraper/steps-fn]
+      :opts [lun-scraper/opt-fn]
       )
     )
   )
@@ -202,12 +234,12 @@
     (run-wf!
       (base/wf!
         :init [meta-init-fn
-               scraper/scraper-init]
+               domik-scraper/scraper-init]
         :ctx [woof-dom/dom-ctx
-              scraper/common-ctx
-              scraper/scraper-ctx]
-        :steps [scraper/scraper-steps]
-        :opts [scraper/common-opt]
+              domik-scraper/common-ctx
+              domik-scraper/scraper-ctx]
+        :steps [domik-scraper/scraper-steps]
+        :opts [domik-scraper/common-opt]
         )
       )
     )
@@ -233,38 +265,157 @@
                                                  )
                         })
         *internal-state (atom {})
+
+        wf-impl (base/wf!
+          :init [(base/build-init-chan-factory-fn chan-factory)
+                 (base/build-init-state-fn *internal-state)
+                 meta-init-fn
+                 blago-scraper/scraper-init
+                 ]
+          :ctx [common-ctx
+                browser-ctx
+                woof-dom/dom-ctx
+                ws/ws-ctx-fn
+
+                blago-scraper/scraper-ctx
+                ]
+          :opts [common-opts]
+
+          :steps [blago-scraper/scraper-steps]
+
+          ;; think better name
+          :wf-impl (dbg/dbg-wf)
+          )
         ]
 
 
+    (.log js/console
+
+          (run-wf!
+            wf-impl
+            ))
     ;; how to send message via ws
 
     ;; (.clear js/console)
-    (run-wf!
-      (base/wf!
-        :init [(base/build-init-chan-factory-fn chan-factory)
-               (base/build-init-state-fn *internal-state)
-               meta-init-fn
-               scraper3/scraper-init
-               ]
-        :ctx [common-ctx
-              woof-dom/dom-ctx
-              ws/ws-ctx-fn
-
-              scraper3/scraper-ctx
-              ]
-        :opts [common-opts]
-
-        :steps [scraper3/scraper-steps]
-
-        ;; think better name
-        :wf-impl (dbg/dbg-wf)
-        )
+    #_(run-wf!
+      wf-impl
       )
     )
   )
 
+(defn autoria-sraping! []
+  ;; pass configuration to the workflow
+  (let [WS? true
+        meta-init-fn (fn [params]
+                       {
+
+                        ;; meta params
+                        :ws? WS?
+
+                        :ws/skip-processed? false
+
+                        ;; on-done
+                        :wf/display-results-fn (fn [wf-results]
+                                                 (.log js/console wf-results)
+                                                 )
+                        })
+
+        *internal-state (atom {})
+
+        wf-impl (base/wf!
+                  :init [(base/build-init-chan-factory-fn chan-factory)
+                         (base/build-init-state-fn *internal-state)
+                         meta-init-fn
+                         autoria-scraper/evt-loop-init
+                         autoria-scraper/scraper-init
+                         ]
+                  :ctx [common-ctx
+                        browser-ctx
+                        woof-dom/dom-ctx
+                        ws/ws-ctx-fn
+
+                        autoria-scraper/scraper-ctx
+                        ]
+                  :opts [common-opts]
+
+                  :steps [autoria-scraper/scraper-steps]
+
+                  ;; think better name
+                  :wf-impl (dbg/dbg-wf)
+                  )
+        ]
+
+    (run-wf! wf-impl)
+    ))
 
 
+;; return only channel, :ws/gen-msg-handler should be
+(defn _ws-init [params]
+  (let [chan-factory (base/&chan-factory params)]
+    {
+     :ws/chan-fn (fn []
+                   (let [ws-chan (base/make-chan chan-factory
+                                                 (base/rand-sid "ws-"))]
+                        ws-chan))
+     :ws/gen-msg-handler (fn []
+                           (u/throw! "scraping wf needs to specify it's own :ws/gen-msg-handler")
+                           )
+     })
+  )
+
+(defn scrapping-test! []
+
+  ;; pass configuration to the workflow
+  (let [meta-init-fn (fn [params]
+                       {
+                        ;; meta params
+                        :ws? true
+                        ;; on-done
+                        :wf/display-results-fn (fn [wf-results]
+                                                 (.log js/console wf-results))
+                        })
+
+        *internal-state (atom {})
+        wf-impl (base/wf!
+                  :init [(base/build-init-chan-factory-fn chan-factory)
+                         (evt-loop/build-evt-loop-init-fn (base/make-chan chan-factory (base/rand-sid "evt-")))
+
+                         (base/build-init-state-fn *internal-state)
+
+                         meta-init-fn
+
+                         _ws-init
+
+                         scraping-test-ws/scraper-init
+                         ]
+
+                  :ctx [
+                        common-ctx
+                        browser-ctx
+                        woof-dom/dom-ctx
+
+                        ws/ws-ctx-fn
+
+                        scraping-test-ws/scraper-ctx
+                        ]
+                  :opts [
+                         common-opts
+                         (base/build-opts-chan-factory-fn chan-factory)
+                         ]
+
+                  :steps [scraping-test-ws/scraper-steps]
+
+                  ;; think better name
+                  :wf-impl (dbg/dbg-wf)
+                  )
+        ]
+
+    (run-wf! wf-impl)
+    )
+  )
+
+
+;; export runner workflow to be accessible from console dev tools
 
 (defn ^:export run_workflow []
   (let [url (.. js/document -location -href)]
@@ -272,14 +423,14 @@
 
     (cond
       ;; map localhost to a specific wf
-      (clojure.string/starts-with? url "http://localhost")       (blagovist-scraping!)
+      (clojure.string/starts-with? url "http://localhost")        (scrapping-test!)
 
+      ;; dispatch url to a corresponding scraper
+      (clojure.string/starts-with? url "https://auto.ria.com")    (autoria-sraping!)
       (clojure.string/starts-with? url "https://blagovist.ua")    (blagovist-scraping!)
-
       (clojure.string/starts-with? url "http://domik.ua/")        (domik-scraping!)
-
-      ;; todo: check this
       (clojure.string/starts-with? url "https://lun.ua/")         (lun-scraping!)
+
       :else (do
               (let [el (dom/createDom "h3" ""
                                       (str "can't find scraping wf for URL: " url))]
@@ -292,17 +443,26 @@
 
   )
 
-;;
-;; side-effects, start wf automatically if there is certain var on the page
+;; export the function to stop the workflow
+(defn ^:export stop_workflow []
+  (when-let [xtor @*running-wf]
 
-
-;; run wf - if we are in browser playground
-(when (goog.object/get js/window "BROWSER_PLAYGROUND")
-  (dbg/__log-start)
-  (dbg/__log-once "auto-starting browser workflow")
-  (run_workflow)
+    (let [end-chan (base/end! xtor)]
+      (.log js/console "browser wf: Stopping WF" end-chan)))
   )
 
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; side-effects, start wf automatically if there is certain var on the page
+;;
+
+;; start wf automatically - if we are in browser playground
+(when (goog.object/get js/window "BROWSER_PLAYGROUND")
+  (dbg/__log-start)
+  ;(dbg/__log-once "auto-starting browser workflow")
+  (run_workflow))
 
 
 
@@ -313,7 +473,7 @@
   (.requestIdleCallback js/window
                         (fn []
                           (when-not @*initialized
-                                    (dbg/__log-once "auto-starting browser workflow")
+                                    ;(dbg/__log-once "auto-starting browser workflow")
                                     (vswap! *initialized not)
                                     (run_workflow)
                                     )
@@ -322,6 +482,6 @@
                         )
   )
 
+
 (defn ^:after-load on-js-reload []
-  (dbg/__log "JS RELOAD")
-  )
+  (dbg/__log "browser wf: JS RELOAD"))

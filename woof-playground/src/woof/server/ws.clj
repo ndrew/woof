@@ -111,10 +111,10 @@
      :in-fn     (fn [ws-id broadcast-chan msg-envelope]
                   (let [msg (tr/read-transit-str msg-envelope)]
                     ;; re-route ws messages to workflow loop if needed
-                    (receive-msg-fn ws-id broadcast-chan msg-envelope)))
+                    (receive-msg-fn ws-id broadcast-chan msg)))
 
      :out-fn    (fn [ws-id msg]
-                  (let [msg-envelope (send-msg-fn ws-id msg)]
+                  (if-let [msg-envelope (send-msg-fn ws-id msg)]
                     (tr/write-transit-str msg-envelope)))
 
 

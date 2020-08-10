@@ -2,12 +2,12 @@
   (:require
     [woof.base :as base]
 
-    [cljs.core.async :as async]
     [clojure.string :as str]
     [woof.utils :as u]))
 
+;; capturing wf with nicer logging
 
-;; woof.client.dbg
+
 
 (defn log-ctx [ctx-map]
   (.groupCollapsed js/console "CTX")
@@ -18,14 +18,13 @@
 (defn log-steps [steps]
   (.groupCollapsed js/console "STEPS")
     (.log js/console "STEPS" steps)
-  (.groupEnd js/console)
-  )
+  (.groupEnd js/console))
+
 
 (defn log-init-params [params]
   (.groupCollapsed js/console "INIT PARAMS")
     (.log js/console params)
-  (.groupEnd js/console)
-  )
+  (.groupEnd js/console))
 
 
 (def _log-once_impl (memoize (fn [s]
@@ -47,6 +46,7 @@
 (defn __log-end []
   (.groupEnd js/console)
   )
+
 
 (defn dbg-wf []
   (base/capturing-workflow-fn

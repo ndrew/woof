@@ -104,23 +104,28 @@
   (.send socket (write-transit msg)))
 
 
-;;
 
-;; todo: handling multiple ws-ctx
 
+;; todo: handling multiple ws-ctx in the same wf
+
+;; :ws/chan-fn          (fn [] ...)     => channel
+;; :ws/gen-msg-handler  (fn [] ... )    => (fn [msg-envelope] ...)
+;; :ws/msg-handler      (fn [msg] ... ) => ...
 (defn ws-ctx-fn [params]
-  ;; "ws:localhost:8081/ws"
   (let [ws-chan (get params
                      :ws/chan-fn
-                     (fn [] (base/make-chan (base/&chan-factory params) (base/rand-sid "ws-"))))
+                     (fn []
+                       (.warn js/console "no :ws/chan-fn provided. creating channel with rand-sid")
+                       (base/make-chan (base/&chan-factory params) (base/rand-sid "ws-"))))
 
 
-        gen-msg-handler (get params
-                             :ws/gen-msg-handler)
+        ;; ;; todo: :ws/gen-msg-handler can be null
+        gen-msg-handler (get params :ws/gen-msg-handler)
 
-        msg-handler (get params
-                         :ws/msg-handler
-                         (fn [msg]))
+        msg-handler (get params :ws/msg-handler
+                         (fn [msg]
+                           ;; todo: handle case when no :ws/msg-handler is passed
+                           ))
 
         ]
     {
@@ -134,7 +139,9 @@
                                  ;; returns socket
                                  (chan-connect url
                                                :chan ch
-                                                  :on-message (fn [payload]
+
+                                               ;; :on-init :on-exit
+                                               :on-message (fn [payload]
                                                                 (let [msg (read-transit payload)]
                                                                      (ws-msg-handler msg)))
                                                   )
@@ -143,13 +150,13 @@
                       }
 
 
-     :send-msg!      {
-                      :fn (fn [msg]
-                            (send-transit! (:socket msg) msg)
-
-                            (u/now)
-                            )
-                      }
+     ;; for now just
+     ;:send-msg!      {
+     ;                 :fn (fn [msg]
+     ;                       (send-transit! (:socket msg) msg)
+     ;                       (u/now)
+     ;                       )
+     ;                 }
      }
     )
 

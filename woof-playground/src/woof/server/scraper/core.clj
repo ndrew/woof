@@ -28,7 +28,11 @@
     [woof.server.transport :as tr]
     [woof.server.state :as state]
 
+    [woof.server.ws :as WS]
+
     [clojure.java.io :as io]
+
+    [woof.wfs.evt-loop :as evt-loop]
     ))
 
 
@@ -38,74 +42,86 @@
 ;; currently saving will be done via websockets
 
 
-(defn error-handling-opts [params]
-  {
-   ;; log errors
-   :op-handlers-map {
-                     :error   (fn [err] (error err))
-                     ;:process (fn [result] (info ::process "\n" (d/pretty result)))
-                     ;:done    (fn [result])
-                     }
-   })
 
 ;;
-;; init loop:
-;;
-(defn build-init-evt-loop-fn [evt-loop-chan]
-  (fn [_]
-    {
-     ::evt-loop-chan evt-loop-chan ;; keep the evt loop chan
-     }))
-
-(defn &evt-loop [params]
-  (if-let [evt-loop (get params ::evt-loop-chan)]
-    evt-loop
-    (u/throw! "no ::evt-loop-chan provided in params. Ensure that init-evt-loop_ had been called" )
-    )
-  )
-
-
-(defn evt-loop-ctx-fn [params]
-  {
-   :evt-loop {
-              :fn       (fn [in-chan] in-chan)
-              :infinite true
-              :expands? true
-              }
-   }
-  )
-
-
-
-;;
-;; ws
+;; ws communication
 ;;
 
+;; state modifiers
 
 (defn ids-msg [*state]
   [:ids (into #{} (keys (:listings @*state)))])
 
+;; accessors
+
+(defn &broadcast-mult [params]
+  (if-let [mult (get params ::mult)]
+    mult
+    (u/throw! "no ::mult provided in params. Ensure that `ws-broadcast-init-fn` had been called in :init" ))
+  )
+
+(defn &broadcast-chan [params]
+  (if-let [mult-chan (get params ::mult-chan)]
+    mult-chan
+    (u/throw! "no ::mult-chan provided in params. Ensure that `ws-broadcast-init-fn` had been called in :init" ))
+
+  )
+
 
 (defn ws-request-fn [params request]
-  (httpkit/with-channel
+
+  (let [evt-loop (evt-loop/&evt-loop params)
+
+        broadcast-mult (&broadcast-mult params)
+
+        ;; re-routes ws msg to a workflow
+        receive-msg-fn (fn [ws-id broadcast-chan msg]
+                         (info ::WS ws-id msg)
+                         (go
+                           (async/put! evt-loop
+                                       {(base/rand-sid "msg-") [:ws-msg {:ws-id ws-id
+                                                                         :msg   msg}]})
+                           )
+
+                         )
+
+        ;; prepares msg to be send to a ws
+        send-msg-fn (fn [ws-id msg]
+                      ;; handle case if msg is null - for initial data send
+                      (when msg
+                        {:ws-id ws-id
+                         :msg msg}
+                        )
+                      )
+
+
+        ]
+    (WS/broadcast-ws-request-fn params
+                                  broadcast-mult
+                                  receive-msg-fn
+                                  send-msg-fn
+                                  )
+
+    )
+
+  #_(httpkit/with-channel
     request ch
 
-    (let [ws-id (base/rand-sid "ws-")
+    (let [;; generate id for current ws session
+          ws-id (base/rand-sid "ws-")
           msg-out (base/make-chan (base/&chan-factory params) ws-id)
-          evt-loop (&evt-loop params)
-          *state (base/&state params)
+          evt-loop (evt-loop/&evt-loop params)
+          ;; *state (base/&state params)
 
-          initial-data (ids-msg *state)
+          ;; do not send initially data
+          initial-data nil ;(ids-msg *state)
           ]
 
-      (state/new-scraping-session ws-id)
-      (swap! *state assoc-in [:sessions ws-id] {:ws-id ws-id
+
+      ;; why track these changes
+      #_(swap! *state assoc-in [:sessions ws-id] {:ws-id ws-id
                                                 :created (u/now)})
 
-      ;(info (d/pretty! request))
-      ;;(info (d/pretty! @*state))
-
-      ;; new-scraping-session
 
       ;; re-route out msg from wf onto a websocket
       (go-loop []
@@ -124,7 +140,7 @@
                                  )))
 
       (httpkit/on-close ch (fn [status]
-                             (trace ::ws-closed)
+                             (info ::ws-closed)
 
                              ;; will this work for second wf?
                              (async/close! msg-out)
@@ -136,50 +152,161 @@
                        (tr/write-transit-str {:ws-id ws-id
                                               :msg   initial-data
                                               }))
-
         )
 
       )
 
     ))
 
+
+(defn ws-broadcast-init-fn [params]
+  (let [CHAN-FACTORY (base/&chan-factory params)
+
+        WS-MSG-CHAN (base/make-chan CHAN-FACTORY (base/rand-sid "scrape-ws-"))
+        WS-MSG-MULT (async/mult WS-MSG-CHAN)]
+    {
+     ::mult WS-MSG-MULT
+     ::mult-chan WS-MSG-CHAN
+     }
+    )
+  )
+
+(defn ws-broadcast-ctx [params]
+  (let [broadcast-chan (&broadcast-chan params)]
+    {
+     :ws-broadcast {:fn (fn [new-v]
+                          (async/put! broadcast-chan new-v)
+                          new-v)
+                    }
+     }
+    )
+
+  )
+
+
 (defn ws-init-fn [params]
-  {
-   ::server {
-            :route (compojure/routes
-                     ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
-                     (route/resources "/" {:root "public"})
-                     ;;
-                     (compojure/GET "/scraping-session" []
-                       (d/pretty! @state/*scraping-session))
+  (let [PORT (get params :port 8081)
+        ;; for now, use the global scrapping session atom
+        *SCRAPING-SESSION state/*scraping-session
 
-                     (compojure/GET "/test" []
+        ]
+    {
+     ;; define routes for scraping workflow
+     ::server {
+               :route (compojure/routes
+                        ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
+                        (route/resources "/" {:root "public"})
 
-                       (let [EVT-LOOP (&evt-loop params)
-                             msg (u/now)]
-                         (go
-                           (async/put! EVT-LOOP {(base/rand-sid) [:test msg]})
-                           )
+                        (compojure/GET "/scraping-session" []
+                          (d/pretty! @*SCRAPING-SESSION))
 
-                         (pr-str msg)
-                         ))
+                        (compojure/GET "/clear-scraping-session" []
+                          (reset! *SCRAPING-SESSION {})
+                          (d/pretty! @*SCRAPING-SESSION))
 
-                     (compojure/GET "/scraper-ws" [:as request]
-                       ;; (info "/scraper-ws" request)
-                       ;; (info "params" params)
+                        (compojure/GET "/test" []
+                          (let [EVT-LOOP (evt-loop/&evt-loop params)
+                                msg (u/now)]
+                            (go
+                              (async/put! EVT-LOOP {(base/rand-sid)
+                                                    [:ws-broadcast msg]
+                                                    })
+                              )
 
-                       (ws-request-fn params  request)
-                       )
-                     )
-            :port (get params :port 8081)
-            }
-   }
+                            (pr-str msg)
+                            ))
+
+                        (compojure/GET "/scraper-ws" [:as request]
+                          ;; (info "/scraper-ws" request)
+                          ;; (info "params" params)
+
+                          (ws-request-fn params  request)
+                          )
+                        )
+               :port PORT
+               }
+     }
+    )
   )
 
 (defn &server [params]
   (::server params))
 
 
+
+(defn handle-ws-msg [chan-factory *state ws-msg]
+  (let [{ws-id :ws-id
+         msg   :msg} ws-msg
+
+        out-chan (base/get-chan chan-factory ws-id)
+        ]
+
+    (info :wf/got-msg ws-msg)
+
+    (let [[t body] msg]
+      (cond
+        (= :scraping/session t) (let [{host :host
+                                       url :url} body
+                                      ]
+                                  (let [session (state/get-scraping-session host)]
+
+                                    ;; (info ::session session)
+
+                                    ;; put just message onto a channel
+                                    (async/put! out-chan [:scraping/session
+                                                          {
+                                                           :ws-id ws-id
+                                                           :summary (get session :summary {})
+                                                           }
+                                                          ]))
+
+                                  {}
+                                  )
+
+        (= :scraping/data t) (let [{host :host
+                                    url :url
+                                    data :data
+                                    summary :summary
+                                    } body]
+                               (swap! state/*scraping-session update-in [host]
+                                          (fn [v]
+                                            (let [old-data (get v :data [])
+                                                  old-summary (get v :summary {})]
+
+                                              (assoc v
+                                                  :data (conj old-data {:url url
+                                                                        :data data})
+
+                                                  :summary (merge old-summary summary)
+                                              ))
+                                            )
+                                          )
+                               {}
+                               )
+
+        (= :listings t) (do
+                          (swap! *state update-in [:listings] #(merge % body))
+
+                          (spit "/Users/ndrw/m/woof/woof-playground/listings.edn"
+                                (pr-str (:listings @*state)))
+
+                          (async/put! out-chan {:ws-id ws-id
+                                                :msg   (ids-msg *state)})
+                          {
+                           (base/rand-sid) [:test (d/pretty (:listings @*state))]
+                           }
+                          )
+
+        :else
+        {
+         (base/rand-sid) [:test (str "uknown message" (d/pretty ws-msg))]
+         }
+        )
+
+      )
+
+    )
+  )
 
 (defn ws-ctx-fn [params]
   (let [chan-factory (base/&chan-factory params)
@@ -205,42 +332,7 @@
      ;;
      :ws-msg       {
                     :fn       (fn [ws-msg]
-                                (let [{ws-id :ws-id
-                                       msg   :msg} ws-msg
-
-                                      out-chan (base/get-chan chan-factory ws-id)
-                                      ]
-
-                                  (let [[t body] msg]
-                                    (cond
-                                      (= :scraping/session t) (do
-                                                                (state/new-scraping-session body)
-
-                                                                {}
-                                                                )
-
-                                      (= :listings t) (do
-                                                        (swap! *state update-in [:listings] #(merge % body))
-
-                                                        (spit "/Users/ndrw/m/woof/woof-playground/listings.edn"
-                                                              (pr-str (:listings @*state)))
-
-                                                        (async/put! out-chan {:ws-id ws-id
-                                                                              :msg (ids-msg *state)})
-                                                        {
-                                                         (base/rand-sid) [:test (d/pretty (:listings @*state))]
-                                                         }
-                                                        )
-
-                                      :else
-                                      {
-                                       (base/rand-sid) [:test (str "uknown message" (d/pretty ws-msg))]
-                                       }
-                                      )
-
-                                    )
-
-                                  )
+                                (handle-ws-msg chan-factory *state ws-msg)
                                 )
                     :expands? true
                     }
@@ -251,15 +343,15 @@
                           (prn v)
                           v)}
 
-     :send-ids {
-                :fn (fn [server]
+     ;:send-ids {
+     ;          :fn (fn [server]
 
-                      #_(async/put! out-chan
-                                    [:ids (keys (:listings @*state))]
-                                    )
+     #_(async/put! out-chan
+                   [:ids (keys (:listings @*state))]
+                   )
 
-                      )
-                }
+     ;                )
+     ;          }
 
      }
     )
@@ -285,7 +377,7 @@
 (defn scraper-wf! [cfg & {:keys [on-stop] :or {on-stop (fn [stop-chan] (info ::wf-stopped))}}]
 ;; build-... vs
   (let [
-        ;; state
+        ;; here we'll have state hidden in this closure.
         *STATE (atom {
                       :listings {}
                       :sessions {}
@@ -297,28 +389,38 @@
         EVT-LOOP (base/make-chan CHAN-FACTORY (base/rand-sid "server-loop"))
 
         wf (base/wf! :init [(fn [_] cfg)
-                            (build-init-evt-loop-fn EVT-LOOP)
+                            (evt-loop/build-evt-loop-init-fn EVT-LOOP)
                             (base/build-init-chan-factory-fn CHAN-FACTORY)
                             (base/build-init-state-fn *STATE)
 
+                            ws-broadcast-init-fn
                             ws-init-fn ;; needs to be last
                             ]
                      :ctx [
-                           evt-loop-ctx-fn
+                           evt-loop/evt-loop-ctx-fn
                            ws-ctx-fn
+                           ws-broadcast-ctx
                            ]
                      :steps [
                              ;; although we can combine steps, but let's use single step for clarity
                              (fn [params] ;; evt-loop-steps-fn + ws-steps-fn
                                {
-                                ::evt-loop [:evt-loop (&evt-loop params)]
+                                ::evt-loop [:evt-loop (evt-loop/&evt-loop params)]
                                 ::start!   [:start-server (&server params)]
                                 })
                              ]
                      :opts [
                             (base/build-opt-state-fn *STATE)
                             (base/build-opts-chan-factory-fn CHAN-FACTORY)
-                            error-handling-opts
+                            (fn [params]
+                              {
+                               ;; log errors
+                               :op-handlers-map {
+                                                 :error   (fn [err] (error err))
+                                                 ;:process (fn [result] (info ::process "\n" (d/pretty result)))
+                                                 ;:done    (fn [result])
+                                                 }
+                               })
                             (base/build-opt-on-done (fn [_ _]
                                                       (info ::shutdown-server)
                                                       ;; force instant server shutdown
@@ -361,6 +463,8 @@
 ;; ----------------- reloadable wf here --------------------
 
 
+
+;(reset! state/*scraping-session {})
 
 (when state/AUTO-RUN-WF?
   (base/auto-run-wf! state/*server-wf #(scraper-wf! state/ws-cfg)))

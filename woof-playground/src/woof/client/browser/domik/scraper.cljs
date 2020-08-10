@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.client.browser.scraper
+(ns ^:figwheel-hooks woof.client.browser.domik.scraper
   (:require
     [goog.object]
     [goog.dom :as dom]
@@ -15,13 +15,21 @@
     [woof.client.dom :as woof-dom]
     ))
 
+;; domik.net scrapping
+
 ;;
 ;; mapping decisions for wf
+
+;; use global state for now
+(def *STATE (atom {
+                   ::ids #{}
+                   ::socket nil
+                   }))
+
 
 (defn &ws? [params] (get params :ws? false))
 (defn &skip-processed? [params] (get params :ws/skip-processed? false))
 (defn &display-results-fn [params] (get params :wf/display-results-fn identity))
-
 
 
 (defn extract-listing-text [bodyEls]
@@ -206,12 +214,6 @@
 
 
 
-
-;; use global state for now
-(def *STATE (atom {
-                   ::ids #{}
-                   ::socket nil
-                   }))
 
 
 

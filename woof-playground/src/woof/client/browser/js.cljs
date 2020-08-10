@@ -1,21 +1,15 @@
-(ns ^:figwheel-hooks woof.client.browser.js
+(ns woof.client.browser.js
   (:require
-    [woof.client.dom :as dom]
-
     [woof.base :as base]
-    [woof.utils :as u]
-
-    [goog.dom :as gdom]
 
     [cljs.core.async :refer [go] :as async]
     [cljs.core.async.interop :refer-macros [<p!]]
-
     ))
 
 
+;; Woof JS Interop
+;; idea is to be able to construct and run workflow in vanilla JS
 
-;;
-;; JS interop block, currently
 
 (defn convert-js-array [a]
   (if (.isArray js/Array a)

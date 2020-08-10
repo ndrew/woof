@@ -1,4 +1,4 @@
-(ns woof.client.browser.scraper3
+(ns woof.client.browser.blago.scraper
   (:require
     [goog.object]
     [goog.dom :as dom]
@@ -104,58 +104,58 @@
   (.log js/console "parsing" el)
   #_(let [
 
-        aEl      (.querySelector el ".tittle_obj [clickcntid]")
-        houseEls (.querySelectorAll el ".adress_addInfo a")
-        metroEl  (.querySelector el ".adress_addInfo .metro")
+          aEl      (.querySelector el ".tittle_obj [clickcntid]")
+          houseEls (.querySelectorAll el ".adress_addInfo a")
+          metroEl  (.querySelector el ".adress_addInfo .metro")
 
-        ;; to know that it's a novobudova
-        projectEl (.querySelector el ".project_link")
+          ;; to know that it's a novobudova
+          projectEl (.querySelector el ".project_link")
 
-        bodyEls (array-seq (.querySelectorAll el ".objava_detal_info .color-gray"))
+          bodyEls (array-seq (.querySelectorAll el ".objava_detal_info .color-gray"))
 
-        houseTypeEl (.querySelector el ".objava_detal_info .color-gray a")
-        ; color-gray
+          houseTypeEl (.querySelector el ".objava_detal_info .color-gray a")
+          ; color-gray
 
-        raw-address (dom/getTextContent (.querySelector el ".adress_text"))
+          raw-address (dom/getTextContent (.querySelector el ".adress_text"))
 
-        [_ _ district street building] (str/split raw-address #", ")
+          [_ _ district street building] (str/split raw-address #", ")
 
-        ]
-    (merge {
+          ]
+      (merge {
 
-            :id      (.getAttribute aEl "clickcntid") ;; or get id from top of the page
+              :id      (.getAttribute aEl "clickcntid") ;; or get id from top of the page
 
-            :kod     (dom/getTextContent (.querySelector el ".objava_data_cod > span"))
-            :date    (dom/getTextContent (.querySelector el ".objava_data_cod > span + span"))
+              :kod     (dom/getTextContent (.querySelector el ".objava_data_cod > span"))
+              :date    (dom/getTextContent (.querySelector el ".objava_data_cod > span + span"))
 
-            :url     (.getAttribute aEl "href")
-            :project (if projectEl (.getAttribute projectEl "href") nil)
+              :url     (.getAttribute aEl "href")
+              :project (if projectEl (.getAttribute projectEl "href") nil)
 
-            :title   (dom/getTextContent aEl)
+              :title   (dom/getTextContent aEl)
 
-            :addr    {
-                      :lat          (.getAttribute el "geolat")
-                      :lng          (.getAttribute el "geolng")
+              :addr    {
+                        :lat          (.getAttribute el "geolat")
+                        :lng          (.getAttribute el "geolng")
 
-                      :full-addr    raw-address
-                      :district     district
-                      :street       street
-                      :building     building
+                        :full-addr    raw-address
+                        :district     district
+                        :street       street
+                        :building     building
 
-                      :metro        (if metroEl (.getAttribute metroEl "title") nil)
-                      :house        (if houseEls (map #(.getAttribute % "href") (array-seq houseEls)) nil)
-                      :houseTypeUrl (if houseTypeEl (.getAttribute houseTypeEl "href"))
-                      :houseType    (if houseTypeEl (dom/getTextContent houseTypeEl))
-                      }
+                        :metro        (if metroEl (.getAttribute metroEl "title") nil)
+                        :house        (if houseEls (map #(.getAttribute % "href") (array-seq houseEls)) nil)
+                        :houseTypeUrl (if houseTypeEl (.getAttribute houseTypeEl "href"))
+                        :houseType    (if houseTypeEl (dom/getTextContent houseTypeEl))
+                        }
 
 
-            :price   (extract-listing-price (.querySelector el ".price .cost")
-                                            (.querySelector el ".price .commission"))
+              :price   (extract-listing-price (.querySelector el ".price .cost")
+                                              (.querySelector el ".price .commission"))
 
-            }
-           (extract-listing-text bodyEls)
-           )
-    )
+              }
+             (extract-listing-text bodyEls)
+             )
+      )
   )
 
 
@@ -233,8 +233,8 @@
                              )
 
        ;; what is a good way of sending message to socket
-        ;; via separate channel
-        ;; or via socket directly
+       ;; via separate channel
+       ;; or via socket directly
 
        ;                  :ws/msg-handler (fn [msg]
        ;                                    (.log js/console "[WS]" msg))
@@ -271,7 +271,7 @@
 
                     (u/now)
                     )
-                 :collect? true}
+              :collect? true}
    ;;;;;;;;;;;;;;;
 
    ;; splits sid-list into
@@ -362,7 +362,7 @@
                   ;; so they can be copy pasted
                   ;; :ui/print_results [:prn :domik/LISTINGS]
 
-                ; :clipboard/copy-results [:copy-to-clipboard :domik/LISTINGS]
+                  ; :clipboard/copy-results [:copy-to-clipboard :domik/LISTINGS]
 
                   ;; ::ui-progress [:ui-progress :domik/LISTINGS]
                   ;; ::post-process [:post-process ::RESULT]
@@ -370,13 +370,13 @@
 
         ws-steps {
 
-                   ;; websocket
-                   ::ws-socket [:ws-socket "ws://localhost:8081/scraper-ws"]
+                  ;; websocket
+                  ::ws-socket [:ws-socket "ws://localhost:8081/scraper-ws"]
 
-                   ::current-url [:scraping-url nil]
+                  ::current-url [:scraping-url nil]
 
-                   :ws/init-scraping-session [:ws-send! [::ws-socket ::current-url]]
-                   ;;::log [:log ::ws]
+                  :ws/init-scraping-session [:ws-send! [::ws-socket ::current-url]]
+                  ;;::log [:log ::ws]
                   }
 
         ]
