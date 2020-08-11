@@ -61,8 +61,8 @@
     :host    (.. js/window -location -host)
     :url     (str (.-location js/window))
 
-    :data    [{:id (u/now)}]
-    :summary {:new-summary (u/now)}
+    :data    data
+    :summary summary
     }
    ]
   )
@@ -80,10 +80,56 @@
 ;;
 ;; CTX
 ;;
+
+(defn parse-listing [el]
+  ; (.log js/console el)
+  (let [a 1
+        headerEl (.querySelector el "header")
+        ]
+
+    {
+     :header (dom/getTextContent headerEl)
+     :id (.getAttribute el "id")
+     }
+    )
+  )
+
 (defn scraper-ctx [params]
   ;; custom step handlers for current workflow
   {
 
+   ;; parsing listings handlers
+   :process* (base/expand-into :process)
+
+   :process  {
+              :fn (fn [el]
+                    (try
+                      (parse-listing el)
+                      (catch js/Error e
+                        (.error js/console e el))
+                      )
+
+                    )
+              }
+
+   :scraping-msg {
+                  :fn (fn [[summary scraped-data]]
+                        (.log js/console summary)
+                        ;; todo: form new summary? or should it be done on the backend side?
+                        ;; todo: why summary is ()
+                        (let [nu-summary (reduce (fn [a d]
+                                                   (assoc a
+                                                          (:id d)
+                                                          (dissoc d :id))
+                                                   )
+                                                 (if (empty? summary) {} summary)
+                                                 scraped-data)]
+
+                          (scraping-data-msg scraped-data nu-summary)
+                          )
+                        )
+                  :collect? true
+                  }
    }
   )
 
@@ -120,7 +166,10 @@
        ;; => these should add   :session/INITIAL-SUMMARY [:identity summary]
        }
       {;; proceed with empty summary
-       :session/INITIAL-SUMMARY [:identity {}]
+       :session/INITIAL-SUMMARY [:identity {
+                                            ;; fixme: why this is getting converted to ()
+                                            ;; :test :id
+                                            }]
        })
 
     (let [css-steps {
@@ -128,14 +177,32 @@
                      :css/hide-ads [:css-rules* [".ad-listing" "text-decoration: line-through;
                                                                 opacity: 0.4;" ]]
 
-
                      :css/id-listing [:css-rule ".listing { outline: 1px solid crimson; }"]
-
-
                      }
+
+          parse-steps {
+                       ;; try parsing all the listings (even ad-listing or already processed)
+
+                       :ex/__listing-els* [:query-selector-all ".listing"]
+                       :ex/parsed-listings* [:process* :ex/__listing-els*]
+
+                       :ex/listings [:collect :ex/parsed-listings*]
+
+
+                       ;; todo: implemement filtering out ads/invalid listings, or already processed data
+
+                       :session/SCRAPED-DATA [:scraping-msg [:session/INITIAL-SUMMARY
+                                                             :ex/listings ]]
+
+                       }
+
+          ;; todo: implement ui to show scraping session
+          ;; todo: add custom ui example
+
           NORMAL-STEPS (merge
-                         ;; (css-steps params)
                          css-steps
+
+                         parse-steps
 
                          ;; (ui-steps params)
                          {
@@ -143,8 +210,8 @@
                           :log/summary                [:log :session/INITIAL-SUMMARY]
 
                           ;; todo: get some actual data
-                          :session/SCRAPED-DATA [:identity (scraping-data-msg [{:id (u/now)}]
-                                                                              {:new-summary (u/now)})]
+                          ;:session/SCRAPED-DATA [:identity (scraping-data-msg [{:id (u/now)}]
+                          ;                                                    {:new-summary (u/now)})]
 
                           }
                          )]

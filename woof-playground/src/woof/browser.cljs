@@ -394,7 +394,7 @@
   ;; pass configuration to the workflow
   (let [meta-init-fn (fn [params]
                        {
-                        :ws? false                           ;
+                        :ws? true                 ;
                         ;; custom on-done
                         :wf/display-results-fn (fn [wf-results]
                                                  (.log js/console wf-results))
