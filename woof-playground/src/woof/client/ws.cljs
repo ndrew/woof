@@ -149,14 +149,23 @@
                             )
                       }
 
+     ;;
+     :ws-close! {:fn (fn [socket]
+                       (.close socket)
 
-     ;; for now just
-     ;:send-msg!      {
-     ;                 :fn (fn [msg]
-     ;                       (send-transit! (:socket msg) msg)
-     ;                       (u/now)
-     ;                       )
-     ;                 }
+                       (u/now)
+                       )
+                 :collect? true}
+
+     :ws-send! {:fn (fn [[socket msg]]
+                      (if (or (= :nil msg) (nil? msg))
+                        (.log js/console "not sending an empty msg")
+                        (send-transit! socket msg)
+                        )
+                      (u/now)
+                      )
+                :collect? true}
+
      }
     )
 

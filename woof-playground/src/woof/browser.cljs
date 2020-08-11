@@ -350,32 +350,58 @@
 
 
 ;; return only channel, :ws/gen-msg-handler should be
-(defn _ws-init [params]
+(defn _ws-init [process-ws-msg params]
   (let [chan-factory (base/&chan-factory params)]
     {
      :ws/chan-fn (fn []
                    (let [ws-chan (base/make-chan chan-factory
                                                  (base/rand-sid "ws-"))]
                         ws-chan))
+
+     ;; disallow to use gen handler
+     ;:ws/gen-msg-handler (fn []
+     ;                      (u/throw! "scraping wf needs to specify it's own :ws/gen-msg-handler")
+     ;                      )
      :ws/gen-msg-handler (fn []
-                           (u/throw! "scraping wf needs to specify it's own :ws/gen-msg-handler")
+                           (fn [msg-envelope]
+                             (.log js/console (d/pretty! msg-envelope))
+
+                             (try
+                               (process-ws-msg params msg-envelope)
+                               (catch js/Error e
+                                 (.error js/console ":ws/gen-msg-handler error:" e)
+                                 )
+                               )
+                             )
                            )
-     })
+
+     ;; what is a good way of sending message to socket
+     ;; via separate channel
+     ;; or via socket directly
+
+     ;                  :ws/msg-handler (fn [msg]
+     ;                                    (.log js/console "[WS]" msg))
+
+     }
+  )
   )
 
+
+
+;; the example of workflow that scrapes data from web page and stores them in the scraping session
 (defn scrapping-test! []
 
   ;; pass configuration to the workflow
   (let [meta-init-fn (fn [params]
                        {
-                        ;; meta params
-                        :ws? true
-                        ;; on-done
+                        :ws? false                           ;
+                        ;; custom on-done
                         :wf/display-results-fn (fn [wf-results]
                                                  (.log js/console wf-results))
                         })
 
         *internal-state (atom {})
+
         wf-impl (base/wf!
                   :init [(base/build-init-chan-factory-fn chan-factory)
                          (evt-loop/build-evt-loop-init-fn (base/make-chan chan-factory (base/rand-sid "evt-")))
@@ -384,10 +410,7 @@
 
                          meta-init-fn
 
-                         _ws-init
-
-                         scraping-test-ws/scraper-init
-                         ]
+                         (partial _ws-init scraping-test-ws/process-ws-msg)]
 
                   :ctx [
                         common-ctx
@@ -395,6 +418,7 @@
                         woof-dom/dom-ctx
 
                         ws/ws-ctx-fn
+                        evt-loop/evt-loop-ctx-fn
 
                         scraping-test-ws/scraper-ctx
                         ]

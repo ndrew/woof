@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="css/browser.css" rel="stylesheet" type="text/css">
+
+    <link href="css/base.css" rel="stylesheet" type="text/css">
+
+    <link rel="icon" href="/favicon.png">
+
+    <script>
+        // to enable auto-running workflows
+        var BROWSER_PLAYGROUND = true;
+    </script>
+</head>
+<body>
+
+<h1>scraper session tester</h1>
+
+<div id="dummy-data">
+    <div id="listing-1" class="ad-listing listing">
+        <header><span>AD:</span> Listing 1</header>
+        <p>Listing description: this is an ad, and it should not be scraped</p>
+        <div class="prices">
+            123456 <span>UAH</span>
+        </div>
+    </div>
+    <div class="listing" id="listing-2">
+        <header>Listing 2</header>
+        <p>Listing description. Valid listing should be scraped</p>
+        <div class="prices">
+            123123 <span>UAH</span>
+        </div>
+    </div>
+    <div class="listing" id="listing-3">
+        <header>Listing 3</header>
+        <p>Also valid listing should be scraped. But it has different currency</p>
+        <div class="prices">
+            800 <span>USD</span>
+        </div>
+    </div>
+    <div class="listing" id="listing-4">
+        <header>Listing 4</header>
+        <div class="prices">
+            321321 <span>UAH</span>
+        </div>
+    </div>
+
+</div>
+
+<script src="cljs-out/browser-main.js" type="text/javascript"></script>
+
+
+</body>
+</html>

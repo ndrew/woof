@@ -26,243 +26,150 @@
 (defn &ws? [params] (get params :ws? false))
 
 
-(defn css-steps [params]
-  {
-   :css/scraping-test-01 [:css-rule "h1 { text-decoration: underline; }" ]
-   ;;   :css/scraping-02 [:css-rules* [".search-item .house-photo" "display: flex;"]]
-   ;;  :css/scraping-03 [:css-rules* [".search-item .house-photo img" "max-height: 1  00px"]]
-   ;;  :css/hide-map [:css-rules* ["#map_canvas" "display: none"]]
-   }
-  )
-
-(defn ui-steps [params]
-  {
-
-   ;; todo: handle ui update steps here
-
-   }
-
-  )
 
 
+;; should this be generified?
 
+(defn process-ws-msg [params msg-envelope]
+  (let [{ws-id   :ws-id
+         [t msg] :msg} msg-envelope]
 
+    (cond
+      (= :scraping/session t)
+      (let [_summary (get msg :summary {})
+            evt-chan (evt-loop/&evt-loop params)
 
+            summary (merge
+                      {:summary :from-server}
+                      _summary)
+            ]
 
+        ;; we emit the summary as hardcoded key
+        (async/put! evt-chan
+                    {:session/INITIAL-SUMMARY [:identity summary]})
 
-
-
-(defn ws-init [params]
-
-  (let [chan-factory (base/&chan-factory params)]
-    {
-     ;; or we need just :ws/msg-handler
-
-     :ws/gen-msg-handler (fn []
-                           (fn [msg-envelope]
-                             ;; got msg via WS
-                             (.log js/console (d/pretty! msg-envelope))
-
-                             (try
-                               (let [{ws-id :ws-id
-                                      [t msg] :msg} msg-envelope]
-
-                                 (cond
-                                   (= :scraping/session t)
-                                   (let [summary (get msg :summary {})
-                                         evt-chan (evt-loop/&evt-loop params)]
-
-
-                                     ;; we add the hardcoded key
-                                     (async/put! evt-chan
-                                                 {:session/INITIAL-SUMMARY
-                                                  [:identity
-                                                   (merge
-                                                    {:summary :from-server}
-                                                    summary)]}
-                                                 )
-
-                                     ;; FIXME: <!> <?> how inject steps further
-                                     #_(async/put! evt-chan
-
-                                            ;; here
-                                                 (merge
-                                                   {(base/rand-sid) [:test msg]}
-                                                   ;(parse-steps params)
-                                                   ;(css-steps params)
-                                                   ;(ui-steps params)
-                                                   )
-
-
-                                                 )
-
-
-
-                                     ;; start parsing
-                                     ;; need to have evt loop
-                                     )
-                                   )
-                                 )
-                               (catch js/Error e
-                                 (.error js/console ":ws/gen-msg-handler error:" e)
-                                 )
-                               )
-                             )
-                           )
-
-     ;; what is a good way of sending message to socket
-     ;; via separate channel
-     ;; or via socket directly
-
-     ;                  :ws/msg-handler (fn [msg]
-     ;                                    (.log js/console "[WS]" msg))
-     }
+        ;; what if we don't emit :session/INITIAL-SUMMARY — wf will hang?
+        )
+      )
     )
   )
 
-(defn scraper-init [params]
-  (let [ws? (&ws? params)]
-    (if ws?
-      (ws-init params)
-      {})))
+(defn scraping-data-msg [data summary]
+  [:scraping/data
+   {
+    ;;:host (.-location .-host  js/window)
+    :host    (.. js/window -location -host)
+    :url     (str (.-location js/window))
 
-
-(defn ws-scraping-session-ctx [params]
-  {
-
-   :new-session-msg {:fn (fn[_]
-                           [:scraping/session
-                            {
-                             :host (.. js/window -location -host)
-                             ; :url (str (.-location js/window))
-                             }
-                            ]
-                           )}
-
-   :session-msg {
-                 :fn (fn [data]
-
-                       [:scraping/data {
-                                        ;;:host (.-location .-host  js/window)
-                                        :host (.. js/window -location -host)
-                                        :url (str (.-location js/window))
-
-                                        :data    [::DUMMY-DATA]
-                                        :summary {::DUMMY-SUMMARY (u/now)}
-
-                                        }]
-                       )
-                 }
-
-   ;;
-   :ws-close! {:fn (fn [socket]
-                     (.close socket)
-
-                     (u/now)
-                     )
-               :collect? true}
-
-   :ws-send! {:fn (fn [[socket msg]]
-                    (if (or (= :nil msg) (nil? msg))
-                        (.log js/console "not sending an empty msg")
-                        (ws/send-transit! socket msg)
-                        )
-                    (u/now)
-                    )
-              :collect? true}
-
-   }
-
+    :data    [{:id (u/now)}]
+    :summary {:new-summary (u/now)}
+    }
+   ]
   )
+
+(defn scraping-session-start-msg []
+  [:scraping/session
+   {
+    :host (.. js/window -location -host)
+    :url (str (.-location js/window))
+    }
+   ])
+
 
 
 ;;
 ;; CTX
 ;;
 (defn scraper-ctx [params]
+  ;; custom step handlers for current workflow
+  {
 
-  (merge
-    evt-loop/EVT-LOOP-CTX-MAP
-    (ws-scraping-session-ctx params)
-
-    {
-     :test {:fn (fn [v]
-                  (.log js/console v)
-                  v
-                  )
-
-            }
-     }
-    )
+   }
   )
 
 ;;
 ;; STEPS
 ;;
-;; todo: how to handle waiting for scraping session data
-
-;;
 
 (defn scraper-steps [params]
 
+  ;; examaple of conditional (affected by meta data) steps
 
-  (let [
-        normal-steps (merge
-                       (css-steps params)
-                       (ui-steps params)
-                       {
-                        ::test [:test :session/summary]
+  ;; steps are being composed by merging smaller steps
+  ;; some of these will have a 'keyframe' steps - with defiined name (usually in uppercase)
 
-                        :session/SCRAPED-DATA [:identity [:scraping/data
-                                                          {
-                                                           ;;:host (.-location .-host  js/window)
-                                                           :host (.. js/window -location -host)
-                                                           :url (str (.-location js/window))
+  ;;      evt loop
+  ;; ws?  ws-receive-summary | dummy-summary => :session/INITIAL-SUMMARY
+  ;;      ui
+  ;;      parsing
+  ;; ws?  ws-send-scraped | {}
+  ;;      result
 
-                                                           :data [{:id (u/now)}]
-                                                           :summary {:new-summary (u/now)}
-                                                           }
-                                                          ]]
-                        }
-                       )
+  (merge
+    {
+     ::evt-loop [:evt-loop (evt-loop/&evt-loop params)]
+     }
 
-        ws-steps {
-
-                  ;; init scraping session
-                  :ws/init-scraping-session [:ws-send! [:ws/socket :session/init-session-msg]]
-        ;; this should add :session/INITIAL-SUMMARY under the hood
-                    :ws/socket            [:ws-socket "ws://localhost:8081/scraper-ws"]
-                    :session/init-session-msg  [:new-session-msg nil]
-
-                  ;; send scraping session and close
-                  :ws/send-scraping-session [:ws-send! [:ws/socket :session/SCRAPED-DATA]]
-
-                  :wf/wait [:wait-rest [:ws/socket :ws/send-scraping-session]]
-                  :ws/close [:ws-close! :wf/wait]
-                  }
-
-
-        ]
-    (merge
+    ;; ws part 1
+    (if (&ws? params)
       {
-       ::evt-loop [:evt-loop (evt-loop/&evt-loop params)]
+     ;; init scraping session
+       :ws/init-scraping-session [:ws-send! [:ws/socket :session/init-session-msg]]
+         :session/init-session-msg [:identity (scraping-session-start-msg)]
+         :ws/socket                [:ws-socket "ws://localhost:8081/scraper-ws"]
+       ;; => these should add   :session/INITIAL-SUMMARY [:identity summary]
        }
-      (if (&ws? params) ws-steps
-                        {
-                         :session/INITIAL-SUMMARY [:identity {}]
-                         })
+      {;; proceed with empty summary
+       :session/INITIAL-SUMMARY [:identity {}]
+       })
 
-      ;; conditional expand
-      {
-       ::steps-after-got-scraping-summary [:identity normal-steps]
-       ::conditional-steps [:wait-steps [::steps-after-got-scraping-summary
-                                        ; and wait for
-                                        :session/INITIAL-SUMMARY]
-                                        ]
+    (let [css-steps {
+                     ;; todo: maybe add css reset?
+                     :css/hide-ads [:css-rules* [".ad-listing" "text-decoration: line-through;
+                                                                opacity: 0.4;" ]]
 
 
-       }
+                     :css/id-listing [:css-rule ".listing { outline: 1px solid crimson; }"]
 
+
+                     }
+          NORMAL-STEPS (merge
+                         ;; (css-steps params)
+                         css-steps
+
+                         ;; (ui-steps params)
+                         {
+                          ;; print out summary for now
+                          :log/summary                [:log :session/INITIAL-SUMMARY]
+
+                          ;; todo: get some actual data
+                          :session/SCRAPED-DATA [:identity (scraping-data-msg [{:id (u/now)}]
+                                                                              {:new-summary (u/now)})]
+
+                          }
+                         )]
+      (if (&ws? params)
+        { ;; expand normal steps only after waiting for a key-step :session/INITIAL-SUMMARY
+
+         ::conditional-steps                [:wait-steps [;; expand
+                                                          ::steps-after-got-scraping-summary
+                                                          ;; wait for
+                                                          :session/INITIAL-SUMMARY]]
+         ::steps-after-got-scraping-summary [:identity NORMAL-STEPS]
+         }
+        NORMAL-STEPS)
       )
-  )
+
+    (if (&ws? params)
+      {
+       ;; send scraping session and close
+       :ws/send-scraping-session [:ws-send! [:ws/socket :session/SCRAPED-DATA]]
+       :wf/wait                  [:wait-rest [:ws/socket :ws/send-scraping-session]]
+       :ws/close                 [:ws-close! :wf/wait]
+       }
+      {})
+
+    {:log/result [:log :session/SCRAPED-DATA]}
+    )
+
   )
