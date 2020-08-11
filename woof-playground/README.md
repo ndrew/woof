@@ -3,7 +3,6 @@
 # playground for woof
 
 sandbox for running woof workflows
-
  
 
 ## playground
@@ -31,6 +30,7 @@ inject the script on the web page
 run in dev tools 
 
     woof.browser.run_workflow()
+
 
 ### server workflow
 
