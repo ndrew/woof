@@ -5,7 +5,9 @@
 
     [woof.data :as d]
     [woof.utils :as u]
-    [woof.base :as base])
+    [woof.base :as base]
+    [goog.net.XhrIo :as xhrio]
+    )
 
   (:import
     goog.net.XhrIo)
@@ -103,6 +105,13 @@
 (defn send-transit! [socket msg]
   (.send socket (write-transit msg)))
 
+
+(defn GET [url handler]
+  (xhrio/send url (fn [event]
+                    (let [response (.-target event)]
+                      (handler (.getResponseText response)))
+                    ))
+  )
 
 
 

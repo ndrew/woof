@@ -20,6 +20,7 @@
 
 
     [org.httpkit.server :as httpkit]
+    [ring.middleware.cors :refer [wrap-cors]]
 
     [woof.base :as base]
     [woof.data :as d]
@@ -193,7 +194,8 @@
     {
      ;; define routes for scraping workflow
      ::server {
-               :route (compojure/routes
+               :route (wrap-cors
+                        (compojure/routes
                         ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
                         (route/resources "/" {:root "public"})
 
@@ -202,7 +204,8 @@
 
                         (compojure/GET "/clear-scraping-session" []
                           (reset! *SCRAPING-SESSION {})
-                          (d/pretty! @*SCRAPING-SESSION))
+                          (d/pretty! @*SCRAPING-SESSION)
+                          )
 
                         (compojure/GET "/test" []
                           (let [EVT-LOOP (evt-loop/&evt-loop params)
@@ -222,6 +225,9 @@
 
                           (ws-request-fn params  request)
                           )
+                        )
+                        :access-control-allow-origin [#"http://localhost:9500"]
+                        :access-control-allow-methods [:get :put :post :delete]
                         )
                :port PORT
                }
@@ -267,23 +273,42 @@
                                     url :url
                                     data :data
                                     summary :summary
-                                    } body]
+                                    } body
+                                   ]
+
+
                                (swap! state/*scraping-session update-in [host]
                                           (fn [v]
                                             (let [old-data (get v :data [])
-                                                  old-summary (get v :summary {})]
+                                                  old-summary (get v :summary {})
+                                                  processed-ids (into #{}  (keys old-summary))
 
-                                              (assoc v
+                                                  filtered-data (filter (fn [a]
+                                                                          (not (get processed-ids (:id a))))
+                                                                        data)
+                                                  ]
+
+                                              ;; (info "GOT DATA " (pr-str filtered-data))
+
+                                              (if (seq filtered-data)
+                                                (assoc v
                                                   :data (conj old-data {:url url
-                                                                        :data data})
+                                                                        :data filtered-data})
 
                                                   :summary (merge old-summary summary)
-                                              ))
+                                                  )
+                                                (info "skipping updating scraping data")
+                                                )
+
+
+
+                                              )
                                             )
                                           )
                                {}
                                )
 
+        ;; todo: saving listings
         (= :listings t) (do
                           (swap! *state update-in [:listings] #(merge % body))
 
