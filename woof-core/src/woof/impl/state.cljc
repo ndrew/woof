@@ -313,7 +313,7 @@
   (get-all! [this vs]
     (if (seq? vs)
       (map (fn [s]
-             (if (sid-list? s)
+             (if (sid? s)
                (if-let [z (get!* this s)]
                  (get-all! this z)
                  s)

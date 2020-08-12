@@ -167,7 +167,6 @@
     ))
 
 
-
 (defn- do-handle-commit! [executor context wf-state id step-id params]
   (let [step-cfg (get-step-config context step-id)  ; (get @(:*context executor) step-id) ;; FIXME:
         infinite? (:infinite step-cfg)
@@ -181,9 +180,6 @@
 
     ;; fixme: why f is called several times
 
-
-
-
     (if (:collect? step-cfg)
       ;; collect
       (do
@@ -191,7 +187,9 @@
                                   params
                                   (if (sid? params) [params]))]
 
-          (let [all-collected (get-all! wf-state (get!* wf-state collect-params))]
+          (let [values (get!* wf-state collect-params)
+                all-collected (get-all! wf-state values)]
+
             (when (not-any? #(or (nil? %1)
                                  (u/channel? %1)
                                  ) (flatten all-collected))
@@ -227,13 +225,7 @@
   ;; TODO: should the step return some typed response?
   ;; TODO: what if step handler is not found?
   ;; TODO: catch exception in (f ...)
-
-
-  ;
-
-  (do-handle-commit! executor context wf-state id step-id params)
-
-  )
+  (do-handle-commit! executor context wf-state id step-id params))
 
 
 

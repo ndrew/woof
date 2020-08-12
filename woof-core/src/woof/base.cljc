@@ -229,12 +229,12 @@
 (defn as-fn-list [v]
   (cond
     (or (vector? v) (seq? v))
-      (map (fn [item]
+      (vec (map (fn [item]
              (cond
+               (map? item) (fn [params] item)
                (fn? item) item
-               (map? v)   (fn [params] v)
                :else item)
-             ) v)
+             ) v))
     (map? v) [(fn [params] v)]  ;; wrap map as function
     (fn? v) [v]                 ;; wrap fn into a vector
     :else (do
