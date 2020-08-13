@@ -41,7 +41,8 @@
 (defn sid-list?
   "checkis if sids is a collection where all items are sid"
   [sids]
-  (and (coll? sids) (every? sid? sids)))
+  (and (or (seq? sids) (vector? sids))
+       (every? sid? sids)))
 
 
 (defn sid-map

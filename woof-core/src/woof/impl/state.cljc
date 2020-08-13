@@ -309,17 +309,20 @@
     ;; todo: nils?
     (map (partial get! this) id-list))
 
-
   (get-all! [this vs]
     (if (seq? vs)
       (map (fn [s]
-             (if (sid? s)
+             (if (sid-list? s)
+               ;; in the sid list
                (if-let [z (get!* this s)]
-                 (get-all! this z)
+                 (do
+                   (get-all! this z))
                  s)
                s)
              ) vs)
-      vs))
+      ;; not a sequence
+      vs)
+    )
   )
 
 
