@@ -59,7 +59,11 @@
 
 (defn common-ctx [params]
   {
-   :log     {:fn (fn[v] (.log js/console v) v)}
+   :log     {:fn (fn[v] (.log js/console v) true)}
+   :&log     {:fn (fn[v] (.log js/console v) true)
+              :collect? true
+              }
+
    :prn     {:fn (fn[v] (prn v) "")}
 
    :wait-rest      {
@@ -75,11 +79,44 @@
                 :expands? true
                 }
 
+   ;;
+   ;; mem
    :mem-k*             {
                         :fn       (fn [o]
                                     {(base/rand-sid "mem-k-") [:identity {:k o}]})
                         :expands? true
                         }
+
+   :mem-zip {:fn       (fn [xs]
+                         (partition-all (count xs)
+                                        (apply interleave
+                                               (reduce (fn [col [a]]
+                                                         (conj col (:k a)))
+                                                       [] xs))))
+             :collect? true
+             }
+
+   :mem-zip* {
+              :fn       (fn [xs]
+
+                          ;; todo: what if sub-sid-list are of different length
+                          (let [grouped-sids (partition-all (count xs)
+                                                            (apply interleave
+                                                                   (reduce (fn [col [a]]
+                                                                             (conj col (:k a)))
+                                                                           [] xs)))]
+                            (reduce
+                              (fn [a x]
+                                (assoc a (base/rand-sid "mem-zip-") [:collect x])
+                                )
+                              {} grouped-sids)
+                            )
+
+                          )
+              :expands? true
+              :collect? true
+              }
+
 
    ;; kv zipping - joins keys with values
    :*kv-zip            {
@@ -91,6 +128,8 @@
                         }
 
    :identity {:fn identity }
+   :identity*    (base/expand-into :identity)
+
 
    :collect  {
               :fn       (fn [xs]
@@ -389,7 +428,7 @@
 
 
 ;; the example of workflow that scrapes data from web page and stores them in the scraping session
-(defn scrapping-test! []
+(defn scrapping-test-wf! []
 
   ;; pass configuration to the workflow
   (let [meta-init-fn (fn [params]
@@ -427,7 +466,12 @@
                          (base/build-opts-chan-factory-fn chan-factory)
                          ]
 
-                  :steps [scraping-test-ws/scraper-steps]
+                  :steps [
+                          ;; for now focus on simpler parsing
+                          ;; scraping-test-ws/scraper-steps
+
+                          scraping-test-ws/scraper-steps-parsing-only
+                          ]
 
                   ;; think better name
                   :wf-impl (dbg/dbg-wf)
@@ -447,7 +491,7 @@
 
     (cond
       ;; map localhost to a specific wf
-      (clojure.string/starts-with? url "http://localhost")        (scrapping-test!)
+      (clojure.string/starts-with? url "http://localhost")        (scrapping-test-wf!)
 
       ;; dispatch url to a corresponding scraper
       (clojure.string/starts-with? url "https://auto.ria.com")    (autoria-sraping!)

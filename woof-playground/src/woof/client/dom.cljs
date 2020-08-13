@@ -80,6 +80,17 @@
                               (array-seq (.querySelectorAll (.-body js/document) selector)))
                         }
 
+   :query-selector-all* {
+                         :fn (fn [selector]
+                               (let [els (array-seq (.querySelectorAll (.-body js/document) selector))]
+                                 (reduce (fn [a el]
+                                           (assoc a (base/rand-sid "el-")
+                                                    [:identity el] )
+                                           ) {} els)
+                                 )
+                               )
+                         :expands? true
+                         }
 
    :css-rule    {
                         :fn (fn [rule]

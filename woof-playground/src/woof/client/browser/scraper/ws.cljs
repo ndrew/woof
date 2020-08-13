@@ -42,9 +42,10 @@
                       _summary)
             ]
 
-        (.warn js/console msg)
+        ; (.warn js/console msg)
 
-        ;; we emit the summary as hardcoded key
+
+        ;; FIXME: we emit the summary as hardcoded key
         (async/put! evt-chan
                     {:session/INITIAL-SUMMARY [:identity summary]})
 
@@ -82,15 +83,20 @@
 ;;
 
 (defn parse-listing [el]
-  ; (.log js/console el)
-  (let [a 1
-        headerEl (.querySelector el "header")
-        ]
+  (let [headerEl (.querySelector el "header")]
 
-    {
-     :header (dom/getTextContent headerEl)
-     :id (.getAttribute el "id")
-     }
+
+    (let [header (dom/getTextContent headerEl)]
+      ;; parse prices also
+      (merge
+        {
+         :header header
+         :id     (.getAttribute el "id")
+         }
+        (if (str/starts-with? header "AD:") {:ad? true} {})
+        )
+
+      )
     )
   )
 
@@ -122,6 +128,15 @@
 
 ;; todo: once-init - to add custom stylesheet via dom/add-stylesheet
 
+(defn- gen-add-css-handler [class]
+  {
+   :fn (fn [el]
+         (classes/add el class)
+
+         true)
+   }
+  )
+
 (defn scraper-ctx [params]
   ;; custom step handlers for current workflow
   {
@@ -135,13 +150,63 @@
                        (try
                          (parse-listing el)
                          (catch js/Error e
-                           (.error js/console e el))
+                           (do (.error js/console e el)
+                               {})
+                           )
                          )
 
                        )
                  }
 
-   ;; todo: filtering already processed
+   ;; filtering
+   ;; a) partition results to [[valid..] [invalid]] or {:valid [] :invalid}
+
+   ;; b) filtering twice
+
+   :partition-listings {
+                         :fn (fn [[summary model]]
+                               (group-by (fn [[model el]]
+                                           (if (:ad? model)
+                                             :ad
+                                             (if-let [s (get summary (:id model))]
+                                               (do
+                                                 (if (= (:header model) (:header s))
+                                                   :duplicate
+                                                   :updated
+                                                   ))
+                                               :new)
+                                             ))
+                                         model)
+                               )
+                         :collect? true
+                         }
+
+   :mark-new-listing! (gen-add-css-handler "woof-listing-processed")
+   :mark-dup-listing! (gen-add-css-handler "woof-listing-duplicate")
+   :mark-ad-listing! (gen-add-css-handler "woof-listing-ad")
+   :mark-upd-listing! (gen-add-css-handler "woof-listing-updated")
+
+   :new-listing-ui* {
+                     :fn (fn [partitioned-listings]
+                           (merge
+                             ;; new
+                             (reduce (fn [a [m el]]
+                                       (assoc a (base/rand-sid "ui-nu-") [:mark-new-listing! el] )) {} (get partitioned-listings :new []))
+                             ;; duplicate
+                             (reduce (fn [a [m el]]
+                                       (assoc a (base/rand-sid "ui-dup-") [:mark-dup-listing! el] )) {} (get partitioned-listings :duplicate []))
+                             ;; updated
+                             (reduce (fn [a [m el]]
+                                       (assoc a (base/rand-sid "ui-upd-") [:mark-upd-listing! el] )) {} (get partitioned-listings :updated []))
+
+                             ;; ad
+                             (reduce (fn [a [m el]]
+                                       (assoc a (base/rand-sid "ui-ad-") [:mark-ad-listing! el] )) {} (get partitioned-listings :ad []))
+                             {}
+                             )
+                           )
+                     :expands? true
+                     }
 
    ;; custom listing ui
    ;; todo: how to pass :session/INITIAL-SUMMARY here
@@ -193,6 +258,8 @@
                        )
                  }
 
+   ;;
+   ;; ws
    :scraping-msg {
                   :fn       (fn [[summary scraped-data]]
                               (.log js/console summary)
@@ -211,6 +278,8 @@
                               )
                   :collect? true
                   }
+
+
    }
   )
 
@@ -219,21 +288,81 @@
 
 
 
-
-; (if-let [ui-el (.querySelector existing-el ".woof-custom-listing-ui")]
-;      ; update custom ui
-;      (dom/setTextContent ui-el (listing-text-ui listing))
-;      (let [inner-ui-el (dom/createDom "pre" "woof-custom-listing-ui"
-;                                       (listing-text-ui listing))]
-;
-;        (dom/insertChildAt existing-el inner-ui-el 0)
-;        )
-;      )
-
-
 ;;
 ;; STEPS
 ;;
+
+(defn scraper-steps-parsing-only [params]
+
+  (merge
+    ;; IN params
+    {
+     :IN/summary [:identity {
+                             "listing-2" {:header "booo"}
+                             "listing-3" {:header "Listing 3"}
+                             }]
+     }
+
+    {
+     ::evt-loop [:evt-loop (evt-loop/&evt-loop params)]
+     }
+    {
+     ;; what if ad has same class as normal listing
+     ;; :css/hide-ads            [:css-rules* [".ad-listing" "text-decoration: line-through; \n opacity: 0.4;"]]
+     :css/id-listing          [:css-rule ".listing { outline: 1px solid gray; }"]
+
+     :css/duplicate-listing   [:css-rule ".woof-listing-duplicate { opacity: 0.4; }"]
+     :css/duplicate-listing-1 [:css-rule ".woof-listing-duplicate:before { content: \"DUPLICATE\"; }"]
+     :css/processed-listing-1 [:css-rule ".woof-listing-processed:before { content: \"👍\"; }"]
+
+     :css/updated-listing-1   [:css-rule ".woof-listing-updated { background-color: rgba(255,0,0,.333); }"]
+     :css/updated-listing-2   [:css-rule ".woof-listing-updated:before { content: \"UPDATED!\"; }"]
+
+     :css/ad-listing     [:css-rules* [".woof-listing-ad" "text-decoration: line-through; \n opacity: 0.4;"]]
+
+     }
+    {
+     ; :ui/scraping-session [:scraping-ui nil]
+     }
+    {
+
+     ;;
+     ;; process LISTINGS
+     :listings/els*      [:query-selector-all* ".listing"] ;; get all listing elements on the page
+     :listings/listings* [:process* :listings/els*] ;; try parsing each listing element
+     :listings/dummy*    [:identity* ["A1" "A2" "A3" "A4" "A5"]] ;; just to test mem-zip for 3
+
+     ;;
+     ;; mem
+     :mem/collected-listings* [:mem-zip* [:mem/listings* :mem/els* :mem/dummy*]]
+       :mem/listings* [:mem-k* :listings/listings*]
+       :mem/els* [:mem-k* :listings/els*]
+       :mem/dummy* [:mem-k* :listings/dummy*]
+
+     ;;
+     ;; collect LISTINGS
+     :listings/collected-listings* [:collect :mem/collected-listings*]
+
+     ;;
+     ;; filter already processed listings
+     :listings/partitioned-listings [:partition-listings [:IN/summary :listings/collected-listings*]]
+
+     ;; ui
+     :ui/mark-progress [:new-listing-ui* :listings/partitioned-listings]
+
+     ;;
+     :log/k [:log :listings/partitioned-listings]
+
+
+     ;; for now
+     ;; :listings/LISTINGS [:collect :listings/raw-listings*]
+
+     }
+
+    )
+  )
+
+
 
 (defn scraper-steps [params]
 
@@ -248,6 +377,8 @@
   ;;      parsing
   ;; ws?  ws-send-scraped | {}
   ;;      result
+
+  ;; factor these without
 
   (merge
     {
@@ -297,12 +428,9 @@
                        :ex/listings [:collect :ex/parsed-listings*]
 
                        ;; todo: implemement filtering out ads/invalid listings, or already processed data
-                      ;;
-
 
                        ;;
                        :ui/listings [:listing-ui* [:session/INITIAL-SUMMARY :ex/parsed-listings*]]
-
 
                        ;;
 
@@ -356,3 +484,27 @@
     )
 
   )
+
+
+;; initial example from lun
+#_{
+
+   ;; get the elements to be parsed
+   ::els [:query-selector-all ::selector]
+
+   ;; process the elements similar to pmap
+   ::processed-elements [:process* ::els]
+
+   ;; a tricky way for storing all expanded step-ids
+   ::k [:mem-k* ::processed-elements]
+
+   ;; zip all listings back to map with {<sid> <listing>}
+   ::listings-kv [:*kv-zip [::k ::processed-elements]]
+
+   ;; filter out listings that were not parsed
+   ::filtered-listings [:filter-errors ::listings-kv]
+
+   ;; resulting listings
+   ::LISTINGS [:collect ::filtered-listings]
+   }
+
