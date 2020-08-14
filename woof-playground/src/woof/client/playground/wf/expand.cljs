@@ -1,7 +1,8 @@
 (ns ^:figwheel-hooks woof.client.playground.wf.expand
   (:require
     [cljs.core.async :as async]
-    [woof.test-data :as test-data])
+    [woof.test-data :as test-data]
+    [woof.base :as base])
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -23,7 +24,7 @@
                   test-data/*xpand-step-sample-rate* 0.8
                   test-data/*link-sample-rate* 0.9
                   ]
-          (test-data/get-test-steps-and-context 10)
+          (test-data/get-test-steps-and-context 50)
           )
         ]
     {
@@ -32,13 +33,19 @@
      :explanation [:div.explanation
                    "test workflow for UI"]
 
-     :init-fns   []
+     :init-fns    []
 
-     :ctx-fns    [(fn [params] context)]
+     :ctx-fns     [(fn [params] context)]
 
-     :steps-fns  [(fn [params] steps)]
+     :steps-fns   [(fn [params] steps)]
 
-     :opt-fns    []
+     :opt-fns     [(fn [params]
+                     {
+
+                      ;; send wf updates every 500 ms
+                      :execute (partial base/_timed-execute-fn 500)
+                      }
+                     )]
 
      }
 
