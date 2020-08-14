@@ -197,6 +197,7 @@
 
    :op-handlers-map {
                      :done  (fn [result]
+                              ;; todo: nicer display of results
                               (.log js/console "WF DONE: " result)
 
                               ;; handle wf results if needed
@@ -388,44 +389,6 @@
     ))
 
 
-;; return only channel, :ws/gen-msg-handler should be
-(defn _ws-init [process-ws-msg params]
-  (let [chan-factory (base/&chan-factory params)]
-    {
-     :ws/chan-fn (fn []
-                   (let [ws-chan (base/make-chan chan-factory
-                                                 (base/rand-sid "ws-"))]
-                        ws-chan))
-
-     ;; disallow to use gen handler
-     ;:ws/gen-msg-handler (fn []
-     ;                      (u/throw! "scraping wf needs to specify it's own :ws/gen-msg-handler")
-     ;                      )
-     :ws/gen-msg-handler (fn []
-                           (fn [msg-envelope]
-                             (.log js/console (d/pretty! msg-envelope))
-
-                             (try
-                               (process-ws-msg params msg-envelope)
-                               (catch js/Error e
-                                 (.error js/console ":ws/gen-msg-handler error:" e)
-                                 )
-                               )
-                             )
-                           )
-
-     ;; what is a good way of sending message to socket
-     ;; via separate channel
-     ;; or via socket directly
-
-     ;                  :ws/msg-handler (fn [msg]
-     ;                                    (.log js/console "[WS]" msg))
-
-     }
-  )
-  )
-
-
 
 ;; the example of workflow that scrapes data from web page and stores them in the scraping session
 (defn scrapping-test-wf! []
@@ -436,7 +399,8 @@
                         :ws? true                 ;
                         ;; custom on-done
                         :wf/display-results-fn (fn [wf-results]
-                                                 (.log js/console wf-results))
+                                                 ;; (.log js/console wf-results)
+                                                 )
                         })
 
         *internal-state (atom {})
@@ -449,7 +413,8 @@
 
                          meta-init-fn
 
-                         (partial _ws-init scraping-test-ws/process-ws-msg)]
+                         scraping-test-ws/init-fn
+                         ]
 
                   :ctx [
                         common-ctx
@@ -467,10 +432,7 @@
                          ]
 
                   :steps [
-                          ;; for now focus on simpler parsing
-                          ;; scraping-test-ws/scraper-steps
-
-                          scraping-test-ws/scraper-steps-parsing-only
+                          scraping-test-ws/scraper-steps
                           ]
 
                   ;; think better name

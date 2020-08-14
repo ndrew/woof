@@ -21,49 +21,75 @@
 ;; scraping session tester
 
 
-;; todo: handle meta-ws ws accessors in separate ns
-;; accessors
+;;
+;; web-socket part
+
+;; todo: handle meta-ws ws accessors in separate ns accessors
 (defn &ws? [params] (get params :ws? false))
 
-
-;; should this be generified?
-
-(defn process-ws-msg [params msg-envelope]
-  (let [{ws-id   :ws-id
-         [t msg] :msg} msg-envelope]
-
-    (cond
-      (= :scraping/session t)
-      (let [_summary (get msg :summary {})
-            evt-chan (evt-loop/&evt-loop params)
-
-            summary (merge
-                      {}
-                      _summary)
-            ]
-
-        ; (.warn js/console msg)
+(defn &summary-chan [params] (get params :summary/chan))
 
 
-        ;; FIXME: we emit the summary as hardcoded key
-        (async/put! evt-chan
-                    {:session/INITIAL-SUMMARY [:identity summary]})
+(defn init-fn [params]
+  ;; pass _ws-init here?
 
-        ;; what if we don't emit :session/INITIAL-SUMMARY — wf will hang?
-        )
+
+  (let [chan-factory (base/&chan-factory params)
+        summary-chan (base/make-chan chan-factory (base/rand-sid))
+
+        ws-init-fn (partial ws/_ws-init-fn
+                            (fn [params msg-envelope]
+                              (let [{ws-id   :ws-id
+                                     [t msg] :msg} msg-envelope]
+
+                                (cond
+                                  (= :scraping/session t)
+                                  (let [summary (get msg :summary {})
+                                        evt-chan (evt-loop/&evt-loop params)]
+
+                                    ; (.warn js/console msg)
+
+                                    (async/put! summary-chan summary)
+
+                                    ;; for not not use evt-chan
+                                    #_(async/put! evt-chan
+                                                {
+                                                 ;; is not working
+                                                 ;; :session/INITIAL-SUMMARY [:identity summary]
+
+                                                 :log/test   [:log "GOT SCRAPING SESSION"]
+                                                 :log/test-1 [:log :session/INITIAL-SUMMARY]
+
+                                                 })
+
+                                    ;; what if we don't emit :session/INITIAL-SUMMARY — wf will hang?
+                                    )
+                                  )
+                                )
+                              ))
+
+        ]
+
+    (merge
+      {
+       :summary/chan summary-chan
+       }
+      (ws-init-fn params)
       )
     )
   )
 
+
+
+
 (defn scraping-data-msg [data summary]
   [:scraping/data
    {
-    ;;:host (.-location .-host  js/window)
-    :host    (.. js/window -location -host)
-    :url     (str (.-location js/window))
-
     :data    data
     :summary summary
+
+    :host    (.. js/window -location -host)
+    :url     (str (.-location js/window))
     }
    ]
   )
@@ -73,212 +99,175 @@
    {
     :host (.. js/window -location -host)
     :url (str (.-location js/window))
-    }
-   ])
-
+    }])
 
 
 ;;
-;; CTX
-;;
+;; parsing part
 
 (defn parse-listing [el]
-  (let [headerEl (.querySelector el "header")]
+  (let [headerEl (.querySelector el "header")
+        header (dom/getTextContent headerEl)]
 
-
-    (let [header (dom/getTextContent headerEl)]
-      ;; parse prices also
-      (merge
-        {
-         :header header
-         :id     (.getAttribute el "id")
-         }
-        (if (str/starts-with? header "AD:") {:ad? true} {})
-        )
-
+    ;; parse prices also
+    (merge
+      {
+       :header header
+       :id     (.getAttribute el "id")
+       }
+      (if (str/starts-with? header "AD:") {:ad? true} {})
       )
     )
   )
 
-(defn custom-listing-ui [summary listing]
-
-  (when-let [el (. js/document (getElementById (:id listing)))]
-
-    (.log js/console (:id listing) (get summary (:id listing)))
-    (if-let [processed-el (get summary (:id listing))]
-      (do
-        (classes/add el "woof-listing-duplicate")
-        )
-      (classes/add el "woof-listing-processed")
-      )
-
-    ;;
-
-
-    )
-
-  ;; todo: indicate that listing had been parsed  via
-
-  ;; <?>: now we get the parsed data, maybe try to have el + parsed data
-
-  ;; (.log js/console listing)
-
-  :ok
-  )
+;;
+;; ui
 
 ;; todo: once-init - to add custom stylesheet via dom/add-stylesheet
 
 (defn- gen-add-css-handler [class]
-  {
-   :fn (fn [el]
+  {:fn (fn [el]
          (classes/add el class)
 
          true)
-   }
+   })
+
+(defn- scraping-ui-impl! []
+  (let [clear-session-btn-el (dom/createDom "button" "" "clear session")
+        get-session-btn-el (dom/createDom "button" "" "get session")
+
+        stop-wf-btn-el (dom/createDom "button" "" "stop WF!")
+        ]
+
+    (goog.events.listen get-session-btn-el goog.events.EventType.CLICK
+                        (fn [e]
+                          (ws/GET "http://localhost:8081/scraping-session"
+                                  (fn [raw-edn]
+                                    (.log js/console raw-edn)
+                                    )
+                                  )
+                          ))
+
+    (goog.events.listen clear-session-btn-el goog.events.EventType.CLICK
+                        (fn [e]
+                          (ws/GET "http://localhost:8081/clear-scraping-session"
+                                  (fn [raw-edn]
+                                    (.log js/console raw-edn)
+                                    )
+                                  )
+                          ))
+    (woof-dom/ui-add-el! get-session-btn-el)
+    (woof-dom/ui-add-el! clear-session-btn-el)
+
+    (goog.events.listen stop-wf-btn-el
+                        goog.events.EventType.CLICK
+                        (fn [e]
+                          (js* "woof.browser.stop_workflow();")
+                          ))
+
+    (woof-dom/ui-add-el! stop-wf-btn-el)
+
+    ;(.focus btn-el)
+    )
   )
 
-(defn scraper-ctx [params]
-  ;; custom step handlers for current workflow
+
+;;
+;; CTX
+
+(defn scraper-ctx [params]                                  ;; custom step handlers for current workflow
+
   {
 
    ;; parsing listings handlers
-
-
-   :process*    (base/expand-into :process)
-   :process     {
-                 :fn (fn [el]
-                       (try
-                         (parse-listing el)
-                         (catch js/Error e
-                           (do (.error js/console e el)
-                               {})
-                           )
-                         )
-
-                       )
-                 }
+   :process*           (base/expand-into :process)
+   :process            {
+                        :fn (fn [el]
+                              (try
+                                (parse-listing el)
+                                (catch js/Error e
+                                  (do (.error js/console e el)
+                                      {
+                                       :ad? true            ;; for now, treat parsed with error as ads
+                                       })
+                                  )
+                                )
+                              )
+                        }
 
    ;; filtering
-   ;; a) partition results to [[valid..] [invalid]] or {:valid [] :invalid}
-
-   ;; b) filtering twice
+   ;; a) partition results to
+   ;; {
+   ;; :new       - listings that are not yet in summary
+   ;; :duplicate - listings that are in summary, with same prices
+   ;; :updated   - listings that are in summary, but with updated prices
+   ;; :ad        - ads or invalid listings
+   ;; }
 
    :partition-listings {
-                         :fn (fn [[summary model]]
-                               (group-by (fn [[model el]]
-                                           (if (:ad? model)
-                                             :ad
-                                             (if-let [s (get summary (:id model))]
-                                               (do
-                                                 (if (= (:header model) (:header s))
-                                                   :duplicate
-                                                   :updated
-                                                   ))
-                                               :new)
-                                             ))
-                                         model)
-                               )
-                         :collect? true
-                         }
+                        :fn       (fn [[summary model]]
+                                    (group-by (fn [[model el]]
+                                                (if (:ad? model)
+                                                  :ad
+                                                  (if-let [s (get summary (:id model))]
+                                                    (do
+                                                      (if (= (:header model) (:header s))
+                                                        :duplicate
+                                                        :updated
+                                                        ))
+                                                    :new)
+                                                  ))
+                                              model)
+                                    )
+                        :collect? true
+                        }
 
-   :mark-new-listing! (gen-add-css-handler "woof-listing-processed")
-   :mark-dup-listing! (gen-add-css-handler "woof-listing-duplicate")
-   :mark-ad-listing! (gen-add-css-handler "woof-listing-ad")
-   :mark-upd-listing! (gen-add-css-handler "woof-listing-updated")
+   :mark-new-listing!  (gen-add-css-handler "woof-listing-processed")
+   :mark-dup-listing!  (gen-add-css-handler "woof-listing-duplicate")
+   :mark-ad-listing!   (gen-add-css-handler "woof-listing-ad")
+   :mark-upd-listing!  (gen-add-css-handler "woof-listing-updated")
 
-   :new-listing-ui* {
-                     :fn (fn [partitioned-listings]
-                           (merge
-                             ;; new
-                             (reduce (fn [a [m el]]
-                                       (assoc a (base/rand-sid "ui-nu-") [:mark-new-listing! el] )) {} (get partitioned-listings :new []))
-                             ;; duplicate
-                             (reduce (fn [a [m el]]
-                                       (assoc a (base/rand-sid "ui-dup-") [:mark-dup-listing! el] )) {} (get partitioned-listings :duplicate []))
-                             ;; updated
-                             (reduce (fn [a [m el]]
-                                       (assoc a (base/rand-sid "ui-upd-") [:mark-upd-listing! el] )) {} (get partitioned-listings :updated []))
+   :new-listing-ui*    {
+                        :fn       (fn [partitioned-listings]
+                                    (merge
+                                      ;; new
+                                      (reduce (fn [a [m el]] (assoc a (base/rand-sid "ui-nu-") [:mark-new-listing! el])) {} (get partitioned-listings :new []))
+                                      ;; duplicate
+                                      (reduce (fn [a [m el]] (assoc a (base/rand-sid "ui-dup-") [:mark-dup-listing! el])) {} (get partitioned-listings :duplicate []))
+                                      ;; updated
+                                      (reduce (fn [a [m el]] (assoc a (base/rand-sid "ui-upd-") [:mark-upd-listing! el])) {} (get partitioned-listings :updated []))
+                                      ;; ad or invalid
+                                      (reduce (fn [a [m el]] (assoc a (base/rand-sid "ui-ad-") [:mark-ad-listing! el])) {} (get partitioned-listings :ad []))
+                                      {}
+                                      ))
+                        :expands? true
+                        }
 
-                             ;; ad
-                             (reduce (fn [a [m el]]
-                                       (assoc a (base/rand-sid "ui-ad-") [:mark-ad-listing! el] )) {} (get partitioned-listings :ad []))
-                             {}
-                             )
-                           )
-                     :expands? true
-                     }
 
-   ;; custom listing ui
-   ;; todo: how to pass :session/INITIAL-SUMMARY here
-   :listing-ui* {
-                 :fn       (fn [[summary els]]
-                                ;; for now pass a hardcoded id of summary here
-                             (reduce (fn [a e] (assoc a (base/rand-sid) [:listing-ui [:session/INITIAL-SUMMARY e]])) {} els)
-                             )
-                 :expands? true
-                 :collect? true
-                 }
-
-   :listing-ui  {:fn (fn [[summary listing]]
-                       (custom-listing-ui summary listing)
-
-                       "ok"
-                       )
-                 :collect? true
-                 }
-
-   :scraping-ui {
-                 :fn (fn [_]
-                       (let [clear-session-btn-el (dom/createDom "button" "" "clear session")
-                             get-session-btn-el (dom/createDom "button" "" "get session")
-                             ]
-
-                         (goog.events.listen get-session-btn-el goog.events.EventType.CLICK
-                                             (fn [e]
-                                               (ws/GET "http://localhost:8081/scraping-session"
-                                                       (fn [raw-edn]
-                                                         (.log js/console raw-edn)
-                                                         )
-                                                       )
-                                               ))
-
-                         (goog.events.listen clear-session-btn-el goog.events.EventType.CLICK
-                                             (fn [e]
-                                               (ws/GET "http://localhost:8081/clear-scraping-session"
-                                                       (fn [raw-edn]
-                                                         (.log js/console raw-edn)
-                                                         )
-                                                       )
-                                               ))
-                         (woof-dom/ui-add-el! get-session-btn-el)
-                         (woof-dom/ui-add-el! clear-session-btn-el)
-
-                         ;(.focus btn-el)
-                         )
-                       )
-                 }
+   :scraping-ui        {:fn (fn [_] (scraping-ui-impl!))}
 
    ;;
    ;; ws
-   :scraping-msg {
-                  :fn       (fn [[summary scraped-data]]
-                              (.log js/console summary)
-                              ;; todo: form new summary? or should it be done on the backend side?
-                              ;; todo: why summary is ()
-                              (let [nu-summary (reduce (fn [a d]
-                                                         (assoc a
-                                                           (:id d)
-                                                           (dissoc d :id))
-                                                         )
-                                                       (if (empty? summary) {} summary)
-                                                       scraped-data)]
+   :scraping-msg       {
+                        :fn       (fn [[summary partitioned-listings]]
+                                    ;; todo: form new summary? or should it be done on the backend side?
+                                    (let [scraped-data (vec
+                                                         (map first (concat (get partitioned-listings :new [])
+                                                                           (get partitioned-listings :updated []))))
 
-                                (scraping-data-msg scraped-data nu-summary)
-                                )
-                              )
-                  :collect? true
-                  }
+                                          nu-summary (reduce (fn [a d]
+                                                               (assoc a
+                                                                 (:id d)
+                                                                 (dissoc d :id))
+                                                               )
+                                                             (if (empty? summary) {} summary)
+                                                             scraped-data)]
 
+                                      (scraping-data-msg scraped-data nu-summary)
+                                      )
+                                    )
+                        :collect? true
+                        }
 
    }
   )
@@ -292,52 +281,42 @@
 ;; STEPS
 ;;
 
-(defn scraper-steps-parsing-only [params]
+(defn- evt-loop-steps [params] { ::evt-loop [:evt-loop (evt-loop/&evt-loop params)] })
 
+(defn- css-steps [params]
+  {
+   :css/id-listing          [:css-rule ".listing { outline: 1px solid gray; }"]
+
+   :css/duplicate-listing   [:css-rule ".woof-listing-duplicate { opacity: 0.4; }"]
+   :css/duplicate-listing-1 [:css-rule ".woof-listing-duplicate:before { content: \"DUPLICATE\"; }"]
+   :css/processed-listing-1 [:css-rule ".woof-listing-processed:before { content: \"👍\"; }"]
+
+   :css/updated-listing-1   [:css-rule ".woof-listing-updated { background-color: rgba(0,255,128,.233); }"]
+   :css/updated-listing-2   [:css-rule ".woof-listing-updated:before { content: \"UPDATED!\"; }"]
+
+   :css/ad-listing     [:css-rules* [".woof-listing-ad" "text-decoration: line-through; \n opacity: 0.4;"]]
+
+   })
+
+
+;; sub-workflow
+(defn scraper-steps-parsing [params summary-steps]
   (merge
     ;; IN params
+    summary-steps
+
+    (css-steps params)
     {
-     :IN/summary [:identity {
-                             "listing-2" {:header "booo"}
-                             "listing-3" {:header "Listing 3"}
-                             }]
-     }
-
-    {
-     ::evt-loop [:evt-loop (evt-loop/&evt-loop params)]
-     }
-    {
-     ;; what if ad has same class as normal listing
-     ;; :css/hide-ads            [:css-rules* [".ad-listing" "text-decoration: line-through; \n opacity: 0.4;"]]
-     :css/id-listing          [:css-rule ".listing { outline: 1px solid gray; }"]
-
-     :css/duplicate-listing   [:css-rule ".woof-listing-duplicate { opacity: 0.4; }"]
-     :css/duplicate-listing-1 [:css-rule ".woof-listing-duplicate:before { content: \"DUPLICATE\"; }"]
-     :css/processed-listing-1 [:css-rule ".woof-listing-processed:before { content: \"👍\"; }"]
-
-     :css/updated-listing-1   [:css-rule ".woof-listing-updated { background-color: rgba(255,0,0,.333); }"]
-     :css/updated-listing-2   [:css-rule ".woof-listing-updated:before { content: \"UPDATED!\"; }"]
-
-     :css/ad-listing     [:css-rules* [".woof-listing-ad" "text-decoration: line-through; \n opacity: 0.4;"]]
-
-     }
-    {
-     ; :ui/scraping-session [:scraping-ui nil]
-     }
-    {
-
      ;;
      ;; process LISTINGS
      :listings/els*      [:query-selector-all* ".listing"] ;; get all listing elements on the page
      :listings/listings* [:process* :listings/els*] ;; try parsing each listing element
-     :listings/dummy*    [:identity* ["A1" "A2" "A3" "A4" "A5"]] ;; just to test mem-zip for 3
 
      ;;
      ;; mem
-     :mem/collected-listings* [:mem-zip* [:mem/listings* :mem/els* :mem/dummy*]]
-       :mem/listings* [:mem-k* :listings/listings*]
-       :mem/els* [:mem-k* :listings/els*]
-       :mem/dummy* [:mem-k* :listings/dummy*]
+     :mem/collected-listings* [:mem-zip* [:mem/listings* :mem/els*]]
+     :mem/listings* [:mem-k* :listings/listings*]
+     :mem/els* [:mem-k* :listings/els*]
 
      ;;
      ;; collect LISTINGS
@@ -345,20 +324,15 @@
 
      ;;
      ;; filter already processed listings
-     :listings/partitioned-listings [:partition-listings [:IN/summary :listings/collected-listings*]]
+     :listings/LISTINGS-MAP [:partition-listings [:session/INITIAL-SUMMARY :listings/collected-listings*]]
+     :ui/mark-progress [:new-listing-ui* :listings/LISTINGS-MAP]
 
-     ;; ui
-     :ui/mark-progress [:new-listing-ui* :listings/partitioned-listings]
+     ;; join :new and :updated listings
+     ;; :listings/partitioned-listings
 
      ;;
-     :log/k [:log :listings/partitioned-listings]
-
-
-     ;; for now
-     ;; :listings/LISTINGS [:collect :listings/raw-listings*]
-
+     ;; :log/k [:log :listings/LISTINGS-MAP]
      }
-
     )
   )
 
@@ -381,130 +355,50 @@
   ;; factor these without
 
   (merge
-    {
-     ::evt-loop [:evt-loop (evt-loop/&evt-loop params)]
-     }
-
-    ;; ws part 1
-    (if (&ws? params)
-      {
-     ;; init scraping session
-       :ws/init-scraping-session [:ws-send! [:ws/socket :session/init-session-msg]]
+    ;; (evt-loop-steps params)        ;; for now don't use evt loop, so worklow can finish automatically
+    (scraper-steps-parsing params
+      (if (&ws? params)
+        {
+         ;; init scraping session
+         :ws/init-scraping-session [:ws-send! [:ws/socket :session/init-session-msg]]
          :session/init-session-msg [:identity (scraping-session-start-msg)]
          :ws/socket                [:ws-socket "ws://localhost:8081/scraper-ws"]
-       ;; => these should add   :session/INITIAL-SUMMARY [:identity summary]
-       }
-      {;; proceed with empty summary
-       :session/INITIAL-SUMMARY [:identity {
-                                            ;; fixme: why this is getting converted to ()
-                                            ;; :test :id
-                                            }]
-       })
 
-    (let [css-steps {
-                     ;; todo: maybe add css reset?
-                     :css/hide-ads [:css-rules* [".ad-listing" "text-decoration: line-through;
-                                                                opacity: 0.4;" ]]
-
-                     :css/id-listing [:css-rule ".listing { outline: 1px solid crimson; }"]
-
-                     :css/duplicate-listing [:css-rule ".woof-listing-duplicate { opacity: 0.4; }"]
-                     :css/duplicate-listing-1 [:css-rule ".woof-listing-duplicate:before { content: \"DUPLICATE\"; }"]
-
-                     :css/processed-listing-1 [:css-rule ".woof-listing-processed:before { content: \"👍\"; }"]
-
-
-                     }
-
-          ui-steps {
-                    :ui/scraping-session [:scraping-ui nil]
-                    }
-
-          parse-steps {
-                       ;; try parsing all the listings (even ad-listing or already processed)
-
-                       :ex/__listing-els* [:query-selector-all ".listing"]
-                       :ex/parsed-listings* [:process* :ex/__listing-els*]
-                       :ex/listings [:collect :ex/parsed-listings*]
-
-                       ;; todo: implemement filtering out ads/invalid listings, or already processed data
-
-                       ;;
-                       :ui/listings [:listing-ui* [:session/INITIAL-SUMMARY :ex/parsed-listings*]]
-
-                       ;;
-
-
-                       :session/SCRAPED-DATA [:scraping-msg [:session/INITIAL-SUMMARY
-                                                             :ex/listings ]]
-
-                       }
-
-          ;; todo: implement ui to show scraping session
-          ;; todo: add custom ui example
-
-          NORMAL-STEPS (merge
-                         css-steps
-                         ui-steps
-                         parse-steps
-
-                         ;; (ui-steps params)
-                         {
-                          ;; print out summary for now
-                          :log/summary                [:log :session/INITIAL-SUMMARY]
-
-                          ;; todo: get some actual data
-                          ;:session/SCRAPED-DATA [:identity (scraping-data-msg [{:id (u/now)}]
-                          ;                                                    {:new-summary (u/now)})]
-
-                          }
-                         )]
-      (if (&ws? params)
-        { ;; expand normal steps only after waiting for a key-step :session/INITIAL-SUMMARY
-
-         ::conditional-steps                [:wait-steps [;; expand
-                                                          ::steps-after-got-scraping-summary
-                                                          ;; wait for
-                                                          :session/INITIAL-SUMMARY]]
-         ::steps-after-got-scraping-summary [:identity NORMAL-STEPS]
+         :session/INITIAL-SUMMARY [:identity (&summary-chan params)]
+         ; :session/INITIAL-SUMMARY [:identity {}]
          }
-        NORMAL-STEPS)
-      )
-
+        {
+         :session/INITIAL-SUMMARY [:identity {
+                                     ;"listing-2" {:header "booo"}
+                                     ;"listing-3" {:header "Listing 3"}
+                                  }]
+         }
+        ))
+    {
+     :ui/scraping-session [:scraping-ui nil]
+       ;; :log/log-summary [:log :session/INITIAL-SUMMARY]
+     }
     (if (&ws? params)
       {
+       ;;
+       :session/scraping-data [:scraping-msg [:session/INITIAL-SUMMARY
+                                              :listings/LISTINGS-MAP ]]
+
        ;; send scraping session and close
-       :ws/send-scraping-session [:ws-send! [:ws/socket :session/SCRAPED-DATA]]
+       :ws/send-scraping-session [:ws-send! [:ws/socket :session/scraping-data]]
        :wf/wait                  [:wait-rest [:ws/socket :ws/send-scraping-session]]
        :ws/close                 [:ws-close! :wf/wait]
-       }
-      {})
 
-    {:log/result [:log :session/SCRAPED-DATA]}
+
+       ;; :log/result [:log :session/scraping-data]
+       }
+      {
+
+       })
+
+    ;;{:log/result [:log :session/SCRAPED-DATA]}
+
     )
 
   )
-
-
-;; initial example from lun
-#_{
-
-   ;; get the elements to be parsed
-   ::els [:query-selector-all ::selector]
-
-   ;; process the elements similar to pmap
-   ::processed-elements [:process* ::els]
-
-   ;; a tricky way for storing all expanded step-ids
-   ::k [:mem-k* ::processed-elements]
-
-   ;; zip all listings back to map with {<sid> <listing>}
-   ::listings-kv [:*kv-zip [::k ::processed-elements]]
-
-   ;; filter out listings that were not parsed
-   ::filtered-listings [:filter-errors ::listings-kv]
-
-   ;; resulting listings
-   ::LISTINGS [:collect ::filtered-listings]
-   }
 

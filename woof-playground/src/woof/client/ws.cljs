@@ -177,5 +177,42 @@
 
      }
     )
+  )
 
+
+;; parametrizible ws init function
+(defn _ws-init-fn [process-ws-msg params]
+  (let [chan-factory (base/&chan-factory params)]
+    {
+     :ws/chan-fn (fn []
+                   (let [ws-chan (base/make-chan chan-factory
+                                                 (base/rand-sid "ws-"))]
+                     ws-chan))
+
+     ;; disallow to use gen handler
+     ;:ws/gen-msg-handler (fn []
+     ;                      (u/throw! "scraping wf needs to specify it's own :ws/gen-msg-handler")
+     ;                      )
+     :ws/gen-msg-handler (fn []
+                           (fn [msg-envelope]
+                             (.log js/console (d/pretty! msg-envelope))
+
+                             (try
+                               (process-ws-msg params msg-envelope)
+                               (catch js/Error e
+                                 (.error js/console ":ws/gen-msg-handler error:" e)
+                                 )
+                               )
+                             )
+                           )
+
+     ;; what is a good way of sending message to socket
+     ;; via separate channel
+     ;; or via socket directly
+
+     ;                  :ws/msg-handler (fn [msg]
+     ;                                    (.log js/console "[WS]" msg))
+
+     }
+    )
   )
