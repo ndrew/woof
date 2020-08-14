@@ -124,6 +124,7 @@
         bp-b (get b :before-process (fn [wf-chan xtor] :ok))
         bp-a (get a :before-process (fn [wf-chan xtor] :ok))
 
+        ;; should after be in the resersed order
         ap-a (get b :after-process identity)
         ap-b (get a :after-process identity)
 
@@ -131,15 +132,27 @@
         op-a (get a :op-handlers-map {})
 
         ]
-    {
-     :before-process (fn [wf-chan xtor]
-                       (combine-bp (bp-b wf-chan xtor)
-                                   (bp-a wf-chan xtor))
-                       )
-     :after-process (comp ap-b ap-a)
 
-     :op-handlers-map (combine-ops-maps op-b op-a)
-     }
+    (merge
+      (if-let [exec-a! (get a :execute)]
+        {:execute exec-a!}
+        (if-let [exec-b! (get b :execute)]
+          {:execute exec-b!}
+          {}))
+
+      {
+       :before-process (fn [wf-chan xtor]
+                         (combine-bp (bp-b wf-chan xtor)
+                                     (bp-a wf-chan xtor))
+                         )
+       :after-process (comp ap-b ap-a)
+
+       :op-handlers-map (combine-ops-maps op-b op-a)
+       }
+      )
+
+
+
     )
   )
 
@@ -721,3 +734,25 @@
 
             ;;
                    })
+
+
+
+(defn _chunked-execute-fn [n executor]
+  (let [exec-chann-0 (protocols/execute! executor)
+        exec-chann (async/pipe
+                     exec-chann-0
+                     (async/chan 1 (wf/chunk-update-xf n)))]
+
+
+    exec-chann)
+  )
+
+
+(defn _timed-execute-fn [t executor]
+  (let [exec-chann-0 (protocols/execute! executor)
+        exec-chann (async/pipe
+                     exec-chann-0
+                     (async/chan 1 (wf/time-update-xf t)))]
+    ;; (async/chan 1 (wf/chunk-update-xf 20))
+
+    exec-chann))
