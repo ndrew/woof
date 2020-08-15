@@ -129,6 +129,8 @@
 
    :identity {:fn identity }
    :identity*    (base/expand-into :identity)
+   :v {:fn identity }
+   :v* (base/expand-into :v)
 
 
    :collect  {
@@ -194,6 +196,10 @@
                       (reset! *running-wf xtor)
                       ;; (swap! *state assoc-in [:runtime :xtor] xtor)
                       :ok)
+
+   ;; do we need to limit workflow output
+   ;;:execute  (partial base/_timed-execute-fn 100)
+
 
    :op-handlers-map {
                      :done  (fn [result]

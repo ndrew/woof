@@ -47,22 +47,21 @@
                                   (let [summary (get msg :summary {})
                                         evt-chan (evt-loop/&evt-loop params)]
 
-                                    ; (.warn js/console msg)
+                                    ; (.warn js/console "GOT" msg)
 
                                     (async/put! summary-chan summary)
 
-                                    ;; for not not use evt-chan
+                                    ;; for not not use evt-chan, use separate channel
                                     #_(async/put! evt-chan
                                                 {
                                                  ;; is not working
-                                                 ;; :session/INITIAL-SUMMARY [:identity summary]
+                                                 ;; :session/SUMMARY [:identity summary]
 
                                                  :log/test   [:log "GOT SCRAPING SESSION"]
-                                                 :log/test-1 [:log :session/INITIAL-SUMMARY]
+                                                 :log/test-1 [:log :session/SUMMARY]
 
                                                  })
 
-                                    ;; what if we don't emit :session/INITIAL-SUMMARY — wf will hang?
                                     )
                                   )
                                 )
@@ -94,7 +93,7 @@
    ]
   )
 
-(defn scraping-session-start-msg []
+(defn init-scraping-msg []
   [:scraping/session
    {
     :host (.. js/window -location -host)
@@ -300,12 +299,12 @@
 
 
 ;; sub-workflow
-(defn scraper-steps-parsing [params summary-steps]
+(defn parsing-with-summary-steps [params summary-steps]
   (merge
     ;; IN params
     summary-steps
 
-    (css-steps params)
+
     {
      ;;
      ;; process LISTINGS
@@ -324,14 +323,145 @@
 
      ;;
      ;; filter already processed listings
-     :listings/LISTINGS-MAP [:partition-listings [:session/INITIAL-SUMMARY :listings/collected-listings*]]
-     :ui/mark-progress [:new-listing-ui* :listings/LISTINGS-MAP]
+     :listings/LISTINGS-MAP [:partition-listings [:listings/SUMMARY :listings/collected-listings*]]
 
-     ;; join :new and :updated listings
-     ;; :listings/partitioned-listings
+     }
+    )
+  )
+
+
+
+(defn ws+parse+ui-steps [params]
+
+  (merge
+    ;; WS: GLUE
+    {
+     #_:PARSE     #_:--->   :ws/LISTINGS-MAP [:v :listings/LISTINGS-MAP]
+     }
+    ;; WS: IN
+    {
+     :ws/URL           [:v "ws://localhost:8081/scraper-ws"]
+
+     :ws/INITIAL-MSG   [:v (init-scraping-msg)]   #_:--->   :ws/SUMMARY [:v (&summary-chan params)]
+
+     :ws/RESULTS-MSG   [:scraping-msg [:ws/SUMMARY
+                                       :ws/LISTINGS-MAP]]
+     }
+    ;; WS: IMPL - send :ws/INITIAL-MSG, do parsing/processing, send :ws/RESULTS-MSG
+    {
+     :ws/init-scraping-session [:ws-send! [:ws/socket :ws/INITIAL-MSG]]
+     :ws/socket                [:ws-socket :ws/URL]
+
+     :ws/send-scraping-session [:ws-send! [:ws/socket :ws/RESULTS-MSG]]
+     :wf/wait                   [:wait-rest [:ws/socket :ws/send-scraping-session]]
+     :ws/close                 [:ws-close! :wf/wait]
+     }
+    ;; WS: OUT
+
+    ;; PARSE: GLUE
+    ;; PARSE: IN - :listings/SUMMARY
+    {
+     ;;
+     :listings/SUMMARY [:identity :ws/SUMMARY]
+     }
+    ;; PARSE: IMPL
+    {
+     ;;
+     ;; process LISTINGS
+     :listings/els*      [:query-selector-all* ".listing"] ;; get all listing elements on the page
+     :listings/listings* [:process* :listings/els*] ;; try parsing each listing element
 
      ;;
-     ;; :log/k [:log :listings/LISTINGS-MAP]
+     ;; mem
+     :mem/collected-listings* [:mem-zip* [:mem/listings* :mem/els*]]
+     :mem/listings* [:mem-k* :listings/listings*]
+     :mem/els* [:mem-k* :listings/els*]
+
+     ;;
+     ;; collect LISTINGS
+     :listings/collected-listings* [:collect :mem/collected-listings*]
+
+     ;;
+     ;; filter already processed listings
+     :listings/LISTINGS-MAP [:partition-listings [:listings/SUMMARY :listings/collected-listings*]]
+     }
+    ;; PARSE: OUT
+    ;; { :listings/LISTINGS-MAP [:v example] }
+
+
+    ;; UI: IN
+    {
+     #_:PARSE     #_:--->   :ui/LISTINGS-MAP [:v :listings/LISTINGS-MAP]
+     }
+    ;; UI: IMPL
+    (merge
+      (css-steps params)
+      {
+       :ui/mark-progress [:new-listing-ui* :ui/LISTINGS-MAP]
+       }
+      {
+       :ui/scraping-session [:scraping-ui nil]
+       }
+      )
+    ;; UI: OUT
+    ;;
+    )
+  )
+
+(defn parse+ui-steps [params]
+
+  (merge
+    ;; PARSE: GLUE
+    ;; PARSE: IN - :listings/SUMMARY
+    {
+     :listings/SUMMARY [:identity {
+                                   ;"listing-2" {:header "booo"}
+                                   "listing-3" {:header "Listing 3"}
+                                   }]
+     }
+    ;; PARSE: IMPL
+    {
+     ;;
+     ;; process LISTINGS
+     :listings/els*      [:query-selector-all* ".listing"] ;; get all listing elements on the page
+     :listings/listings* [:process* :listings/els*] ;; try parsing each listing element
+
+     ;;
+     ;; mem
+     :mem/collected-listings* [:mem-zip* [:mem/listings* :mem/els*]]
+     :mem/listings* [:mem-k* :listings/listings*]
+     :mem/els* [:mem-k* :listings/els*]
+
+     ;;
+     ;; collect LISTINGS
+     :listings/collected-listings* [:collect :mem/collected-listings*]
+
+     ;;
+     ;; filter already processed listings
+     :listings/LISTINGS-MAP [:partition-listings [:listings/SUMMARY :listings/collected-listings*]]
+     }
+    ;; PARSE: OUT
+    ;; { :listings/LISTINGS-MAP [:v example] }
+
+
+    ;; UI: IN
+    {
+     #_:PARSE     #_:--->   :ui/LISTINGS-MAP [:v :listings/LISTINGS-MAP]
+     }
+    ;; UI: IMPL
+    (merge
+      (css-steps params)
+      {
+       :ui/mark-progress [:new-listing-ui* :ui/LISTINGS-MAP]
+       }
+      {
+       :ui/scraping-session [:scraping-ui nil]
+       }
+      )
+    ;; UI: OUT
+    ;;
+    {
+     :log/logA [:log :listings/LISTINGS-MAP]
      }
     )
   )
@@ -339,65 +469,17 @@
 
 
 (defn scraper-steps [params]
+  ;; what is proper way of spliting the ws workflow into parts?
+     ;; GLUE, IN, IMPL, OUT ?
+     ;; should sub-steps be extracted to a fn?
 
-  ;; examaple of conditional (affected by meta data) steps
-
-  ;; steps are being composed by merging smaller steps
-  ;; some of these will have a 'keyframe' steps - with defiined name (usually in uppercase)
-
-  ;;      evt loop
-  ;; ws?  ws-receive-summary | dummy-summary => :session/INITIAL-SUMMARY
-  ;;      ui
-  ;;      parsing
-  ;; ws?  ws-send-scraped | {}
-  ;;      result
-
-  ;; factor these without
-
-  (merge
-    ;; (evt-loop-steps params)        ;; for now don't use evt loop, so worklow can finish automatically
-    (scraper-steps-parsing params
-      (if (&ws? params)
-        {
-         ;; init scraping session
-         :ws/init-scraping-session [:ws-send! [:ws/socket :session/init-session-msg]]
-         :session/init-session-msg [:identity (scraping-session-start-msg)]
-         :ws/socket                [:ws-socket "ws://localhost:8081/scraper-ws"]
-
-         :session/INITIAL-SUMMARY [:identity (&summary-chan params)]
-         ; :session/INITIAL-SUMMARY [:identity {}]
-         }
-        {
-         :session/INITIAL-SUMMARY [:identity {
-                                     ;"listing-2" {:header "booo"}
-                                     ;"listing-3" {:header "Listing 3"}
-                                  }]
-         }
-        ))
-    {
-     :ui/scraping-session [:scraping-ui nil]
-       ;; :log/log-summary [:log :session/INITIAL-SUMMARY]
-     }
-    (if (&ws? params)
-      {
-       ;;
-       :session/scraping-data [:scraping-msg [:session/INITIAL-SUMMARY
-                                              :listings/LISTINGS-MAP ]]
-
-       ;; send scraping session and close
-       :ws/send-scraping-session [:ws-send! [:ws/socket :session/scraping-data]]
-       :wf/wait                  [:wait-rest [:ws/socket :ws/send-scraping-session]]
-       :ws/close                 [:ws-close! :wf/wait]
+  ;; for now don't use evt loop, so worklow can finish automatically
+  ;; (evt-loop-steps params)
 
 
-       ;; :log/result [:log :session/scraping-data]
-       }
-      {
-
-       })
-
-    ;;{:log/result [:log :session/SCRAPED-DATA]}
-
+  (if (&ws? params)
+    (ws+parse+ui-steps params)
+    (parse+ui-steps params)
     )
 
   )
