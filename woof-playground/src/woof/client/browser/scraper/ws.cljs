@@ -13,8 +13,11 @@
     [woof.utils :as u]
     [woof.client.dom :as woof-dom]
     [woof.client.ws :as ws]
+    [woof.client.browser.scraper.session :as ss]
 
     [woof.wfs.evt-loop :as evt-loop]
+
+
     ))
 
 
@@ -27,78 +30,51 @@
 ;; todo: handle meta-ws ws accessors in separate ns accessors
 (defn &ws? [params] (get params :ws? false))
 
-(defn &summary-chan [params] (get params :summary/chan))
+(defn &summary-chan [params] (get params :ws/summary-chan))
 
+
+;; TODO: find
 
 (defn init-fn [params]
-  ;; pass _ws-init here?
-
-
+  ;; injects: :ws/summary-chan - for returning summary via ws
+  ;;          :ws/chan-fn
+  ;;          :ws/gen-msg-handler
   (let [chan-factory (base/&chan-factory params)
         summary-chan (base/make-chan chan-factory (base/rand-sid))
 
-        ws-init-fn (partial ws/_ws-init-fn
-                            (fn [params msg-envelope]
-                              (let [{ws-id   :ws-id
-                                     [t msg] :msg} msg-envelope]
+        ;; should this be in ss?
+        msg-fn (fn [params msg-envelope]
+                 (let [{ws-id   :ws-id
+                        [t msg] :msg} msg-envelope]
 
-                                (cond
-                                  (= :scraping/session t)
-                                  (let [summary (get msg :summary {})
-                                        evt-chan (evt-loop/&evt-loop params)]
+                   (cond
+                     (= :scraping/session t)
+                     (let [summary (get msg :summary {})]
+                       ; (.warn js/console "GOT" msg)
 
-                                    ; (.warn js/console "GOT" msg)
+                       ;; propagate summary further via separate channel
+                       (async/put! summary-chan summary)
 
-                                    (async/put! summary-chan summary)
+                       ;; other way is via injecting a specific key-step via event loop
+                       ;; for now we don't use evt-chan
+                       #_(let [evt-chan (evt-loop/&evt-loop params)]
+                           (async/put! evt-chan
+                                       {
+                                        ;; :ws/SUMMARY [:identity summary]
+                                        }))
 
-                                    ;; for not not use evt-chan, use separate channel
-                                    #_(async/put! evt-chan
-                                                {
-                                                 ;; is not working
-                                                 ;; :session/SUMMARY [:identity summary]
+                       ))))
 
-                                                 :log/test   [:log "GOT SCRAPING SESSION"]
-                                                 :log/test-1 [:log :session/SUMMARY]
-
-                                                 })
-
-                                    )
-                                  )
-                                )
-                              ))
-
+        ws-init-fn (partial ws/_ws-init-fn msg-fn)
         ]
 
     (merge
-      {
-       :summary/chan summary-chan
-       }
-      (ws-init-fn params)
-      )
+      {:ws/summary-chan summary-chan}
+      (ws-init-fn params))
     )
   )
 
 
-
-
-(defn scraping-data-msg [data summary]
-  [:scraping/data
-   {
-    :data    data
-    :summary summary
-
-    :host    (.. js/window -location -host)
-    :url     (str (.-location js/window))
-    }
-   ]
-  )
-
-(defn init-scraping-msg []
-  [:scraping/session
-   {
-    :host (.. js/window -location -host)
-    :url (str (.-location js/window))
-    }])
 
 
 ;;
@@ -130,6 +106,7 @@
 
          true)
    })
+
 
 (defn- scraping-ui-impl! []
   (let [clear-session-btn-el (dom/createDom "button" "" "clear session")
@@ -262,7 +239,7 @@
                                                              (if (empty? summary) {} summary)
                                                              scraped-data)]
 
-                                      (scraping-data-msg scraped-data nu-summary)
+                                      (ss/scraping-data-msg scraped-data nu-summary)
                                       )
                                     )
                         :collect? true
@@ -342,7 +319,7 @@
     {
      :ws/URL           [:v "ws://localhost:8081/scraper-ws"]
 
-     :ws/INITIAL-MSG   [:v (init-scraping-msg)]   #_:--->   :ws/SUMMARY [:v (&summary-chan params)]
+     :ws/INITIAL-MSG   [:v (ss/init-scraping-msg)]   #_:--->   :ws/SUMMARY [:v (&summary-chan params)]
 
      :ws/RESULTS-MSG   [:scraping-msg [:ws/SUMMARY
                                        :ws/LISTINGS-MAP]]
