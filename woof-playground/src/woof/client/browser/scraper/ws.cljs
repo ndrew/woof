@@ -27,13 +27,9 @@
 ;;
 ;; web-socket part
 
-;; todo: handle meta-ws ws accessors in separate ns accessors
 (defn &ws? [params] (get params :ws? false))
-
 (defn &summary-chan [params] (get params :ws/summary-chan))
 
-
-;; TODO: find
 
 (defn init-fn [params]
   ;; injects: :ws/summary-chan - for returning summary via ws
@@ -42,38 +38,15 @@
   (let [chan-factory (base/&chan-factory params)
         summary-chan (base/make-chan chan-factory (base/rand-sid))
 
-        ;; should this be in ss?
-        msg-fn (fn [params msg-envelope]
-                 (let [{ws-id   :ws-id
-                        [t msg] :msg} msg-envelope]
+        msg-fn     (partial ss/_get-summary-msg-fn summary-chan)
+        ws-init-fn (partial ws/_ws-init-fn msg-fn)]
 
-                   (cond
-                     (= :scraping/session t)
-                     (let [summary (get msg :summary {})]
-                       ; (.warn js/console "GOT" msg)
-
-                       ;; propagate summary further via separate channel
-                       (async/put! summary-chan summary)
-
-                       ;; other way is via injecting a specific key-step via event loop
-                       ;; for now we don't use evt-chan
-                       #_(let [evt-chan (evt-loop/&evt-loop params)]
-                           (async/put! evt-chan
-                                       {
-                                        ;; :ws/SUMMARY [:identity summary]
-                                        }))
-
-                       ))))
-
-        ws-init-fn (partial ws/_ws-init-fn msg-fn)
-        ]
-
+    ;; only if wf
     (merge
       {:ws/summary-chan summary-chan}
       (ws-init-fn params))
     )
   )
-
 
 
 
@@ -95,68 +68,10 @@
     )
   )
 
-;;
-;; ui
-
-;; todo: once-init - to add custom stylesheet via dom/add-stylesheet
-
-(defn- gen-add-css-handler [class]
-  {:fn (fn [el]
-         (classes/add el class)
-
-         true)
-   })
-
-
-(defn- scraping-ui-impl! []
-  (let [clear-session-btn-el (dom/createDom "button" "" "clear session")
-        get-session-btn-el (dom/createDom "button" "" "get session")
-
-        stop-wf-btn-el (dom/createDom "button" "" "stop WF!")
-        ]
-
-    (goog.events.listen get-session-btn-el goog.events.EventType.CLICK
-                        (fn [e]
-                          (ws/GET "http://localhost:8081/scraping-session"
-                                  (fn [raw-edn]
-                                    (.log js/console raw-edn)
-                                    )
-                                  )
-                          ))
-
-    (goog.events.listen clear-session-btn-el goog.events.EventType.CLICK
-                        (fn [e]
-                          (ws/GET "http://localhost:8081/clear-scraping-session"
-                                  (fn [raw-edn]
-                                    (.log js/console raw-edn)
-                                    )
-                                  )
-                          ))
-    (woof-dom/ui-add-el! get-session-btn-el)
-    (woof-dom/ui-add-el! clear-session-btn-el)
-
-    (goog.events.listen stop-wf-btn-el
-                        goog.events.EventType.CLICK
-                        (fn [e]
-                          (js* "woof.browser.stop_workflow();")
-                          ))
-
-    (woof-dom/ui-add-el! stop-wf-btn-el)
-
-    ;(.focus btn-el)
-    )
-  )
-
-
-;;
-;; CTX
-
-(defn scraper-ctx [params]                                  ;; custom step handlers for current workflow
-
+(defn parse-ctx [params]
   {
-
    ;; parsing listings handlers
-   :process*           (base/expand-into :process)
+     :process*           (base/expand-into :process)
    :process            {
                         :fn (fn [el]
                               (try
@@ -197,7 +112,55 @@
                                     )
                         :collect? true
                         }
+   }
+  )
 
+
+;;
+;; ui
+
+;; todo: once-init - to add custom stylesheet via dom/add-stylesheet
+
+(defn- gen-add-css-handler [class]
+  {:fn (fn [el]
+         (classes/add el class)
+
+         true)
+   })
+
+(defn- on-click [btn handler]
+  (goog.events.listen btn goog.events.EventType.CLICK handler))
+
+
+(defn- scraping-ui-impl! []
+  ;; todo: pass configuration for urls
+  (let [clear-session-btn-el (dom/createDom "button" "" "clear session")
+        get-session-btn-el   (dom/createDom "button" "" "get session")
+        stop-wf-btn-el       (dom/createDom "button" "" "stop WF!")]
+
+    (woof-dom/ui-add-el! get-session-btn-el)
+    (woof-dom/ui-add-el! clear-session-btn-el)
+    (woof-dom/ui-add-el! stop-wf-btn-el)
+
+    (on-click get-session-btn-el
+              (fn [e]
+                (ws/GET "http://localhost:8081/scraping-session"
+                        (fn [raw-edn]
+                          (.log js/console raw-edn)))))
+
+    (on-click clear-session-btn-el
+              (fn [e]
+                (ws/GET "http://localhost:8081/clear-scraping-session"
+                        (fn [raw-edn]
+                          (.log js/console raw-edn)))))
+
+    (on-click stop-wf-btn-el  (fn [e] (js* "woof.browser.stop_workflow();")))
+
+    )
+  )
+
+(defn ui-ctx [params]
+  {
    :mark-new-listing!  (gen-add-css-handler "woof-listing-processed")
    :mark-dup-listing!  (gen-add-css-handler "woof-listing-duplicate")
    :mark-ad-listing!   (gen-add-css-handler "woof-listing-ad")
@@ -207,13 +170,13 @@
                         :fn       (fn [partitioned-listings]
                                     (merge
                                       ;; new
-                                      (reduce (fn [a [m el]] (assoc a (base/rand-sid "ui-nu-") [:mark-new-listing! el])) {} (get partitioned-listings :new []))
+                                      (reduce (fn [a [m el]] (assoc a (base/rand-sid "ui-nu-")  [:mark-new-listing! el])) {} (get partitioned-listings :new []))
                                       ;; duplicate
                                       (reduce (fn [a [m el]] (assoc a (base/rand-sid "ui-dup-") [:mark-dup-listing! el])) {} (get partitioned-listings :duplicate []))
                                       ;; updated
                                       (reduce (fn [a [m el]] (assoc a (base/rand-sid "ui-upd-") [:mark-upd-listing! el])) {} (get partitioned-listings :updated []))
                                       ;; ad or invalid
-                                      (reduce (fn [a [m el]] (assoc a (base/rand-sid "ui-ad-") [:mark-ad-listing! el])) {} (get partitioned-listings :ad []))
+                                      (reduce (fn [a [m el]] (assoc a (base/rand-sid "ui-ad-")  [:mark-ad-listing! el])) {} (get partitioned-listings :ad []))
                                       {}
                                       ))
                         :expands? true
@@ -221,33 +184,55 @@
 
 
    :scraping-ui        {:fn (fn [_] (scraping-ui-impl!))}
-
-   ;;
-   ;; ws
-   :scraping-msg       {
-                        :fn       (fn [[summary partitioned-listings]]
-                                    ;; todo: form new summary? or should it be done on the backend side?
-                                    (let [scraped-data (vec
-                                                         (map first (concat (get partitioned-listings :new [])
-                                                                           (get partitioned-listings :updated []))))
-
-                                          nu-summary (reduce (fn [a d]
-                                                               (assoc a
-                                                                 (:id d)
-                                                                 (dissoc d :id))
-                                                               )
-                                                             (if (empty? summary) {} summary)
-                                                             scraped-data)]
-
-                                      (ss/scraping-data-msg scraped-data nu-summary)
-                                      )
-                                    )
-                        :collect? true
-                        }
-
    }
   )
 
+
+;;
+;; ws
+
+(defn ws-ctx [params]
+  {
+
+   ;;
+   ;; ws
+   :scraping-msg {
+                  :fn (fn [[summary partitioned-listings]]
+                        ;; todo: form new summary? or should it be done on the backend side?
+                        (let [scraped-data (vec
+                                             (map first (concat (get partitioned-listings :new [])
+                                                                (get partitioned-listings :updated []))))
+
+                              nu-summary (reduce (fn [a d]
+                                                   (assoc a
+                                                     (:id d)
+                                                     (dissoc d :id))
+                                                   )
+                                                 (if (empty? summary) {} summary)
+                                                 scraped-data)]
+
+                          (ss/scraping-data-msg scraped-data nu-summary))
+                        )
+                  :collect? true
+                  }
+
+   }
+
+  )
+
+
+;;
+;; CTX
+
+
+(defn scraper-ctx [params]  ;; custom step handlers for current workflow
+
+  (merge
+    (parse-ctx params)
+    (ui-ctx params)
+    (ws-ctx params)
+    )
+  )
 
 ;; todo: use 2 factor state - first have internal state and then merge it with global one
 

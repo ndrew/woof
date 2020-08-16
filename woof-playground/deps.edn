@@ -52,6 +52,7 @@
   viz-cljc                   {:mvn/version "0.1.3"},
 
 
+  ;; fixme: move these deps to woof-blog, but for now they will live in tester
   ;; todo: which markdown version to use
   markdown-clj               {:mvn/version "1.10.2"}
   markdown-to-hiccup         {:mvn/version "0.6.2"}
@@ -83,11 +84,12 @@
            ;; browser extension
            :browser {
                      :jvm-opts ["-Dorg.eclipse.jetty.util.log.announce=false"]
+                     ;; todo: maybe use more specific key instead of '--run-backend-wf'
+                     ;; or implement dispatching by wf id
                      :main-opts   ["-m" "figwheel.main" "-b" "browser"
                                    "-r"  "--run-backend-wf"
                                    ;; todo: pass port here
-                                   ;; todo: maybe use more specific key instead of '--run-backend-wf'
-                                      ;; or implement dispatching by wf id
+
                                    ] }
            ;; this generates the code that can be run in browser
            :browser-min { :main-opts   ["-m" "figwheel.main" "-O" "advanced" "-b" "browser" ] }
