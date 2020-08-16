@@ -71,7 +71,7 @@
 (defn parse-ctx [params]
   {
    ;; parsing listings handlers
-     :process*           (base/expand-into :process)
+   :process*           (base/expand-into :process)
    :process            {
                         :fn (fn [el]
                               (try
@@ -315,6 +315,10 @@
      :ws/socket                [:ws-socket :ws/URL]
 
      :ws/send-scraping-session [:ws-send! [:ws/socket :ws/RESULTS-MSG]]
+
+     ;; add timeout here, so websocket won't be closed too soon, to test /test
+
+
      :wf/wait                   [:wait-rest [:ws/socket :ws/send-scraping-session]]
      :ws/close                 [:ws-close! :wf/wait]
      }

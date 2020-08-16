@@ -180,7 +180,7 @@
   )
 
 
-;; parametrizible ws init function
+;; parametrizible ws init function for ws scraping session
 (defn _ws-init-fn [process-ws-msg params]
   (let [chan-factory (base/&chan-factory params)]
     {

@@ -435,6 +435,10 @@
                   :opts [
                          common-opts
                          (base/build-opts-chan-factory-fn chan-factory)
+
+
+                         ;; save results to intermediary state?
+
                          ]
 
                   :steps [

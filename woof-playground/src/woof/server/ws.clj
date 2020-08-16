@@ -69,26 +69,8 @@
           )
         ))
     )
-
   )
 
-
-
-
-
-
-
-;;(info ::ws-msg msg)
-
-#_(let [
-        evt-loop (::EVT-LOOP params) ;; todo: get evt-loop via woof.wfs.evt-loop
-        ]
-    (go
-      (async/put! evt-loop
-                  {(base/rand-sid "msg-") [:ws-msg {:ws-id ws-id
-                                                    :msg   msg}]})
-      )
-    )
 
 
 ;; specific way of ws communication

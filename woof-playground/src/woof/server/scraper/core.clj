@@ -89,10 +89,9 @@
 
 
         ]
-    (WS/broadcast-ws-request-fn params
-                                  broadcast-mult
-                                  receive-msg-fn
-                                  send-msg-fn)
+    (WS/broadcast-ws-request-fn params broadcast-mult
+                                receive-msg-fn
+                                send-msg-fn)
     )
 )
 
@@ -110,7 +109,10 @@
   )
 
 
+;;
+;;
 (defn handle-ws-msg [chan-factory *state ws-msg]
+  ;; destructure ws msg
   (let [{ws-id :ws-id
          msg   :msg} ws-msg
 
@@ -169,16 +171,13 @@
                                               )
                                             (info "skipping updating scraping data")
                                             )
-
-
-
                                           )
                                         )
                                       )
                                {}
                                )
 
-        ;; todo: saving listings
+        ;; fixme: saving listings via ws. is this needed?
         (= :listings t) (do
                           (swap! *state update-in [:listings] #(merge % body))
 
@@ -197,7 +196,6 @@
          (base/rand-sid) [:test (str "uknown message" (d/pretty ws-msg))]
          }
         )
-
       )
 
     )
@@ -216,9 +214,7 @@
      ;;
      :ws-msg       {
                     :fn       (fn [ws-msg]
-                                ;; or maybe pass params?
-                                (handle-ws-msg chan-factory *state ws-msg)
-                                )
+                                (handle-ws-msg chan-factory *state ws-msg))
                     :expands? true
                     }
 
@@ -256,10 +252,17 @@
                           (reset! *SCRAPING-SESSION {})
                           (d/pretty! @*SCRAPING-SESSION))
 
+                        (compojure/GET "/save-scraping-session" []
+                          (spit "/Users/ndrw/m/woof/woof-playground/scraping-session.edn"
+                                (d/pretty! @*SCRAPING-SESSION))
+
+                          (d/pretty! @*SCRAPING-SESSION)
+                          )
+
 
                         (compojure/GET "/test" []
                           (let [EVT-LOOP (evt-loop/&evt-loop params)
-                                msg (u/now)]
+                                msg [:broadcast (u/now)]]
                             (go
                               (async/put! EVT-LOOP {(base/rand-sid)
                                                     [:ws-broadcast msg]

@@ -51,4 +51,8 @@
                         {
                          ;; :ws/SUMMARY [:identity summary]
                          }))
-        ))))
+        )
+      :else (do
+              (.warn js/console "unknow message " msg-envelope)
+              )
+      )))
