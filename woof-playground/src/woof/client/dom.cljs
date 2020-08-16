@@ -3,6 +3,7 @@
     [goog.object]
     [goog.dom :as dom]
     [goog.object]
+    [goog.dom.classes :as classes]
 
     [cljs.core.async :as async]
     [clojure.string :as str]
@@ -10,6 +11,8 @@
     [woof.base :as base]
     [woof.data :as d]
     [woof.utils :as u]
+
+
     ))
 
 
@@ -150,3 +153,10 @@
     (dom/appendChild scraper-ui el)
     )
   )
+
+(defn gen-add-css-handler [class]
+  {:fn (fn [el]
+         (classes/add el class)
+
+         true)
+   })

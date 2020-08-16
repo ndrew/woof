@@ -121,12 +121,6 @@
 
 ;; todo: once-init - to add custom stylesheet via dom/add-stylesheet
 
-(defn- gen-add-css-handler [class]
-  {:fn (fn [el]
-         (classes/add el class)
-
-         true)
-   })
 
 (defn- on-click [btn handler]
   (goog.events.listen btn goog.events.EventType.CLICK handler))
@@ -161,10 +155,10 @@
 
 (defn ui-ctx [params]
   {
-   :mark-new-listing!  (gen-add-css-handler "woof-listing-processed")
-   :mark-dup-listing!  (gen-add-css-handler "woof-listing-duplicate")
-   :mark-ad-listing!   (gen-add-css-handler "woof-listing-ad")
-   :mark-upd-listing!  (gen-add-css-handler "woof-listing-updated")
+   :mark-new-listing!  (woof-dom/gen-add-css-handler "woof-listing-processed")
+   :mark-dup-listing!  (woof-dom/gen-add-css-handler "woof-listing-duplicate")
+   :mark-ad-listing!   (woof-dom/gen-add-css-handler "woof-listing-ad")
+   :mark-upd-listing!  (woof-dom/gen-add-css-handler "woof-listing-updated")
 
    :new-listing-ui*    {
                         :fn       (fn [partitioned-listings]

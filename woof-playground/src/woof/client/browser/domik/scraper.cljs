@@ -6,13 +6,12 @@
     [goog.dom.classes :as classes]
 
     [cljs.core.async :as async]
-    [woof.base :as base]
-
     [clojure.string :as str]
-    [woof.data :as d]
 
+    [woof.base :as base]
     [woof.client.ws :as ws]
     [woof.client.dom :as woof-dom]
+    [woof.data :as d]
     ))
 
 ;; domik.net scrapping
@@ -213,9 +212,41 @@
   )
 
 
+(defn- on-click [btn handler]
+  (goog.events.listen btn goog.events.EventType.CLICK handler))
+
+
+(defn- scraping-ui-impl! []
+  ;; todo: pass configuration for urls
+  (let [clear-session-btn-el (dom/createDom "button" "" "clear session")
+        get-session-btn-el   (dom/createDom "button" "" "get session")
+        stop-wf-btn-el       (dom/createDom "button" "" "stop WF!")]
+
+    (woof-dom/ui-add-el! get-session-btn-el)
+    (woof-dom/ui-add-el! clear-session-btn-el)
+    (woof-dom/ui-add-el! stop-wf-btn-el)
+
+    (on-click get-session-btn-el
+              (fn [e]
+                (ws/GET "http://localhost:8081/scraping-session"
+                        (fn [raw-edn]
+                          (.log js/console raw-edn)))))
+
+    (on-click clear-session-btn-el
+              (fn [e]
+                (ws/GET "http://localhost:8081/clear-scraping-session"
+                        (fn [raw-edn]
+                          (.log js/console raw-edn)))))
+
+    (on-click stop-wf-btn-el  (fn [e] (js* "woof.browser.stop_workflow();")))
+
+    )
+  )
 
 
 
+;;
+;;;;
 
 
 
@@ -230,6 +261,8 @@
 
 (defn scraper-ctx [params]
   {
+
+   :scraping-ui        {:fn (fn [_] (scraping-ui-impl!))}
 
    :ui-progress {
                  :fn (fn [v]
@@ -249,7 +282,15 @@
 
    :process            {
                         :fn (fn [el]
-                              (parse-listing el))
+                              (try
+                                (parse-listing el)
+                                (catch js/Error e
+                                  (do (.error js/console e el)
+                                      {
+                                       :ad? true            ;; for now, treat parsed with error as ads
+                                       })
+                                  )
+                                ))
                         }
 
    :listing-ui*        (base/expand-into :listing-ui)
@@ -288,6 +329,35 @@
                               )
                         }
    ;; todo: convenience wrapper for working with collection with single
+
+   ;; filtering
+   ;; a) partition results to
+   ;; {
+   ;; :new       - listings that are not yet in summary
+   ;; :duplicate - listings that are in summary, with same prices
+   ;; :updated   - listings that are in summary, but with updated prices
+   ;; :ad        - ads or invalid listings
+   ;; }
+
+   :partition-listings {
+                        :fn       (fn [[summary model]]
+                                    (group-by (fn [[model el]]
+                                                (if (:ad? model)
+                                                  :ad
+                                                  (if-let [s (get summary (:id model))]
+                                                    (do
+                                                      ;; todo: implement checking for duplicates
+                                                      (if (= (:header model) (:header s))
+                                                        :duplicate
+                                                        :updated
+                                                        ))
+                                                    :new)
+                                                  ))
+                                              model)
+                                    )
+                        :collect? true
+                        }
+
    }
   )
 
@@ -378,9 +448,62 @@
 
 (defn scraper-steps [params]
 
-  {
-   ::hello [:log "HELLO"]
-   }
+  ;; parse steps
+  (merge
+    ;; PARSE: GLUE
+    ;; PARSE: IN - :listings/SUMMARY
+    {
+     :listings/SUMMARY [:identity {
+                                   "boo" {}
+                                   }]
+     }
+    ;; PARSE: IMPL
+    {
+
+     ;; find listing els for further parsing
+     :domik/els* [:query-selector-all* ".cnt .objava"]
+     :domik/listings* [:process* :domik/els*]
+
+
+
+     ;;
+     ;; mem
+     :mem/collected-listings* [:mem-zip* [:mem/listings* :mem/els*]]
+     :mem/listings* [:mem-k* :domik/listings*]
+     :mem/els* [:mem-k* :domik/els*]
+
+     ;;
+     ;; collect LISTINGS
+     :domik/collected-listings* [:collect :mem/collected-listings*]
+
+
+     ;;
+     ;; filter already processed listings
+     :listings/LISTINGS-MAP [:partition-listings [:listings/SUMMARY :domik/collected-listings*]]
+
+     ;; todo: implement check if step handler is waiting too long for argument
+
+     ::hello [:&log :listings/LISTINGS-MAP]
+
+     }
+    {
+
+     :ui/scraping-session [:scraping-ui nil]
+
+     ; :css/hide-listings [:css-rule ".cnt { display: none; }"]
+     :css/css-1 [:css-rule ".woof-custom-listing-ui { font-family: 'DejaVu Sans Mono'; font-size: 7pt; }" ]
+     :css/css-2 [:css-rule ".woof-listing-hide { opacity: 0.25;}" ]
+     :css/css-3 [:css-rule ".woof-listing-show { outline: 3px solid crimson;  }" ]
+
+     :css/scraping-ui [:css-rules* [".woof-scraper-ui" "position: fixed;
+                                                                      bottom: 0;
+                                                                      left: 0;
+                                                                      width: 100%;
+                                                                      padding-left: .5rem;
+                                                                      background-color: rgba(188, 143, 143, 0.1);"]]
+     }
+    )
+
 
   #_(let [ws? (&ws? params)
         skip-processed? (&skip-processed? params)
