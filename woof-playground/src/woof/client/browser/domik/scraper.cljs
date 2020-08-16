@@ -217,90 +217,6 @@
 
 
 
-(defn common-ctx [params]
-  {
-   :log {:fn (fn[v]
-               (.log js/console v)
-               v)}
-
-
-   :prn {:fn (fn[v]
-                      (prn v)
-                      "")}
-
-
-   :copy-to-clipboard {:fn (fn [v]
-
-                             ;; focus()
-
-                          (when js/navigator.clipboard.writeText
-                                (let [clipboard js/navigator.clipboard
-
-                                      copy-handler (fn []
-                                                     (-> (.writeText clipboard (d/pretty! v))
-                                                         (.then (fn [response](.log js/console "Copied to clipboard - " response))
-                                                                (fn [err]     (.warn js/console "Failed to copy to clipboard" err))))
-                                                     )
-                                      ]
-
-                                  (let [btn-el (dom/createDom "button" ""
-                                                               "copy results to clipboard")]
-
-                                    (goog.events.listen btn-el goog.events.EventType.CLICK copy-handler)
-                                    (woof-dom/ui-add-el! btn-el)
-
-                                    (.focus btn-el)
-
-                                    )
-
-
-                                  )
-                              )
-
-                          )}
-
-   :wait-rest      {
-                    :fn       (fn [[v & rest]]
-                                v)
-                    :collect? true
-                    }
-
-   :ui-progress {
-                 :fn (fn [v]
-                        ;; todo: use value
-                       (let [el (dom/createDom "div" ""
-                                               "READY!")]
-
-
-                            (woof-dom/ui-add-el! el)
-                            )
-                       )
-                 }
-
-   }
-  )
-
-
-
-(defn common-opt[params]
-  {
-   :op-handlers-map {
-                     :done  (fn [result]
-                              (.log js/console "WF DONE: " result)
-
-                              ;; handle wf results if needed
-                              (let [wf-done (&display-results-fn params)]
-                                   (wf-done result))
-
-                              )
-
-                     :error (fn [result]
-                              (.error js/console result))
-
-                     }
-
-   })
-
 
 
 (defn scraper-init [params]
@@ -315,8 +231,17 @@
 (defn scraper-ctx [params]
   {
 
-   ;; splits elements to a separate step
-   :expand*            (base/expand-into :identity)
+   :ui-progress {
+                 :fn (fn [v]
+                       ;; todo: use value
+                       (let [el (dom/createDom "div" ""
+                                               "READY!")]
+
+
+                         (woof-dom/ui-add-el! el)
+                         )
+                       )
+                 }
 
 
    ;; splits sid-list into
@@ -452,7 +377,12 @@
 
 
 (defn scraper-steps [params]
-  (let [ws? (&ws? params)
+
+  {
+   ::hello [:log "HELLO"]
+   }
+
+  #_(let [ws? (&ws? params)
         skip-processed? (&skip-processed? params)
 
         server-steps {

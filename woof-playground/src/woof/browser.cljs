@@ -57,6 +57,7 @@
 ;; common step handlers
 
 
+;; shared step handlers for all scraping workflows
 (defn common-ctx [params]
   {
    :log     {:fn (fn[v] (.log js/console v) true)}
@@ -131,6 +132,7 @@
    :identity*    (base/expand-into :identity)
    :v {:fn identity }
    :v* (base/expand-into :v)
+
 
 
    :collect  {
@@ -210,10 +212,12 @@
                               (let [wf-done (&display-results-fn params)]
                                    (wf-done result))
 
+                              result
                               )
 
                      :error (fn [result]
-                              (.error js/console result))
+                              (.error js/console result)
+                              result)
 
                      }
 
@@ -256,40 +260,62 @@
 
 (defn domik-scraping! []
 
+  ;; todo: rework domik scraping similar to scraper/ws workflow
   ;; pass configuration to the workflow
   (let [meta-init-fn (fn [params]
                        {
-
-                        :ws? false
+                        :ws? true                 ;
                         :ws/skip-processed? false
-
-                        ;; on-done
+                        ;; custom on-done
                         :wf/display-results-fn (fn [wf-results]
-
-                                                 (let [listings (get wf-results :domik/LISTINGS)]
-
-                                                      ; todo: handle listings here if needed
-                                                      ;; (.clear js/console)
-                                                      ;; (.log js/console listings)
-
-                                                      )
-
+                                                 ;; (.log js/console wf-results)
                                                  )
-                        })]
 
-    (run-wf!
-      (base/wf!
-        :init [meta-init-fn
-               domik-scraper/scraper-init]
-        :ctx [woof-dom/dom-ctx
-              domik-scraper/common-ctx
-              domik-scraper/scraper-ctx]
-        :steps [domik-scraper/scraper-steps]
-        :opts [domik-scraper/common-opt]
-        )
-      )
+                        })
+
+        *internal-state (atom {})
+
+        wf-impl (base/wf!
+                  :init [(base/build-init-chan-factory-fn chan-factory)
+                         (evt-loop/build-evt-loop-init-fn (base/make-chan chan-factory (base/rand-sid "evt-")))
+
+                         (base/build-init-state-fn *internal-state)
+                         meta-init-fn
+
+                         domik-scraper/scraper-init
+                         ;; scraping-test-ws/init-fn
+                         ]
+
+                  :ctx [
+                        common-ctx
+                        browser-ctx
+                        woof-dom/dom-ctx
+
+                        ws/ws-ctx-fn
+                        evt-loop/evt-loop-ctx-fn
+
+                        ;; scraping-test-ws/scraper-ctx
+
+                        domik-scraper/scraper-ctx
+
+                        ]
+                  :opts [
+                         common-opts
+                         (base/build-opts-chan-factory-fn chan-factory)
+                         ]
+
+                  :steps [
+                          ; scraping-test-ws/scraper-steps
+                          domik-scraper/scraper-steps
+                          ]
+
+                  ;; think better name
+                  :wf-impl (dbg/dbg-wf)
+                  )
+        ]
+
+    (run-wf! wf-impl)
     )
-
   )
 
 
@@ -463,7 +489,8 @@
 
     (cond
       ;; map localhost to a specific wf
-      (clojure.string/starts-with? url "http://localhost")        (scrapping-test-wf!)
+      (clojure.string/starts-with? url "http://localhost:9500/scraper")        (scrapping-test-wf!)
+      (clojure.string/starts-with? url "http://localhost:9500/browser.html")   (domik-scraping!)
 
       ;; dispatch url to a corresponding scraper
       (clojure.string/starts-with? url "https://auto.ria.com")    (autoria-sraping!)
