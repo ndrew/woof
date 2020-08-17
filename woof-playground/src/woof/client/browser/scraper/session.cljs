@@ -21,8 +21,8 @@
     :host    (.. js/window -location -host)
     :url     (str (.-location js/window))
     }
-   ]
-  )
+   ])
+
 
 (defn init-scraping-msg []
   [:scraping/session

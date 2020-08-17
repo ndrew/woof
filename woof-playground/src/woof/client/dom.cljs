@@ -60,6 +60,16 @@
   )
 
 
+(defn css-add-rule! [rule]
+  (let [style-el (.createElement js/document "style")]
+    (.appendChild (.-head js/document) style-el)
+
+    (let [sheet (.-sheet style-el)]
+      (.insertRule sheet rule)
+      )
+    )
+  )
+
 
 (defn dom-ctx [params]
   {
@@ -97,18 +107,14 @@
 
    :css-rule    {
                         :fn (fn [rule]
-                              (let [style-el (.createElement js/document "style")]
-                                   (.appendChild (.-head js/document) style-el)
-
-                                   (let [sheet (.-sheet style-el)]
-                                     (.insertRule sheet rule)
-                                     )
-                                   )
+                              ;; todo: maybe add a style with specific id
+                              (css-add-rule! rule)
                               true)
                         }
 
    ;; newline separated css ruls [".sector" "rule: aaa;\n rule: bbb;" ]
    :css-rules* { :fn (fn [[selector body]]
+                       ;; maybe using expands here is overkill - as we'll be adding new style els
                       (let [lines (str/split-lines body)]
                            (reduce (fn [a line]
                                      (assoc a (base/rand-sid "css-") [:css-rule (str selector " { " line " }")])
@@ -142,6 +148,12 @@
     (set! (-> el .-style .-borderTop) "1px solid #000")
 
 
+    (css-add-rule! ".woof-scraper-ui .panel { display: inline-block; }")
+
+    (css-add-rule! ".woof-scraper-ui .panel + .panel { margin-left: 1.5rem; }")
+
+
+    (css-add-rule! ".woof-scraper-ui .panel button { margin: .5rem .1rem; }")
     ;;
     ;; add a placeholder element to dom
     (add-el! ".woof-scraper-ui" el)
@@ -160,3 +172,7 @@
 
          true)
    })
+
+
+(defn on-click [btn handler]
+  (goog.events.listen btn goog.events.EventType.CLICK handler))

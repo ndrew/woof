@@ -10,7 +10,7 @@
     [goog.dom :as dom]
 
 
-    [woof.client.browser.scraper.ws :as scraping-test-ws]
+    [woof.client.browser.scraper.test-wf :as scraping-test-ws]
 
     ;; auto.ria.com
     [woof.client.browser.autoria.scraper :as autoria-scraper]
@@ -28,6 +28,7 @@
 
 
     [woof.client.ws :as ws]
+    [woof.client.browser.scraper.session :as ss]
 
     [cljs.core.async :refer [go] :as async]
     [cljs.core.async.interop :refer-macros [<p!]]
@@ -54,10 +55,9 @@
 (defonce chan-factory (base/chan-factory (atom {})))
 
 
-;; common step handlers
-
-
 ;; shared step handlers for all scraping workflows
+
+;; common step handlers
 (defn common-ctx [params]
   {
    :log     {:fn (fn[v] (.log js/console v) true)}
@@ -145,6 +145,7 @@
    }
   )
 
+;; browser
 (defn copy-to-clipboard [v]
   (when js/navigator.clipboard.writeText
     (let [clipboard js/navigator.clipboard
@@ -187,6 +188,30 @@
    }
   )
 
+;; ws
+
+(defn init-ws-fn [params]
+    ;; injects: :ws/summary-chan - for returning summary via ws
+    ;;          :ws/chan-fn
+    ;;          :ws/gen-msg-handler
+    (let [chan-factory (base/&chan-factory params)
+          summary-chan (base/make-chan chan-factory (base/rand-sid))
+
+          msg-fn     (partial ss/_get-summary-msg-fn summary-chan)
+          ws-init-fn (partial ws/_ws-init-fn msg-fn)]
+
+      ;; only if wf
+      (merge
+        {:ws/summary-chan summary-chan}
+        (ws-init-fn params))
+      )
+
+    )
+
+
+
+
+;; opts
 
 (defn &display-results-fn [params] (get params :wf/display-results-fn identity))
 
@@ -241,6 +266,9 @@
   )
 
 
+;;;;;;;;;;;;;;;;;;;
+;;
+;; scrapers
 
 (defn lun-scraping! []
   ;; todo: use meta workflow
@@ -426,26 +454,27 @@
 (defn scrapping-test-wf! []
 
   ;; pass configuration to the workflow
-  (let [meta-init-fn (fn [params]
+  (let [ws? true
+        ;;
+        meta-init-fn (fn [params]
                        {
-                        :ws? true                 ;
-                        ;; custom on-done
-                        :wf/display-results-fn (fn [wf-results]
-                                                 ;; (.log js/console wf-results)
-                                                 )
+                        :ws? ws?
                         })
 
         *internal-state (atom {})
 
         wf-impl (base/wf!
                   :init [(base/build-init-chan-factory-fn chan-factory)
-                         (evt-loop/build-evt-loop-init-fn (base/make-chan chan-factory (base/rand-sid "evt-")))
+
+                         ;(evt-loop/build-evt-loop-init-fn (base/make-chan chan-factory (base/rand-sid "evt-")))
 
                          (base/build-init-state-fn *internal-state)
 
                          meta-init-fn
 
-                         scraping-test-ws/init-fn
+                         (if ws?
+                           init-ws-fn
+                           (identity {}))
                          ]
 
                   :ctx [
@@ -454,7 +483,7 @@
                         woof-dom/dom-ctx
 
                         ws/ws-ctx-fn
-                        evt-loop/evt-loop-ctx-fn
+                        ; evt-loop/evt-loop-ctx-fn
 
                         scraping-test-ws/scraper-ctx
                         ]

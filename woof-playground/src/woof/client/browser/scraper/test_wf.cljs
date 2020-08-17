@@ -1,4 +1,4 @@
-(ns woof.client.browser.scraper.ws
+(ns woof.client.browser.scraper.test-wf
   (:require
     [goog.object]
     [goog.dom :as dom]
@@ -14,10 +14,9 @@
     [woof.client.dom :as woof-dom]
     [woof.client.ws :as ws]
     [woof.client.browser.scraper.session :as ss]
+    [woof.client.browser.scraper.scraping-ui :as sui]
 
     [woof.wfs.evt-loop :as evt-loop]
-
-
     ))
 
 
@@ -29,24 +28,6 @@
 
 (defn &ws? [params] (get params :ws? false))
 (defn &summary-chan [params] (get params :ws/summary-chan))
-
-
-(defn init-fn [params]
-  ;; injects: :ws/summary-chan - for returning summary via ws
-  ;;          :ws/chan-fn
-  ;;          :ws/gen-msg-handler
-  (let [chan-factory (base/&chan-factory params)
-        summary-chan (base/make-chan chan-factory (base/rand-sid))
-
-        msg-fn     (partial ss/_get-summary-msg-fn summary-chan)
-        ws-init-fn (partial ws/_ws-init-fn msg-fn)]
-
-    ;; only if wf
-    (merge
-      {:ws/summary-chan summary-chan}
-      (ws-init-fn params))
-    )
-  )
 
 
 
@@ -126,30 +107,16 @@
   (goog.events.listen btn goog.events.EventType.CLICK handler))
 
 
-(defn- scraping-ui-impl! []
-  ;; todo: pass configuration for urls
-  (let [clear-session-btn-el (dom/createDom "button" "" "clear session")
-        get-session-btn-el   (dom/createDom "button" "" "get session")
-        stop-wf-btn-el       (dom/createDom "button" "" "stop WF!")]
-
-    (woof-dom/ui-add-el! get-session-btn-el)
-    (woof-dom/ui-add-el! clear-session-btn-el)
-    (woof-dom/ui-add-el! stop-wf-btn-el)
-
-    (on-click get-session-btn-el
-              (fn [e]
-                (ws/GET "http://localhost:8081/scraping-session"
-                        (fn [raw-edn]
-                          (.log js/console raw-edn)))))
-
-    (on-click clear-session-btn-el
-              (fn [e]
-                (ws/GET "http://localhost:8081/clear-scraping-session"
-                        (fn [raw-edn]
-                          (.log js/console raw-edn)))))
+(defn- wf-ui-impl! []
+  (let  [stop-wf-btn-el       (dom/createDom "button" "" "stop WF!")
+         panel (dom/createDom "div" "panel")
+         ]
 
     (on-click stop-wf-btn-el  (fn [e] (js* "woof.browser.stop_workflow();")))
 
+    (dom/appendChild panel stop-wf-btn-el)
+
+    (woof-dom/ui-add-el! panel)
     )
   )
 
@@ -177,7 +144,10 @@
                         }
 
 
-   :scraping-ui        {:fn (fn [_] (scraping-ui-impl!))}
+   :scraping-ui        {:fn (fn [_]
+                              (sui/scraping-ui-impl!)
+                              (wf-ui-impl!)
+                              )}
    }
   )
 
@@ -336,6 +306,8 @@
      :mem/collected-listings* [:mem-zip* [:mem/listings* :mem/els*]]
      :mem/listings* [:mem-k* :listings/listings*]
      :mem/els* [:mem-k* :listings/els*]
+
+     ;; ::hello [:&log :mem/collected-listings*]
 
      ;;
      ;; collect LISTINGS

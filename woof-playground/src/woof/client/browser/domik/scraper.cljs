@@ -12,23 +12,18 @@
     [woof.client.ws :as ws]
     [woof.client.dom :as woof-dom]
     [woof.data :as d]
+
+    [woof.client.browser.scraper.scraping-ui :as sui]
     ))
+
 
 ;; domik.net scrapping
 
 ;;
 ;; mapping decisions for wf
 
-;; use global state for now
-(def *STATE (atom {
-                   ::ids #{}
-                   ::socket nil
-                   }))
-
 
 (defn &ws? [params] (get params :ws? false))
-(defn &skip-processed? [params] (get params :ws/skip-processed? false))
-(defn &display-results-fn [params] (get params :wf/display-results-fn identity))
 
 
 (defn extract-listing-text [bodyEls]
@@ -59,6 +54,7 @@
     {
      :full-text (reduce (fn [a p] (str a (goog.dom/getTextContent p) "\n")) "" bodyEls)
      } (map goog.dom/getTextContent bodyEls))
+
   #_(let [[raw-floor & rest] (map goog.dom/getTextContent bodyEls)
 
         full-text (reduce (fn [a p] (str a (goog.dom/getTextContent p) "\n")) "" bodyEls)
@@ -168,8 +164,8 @@
 
 
 (defn listing-text-ui [listing]
-  (d/pretty listing)
-  )
+  (d/pretty listing))
+
 
 ;;
 (defn custom-ui [listing]
@@ -212,37 +208,6 @@
   )
 
 
-(defn- on-click [btn handler]
-  (goog.events.listen btn goog.events.EventType.CLICK handler))
-
-
-(defn- scraping-ui-impl! []
-  ;; todo: pass configuration for urls
-  (let [clear-session-btn-el (dom/createDom "button" "" "clear session")
-        get-session-btn-el   (dom/createDom "button" "" "get session")
-        stop-wf-btn-el       (dom/createDom "button" "" "stop WF!")]
-
-    (woof-dom/ui-add-el! get-session-btn-el)
-    (woof-dom/ui-add-el! clear-session-btn-el)
-    (woof-dom/ui-add-el! stop-wf-btn-el)
-
-    (on-click get-session-btn-el
-              (fn [e]
-                (ws/GET "http://localhost:8081/scraping-session"
-                        (fn [raw-edn]
-                          (.log js/console raw-edn)))))
-
-    (on-click clear-session-btn-el
-              (fn [e]
-                (ws/GET "http://localhost:8081/clear-scraping-session"
-                        (fn [raw-edn]
-                          (.log js/console raw-edn)))))
-
-    (on-click stop-wf-btn-el  (fn [e] (js* "woof.browser.stop_workflow();")))
-
-    )
-  )
-
 
 
 ;;
@@ -251,18 +216,14 @@
 
 
 (defn scraper-init [params]
-
-  (let [ws? (&ws? params)]
-    (if ws?
-      {:start-chan (async/chan)}
-      {})
-    )
+  {}
   )
 
 (defn scraper-ctx [params]
   {
 
-   :scraping-ui        {:fn (fn [_] (scraping-ui-impl!))}
+   :scraping-ui        {:fn (fn [_]
+                              (sui/scraping-ui-impl!))}
 
    :ui-progress {
                  :fn (fn [v]
@@ -293,41 +254,17 @@
                                 ))
                         }
 
+
    :listing-ui*        (base/expand-into :listing-ui)
    :listing-ui         {
                         :fn (fn [listing]
+                              ;; currently we have to find the el
                               (custom-ui listing)
 
                               "ok"
                               )
                         }
 
-
-   :filter-scraped {
-                    :fn (fn [kv]
-                          (let [ids (::ids *STATE)]
-                               (reduce (fn [a [k v]]
-                                         (if-not (get ids (:id v))
-                                                 (assoc a (base/rand-sid "filter-") [:identity k])
-                                                 a
-                                                 )) {} kv)
-                               )
-
-                          )
-                    :expands? true
-                    }
-
-
-
-   :post-process       {
-                        :fn (fn [listings]
-                              (sort-by
-                                :uah
-                                (map #(get % :price) listings)
-                                )
-
-                              )
-                        }
    ;; todo: convenience wrapper for working with collection with single
 
    ;; filtering
@@ -358,95 +295,29 @@
                         :collect? true
                         }
 
+   :post-process       {
+                        :fn (fn [listings]
+                              (sort-by
+                                :uah
+                                (map #(get % :price) listings)
+                                )
+
+                              )
+                        }
+
+
    }
   )
 
-(defn ws-ctx-fn [params]
-  ;; "ws:localhost:8081/ws"
-  (let [*state (atom {
-                      ::socket nil
-                      ::ids #{}
-                      ::listings {}
-                      })
-
-        gen-msg-handler  (fn []
-                       (let [first-ids (volatile! false)]
-                            (fn [msg]
-                              (let [[t body] (:msg msg)]
-                                   (when (= t :ids)
-                                     (swap! *state assoc :ids body)
-                                     (when-not @first-ids
-                                       ;; -->
-                                       (async/put! (:start-chan params) true)
-                                       (vswap! first-ids not)
-                                       )
-                                     )
-                                   (.log js/console "PAYLOAD" msg)
-                                   )
-                              )
-                            )
-                       )
-
-
-        ]
-    {
-     :init-socket    {
-                      :fn (fn [url]
-                            (let [ch (async/chan)
-                                  msg-handler (gen-msg-handler)
-                                  ]
-                                 (ws/chan-connect url
-                                                  :chan ch
-                                                  :on-message (fn [payload]
-                                                                (let [msg (ws/read-transit payload)]
-                                                                     (msg-handler msg)))
-                                                  )
-                                 )
-                            )
-                      }
-
-
-     :send-msg!      {
-                      :fn (fn [msg]
-                            (ws/send-transit! (:socket msg) (:msg msg))
-                            ::sent
-                            )
-                      }
-
-     :store-listings {
-                      :fn       (fn [[socket listings]]
-
-                                  (let [ids (::ids @*state)
-                                        kv-listings (reduce (fn [a o]
-                                                              (if-not (ids (:id o))
-                                                                      (assoc a (:id o) o)
-                                                                      a)
-                                                              ) {} listings)
-
-                                        ]
-                                       {
-                                        (base/rand-sid "store-") [:send-msg! {:socket socket
-                                                                              :msg    [:listings kv-listings]
-                                                                              }
-                                                                  ]
-                                        })
-                                  )
-                      :collect? true
-                      :expands? true
-                      }
-
-     }
-    )
-
-  )
-
-;; avoiding duplicates:
-;; a) not returning via expand*
-;; b) not including during kv-zipping
 
 
 
 (defn scraper-steps [params]
+
+  (if (&ws? params)
+    (prn "will be using ws")
+    )
+
 
   ;; parse steps
   (merge
@@ -483,6 +354,8 @@
 
      ;; todo: implement check if step handler is waiting too long for argument
 
+
+
      ::hello [:&log :listings/LISTINGS-MAP]
 
      }
@@ -495,91 +368,7 @@
      :css/css-2 [:css-rule ".woof-listing-hide { opacity: 0.25;}" ]
      :css/css-3 [:css-rule ".woof-listing-show { outline: 3px solid crimson;  }" ]
 
-     :css/scraping-ui [:css-rules* [".woof-scraper-ui" "position: fixed;
-                                                                      bottom: 0;
-                                                                      left: 0;
-                                                                      width: 100%;
-                                                                      padding-left: .5rem;
-                                                                      background-color: rgba(188, 143, 143, 0.1);"]]
      }
-    )
-
-
-  #_(let [ws? (&ws? params)
-        skip-processed? (&skip-processed? params)
-
-        server-steps {
-                           :ws/socket [:init-socket "ws:localhost:8081/ws"]
-                           :ws/save-results [:store-listings [:ws/socket :domik/LISTINGS]]
-                      
-                         :ws/already-processed-ids [:identity (:start-chan params)]}
-        no-server-steps {:ws/already-processed-ids [:identity true]}
-
-        css-steps {
-                   ; :css/hide-listings [:css-rule ".cnt { display: none; }"]
-                   :css/css-1 [:css-rule ".woof-custom-listing-ui { font-family: 'DejaVu Sans Mono'; font-size: 7pt; }" ]
-                   :css/css-2 [:css-rule ".woof-listing-hide { opacity: 0.25;}" ]
-                   :css/css-3 [:css-rule ".woof-listing-show { outline: 3px solid crimson;  }" ]
-
-                   :css/scraping-ui [:css-rules* [".woof-scraper-ui" "position: fixed;
-                                                                      bottom: 0;
-                                                                      left: 0;
-                                                                      width: 100%;
-                                                                      padding-left: .5rem;
-                                                                      background-color: rgba(188, 143, 143, 0.1);"]]
-                   }
-
-
-        parse-steps {
-               ;; find listing els for further parsing
-               :domik/__listing-els* [:query-selector-all ".cnt .objava"]
-
-               ;; expose listing els for parser, after we've got list of already processed listings from server
-               :domik/listing-els* [:wait-rest [:domik/__listing-els*
-                                                :ws/already-processed-ids]]
-
-               :domik/parsed-listings* [:process* :domik/listing-els*]
-               }
-
-
-        filter-results-steps {
-                              ;; hacky way to pass the key as a value
-                              ::k [:mem-k* :domik/parsed-listings*]
-                              ::KV [:*kv-zip [::k :domik/parsed-listings*]]
-
-                              :domik/LISTINGS [:filter-scraped ::KV]
-
-                              }
-        no-filter-results-steps {
-                                 :domik/LISTINGS [:collect :domik/parsed-listings*]
-                                 }
-        ui-steps {
-
-                  ;; ::new-ui [:listing-ui* :domik/LISTINGS]
-
-
-                  ;; so they can be copy pasted
-                  ;; :ui/print_results [:prn :domik/LISTINGS]
-
-                  :clipboard/copy-results [:copy-to-clipboard :domik/LISTINGS]
-
-                  ;; ::ui-progress [:ui-progress :domik/LISTINGS]
-                  ;; ::post-process [:post-process ::RESULT]
-                  }
-
-        ]
-
-    (merge
-      (if ws? server-steps
-              no-server-steps)
-      parse-steps
-      (if skip-processed? filter-results-steps
-                          no-filter-results-steps)
-
-      ui-steps
-        css-steps
-      )
-
     )
 
   )
