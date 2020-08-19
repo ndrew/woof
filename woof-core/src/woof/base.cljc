@@ -79,7 +79,7 @@
   [fns & {:keys [merge-results] :or {merge-results merge}}]
   (let [state-map-fn (fn [params]
                        {:params params
-                        :result    {}})
+                        :result    (array-map)})
 
         merge-fn (fn [{result :result
                        params :params} nu-result]
@@ -576,12 +576,13 @@
   [step-id]
   {
    :fn       (fn [els]
-               (reduce (fn [a e] (assoc a (rand-sid) [step-id e])) {} els))
+               (reduce (fn [a e] (assoc a (rand-sid) [step-id e]))
+                       (array-map) els))
    :expands? true
    }
   )
 
-(defonce expand-into (if true expand-into-prefixed
+(defonce expand-into (if false expand-into-prefixed
                           expand-into-normal))
 
 

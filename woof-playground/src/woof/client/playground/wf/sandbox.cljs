@@ -8,119 +8,194 @@
     [woof.data :as d]
     [woof.wf :as wf]
     [woof.utils :as utils]
-    [woof.base :as base])
+    [woof.base :as base]
+    )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
-;;
-;;
-;; use this workflow as a sandbox for
-;;
-;;
 
-;;
-;; context
+
+(defn &worker-chan [params]
+  (::worker-chan params)
+  )
+
+
+(defn lineriaze-loop [in-chan]
+
+  (go-loop []
+           (when-let [[handler out-chan] (async/<! in-chan)]
+
+             (let [ready-chan (handler)
+                   val (async/<! ready-chan)]
+
+               (async/put! out-chan val)
+               )
+
+             (recur)
+             ))
+  )
+
+
+(defn queue! [worker-chan handler out-channel]
+  (async/put! worker-chan [handler out-channel])
+  )
 
 
 (defn sandbox-init-params-fn [params]
-  {
-   }
+  ;; can this be done via transducer
+  (let [chan-factory (base/&chan-factory params)
+
+        in-chan (base/make-chan chan-factory (base/rand-sid))]
+
+    (lineriaze-loop in-chan)
+
+    (merge
+      {
+       ::worker-chan in-chan
+       }
+      {}
+      )
+
+    )
   )
+
 
 (defn sandbox-ctx-fn [params]
   (let [make-chan (partial st-wf/&chan params)]
     {
-     :identity   {:fn (fn [a] a)}
+     :identity       {:fn (fn [a] a)}
 
-     :hello      {:fn (fn [a]
-                        (let [c (make-chan (wf/rand-sid))]
-                             (go
-                               (async/put! c (str "Hello! " (pr-str a))))
-                             c))}
+     :hello          {:fn (fn [a]
+                            (let [c (make-chan (wf/rand-sid))]
+                                 (go
+                                   (async/put! c (str "Hello! " (pr-str a))))
+                                 c))}
 
-     :meta-hello {
-                  :fn (fn [a]
-                        )
-                  }
+     :meta-hello     {
+                      :fn (fn [a]
+                            )
+                      }
 
-     :hello-wait {:fn (fn [a]
-                        (let [c (make-chan (wf/rand-sid))]
-                             (go
-                               (async/<! (utils/timeout 3000))
+     :hello-wait     {:fn (fn [a]
+                            (let [c (make-chan (wf/rand-sid))]
+                                 (go
+                                   (async/<! (utils/timeout 3000))
 
-                               (async/put! c (str "Hello! " (pr-str a))))
-                             c))}
+                                   (async/put! c (str "Hello! " (pr-str a))))
+                                 c))}
 
      ;; return time for max-num times
-     :8          {:fn       (fn [max-num]
-                              (let [chan (make-chan (wf/rand-sid))
-                                    t (volatile! (utils/now))]
+     :8              {:fn       (fn [max-num]
+                                  (let [chan (make-chan (wf/rand-sid))
+                                        t (volatile! (utils/now))]
 
-                                   (go-loop [i 0]
-                                            (async/<! (utils/timeout 500))
+                                       (go-loop [i 0]
+                                                (async/<! (utils/timeout 500))
 
-                                            ;; (.warn js/console "i" i (< i max-num) (- (u/now) @t) )
-                                            (vreset! t (utils/now))
+                                                ;; (.warn js/console "i" i (< i max-num) (- (u/now) @t) )
+                                                (vreset! t (utils/now))
 
-                                            (async/>! chan (str i ": " (int (rand 100))))
+                                                (async/>! chan (str i ": " (int (rand 100))))
 
-                                            (if (< i max-num)
-                                              (recur (inc i))))
+                                                (if (< i max-num)
+                                                  (recur (inc i))))
 
-                                   chan))
-                  :infinite true
-                  }
+                                       chan))
+                      :infinite true
+                      }
 
 
      ;; the expand step emits several values — question: how to use this in the end
 
-     :xpand-8    {:fn       (fn [cfg]
-                              (let [chan> (make-chan)]
-                                   (go []
-                                       (let [v (async/<! (utils/timeout 1500))
-                                             producer-sid (base/rand-sid "xpand-intermediary-")
-                                             consumer-sid (base/rand-sid "xpand-result-")
-                                             ]
+     :xpand-8        {:fn       (fn [cfg]
+                                  (let [chan> (make-chan)]
+                                       (go []
+                                           (let [v (async/<! (utils/timeout 1500))
+                                                 producer-sid (base/rand-sid "xpand-intermediary-")
+                                                 consumer-sid (base/rand-sid "xpand-result-")
+                                                 ]
 
-                                         ;; here we expand once
-                                         (async/put! chan>
-                                                     {producer-sid [:8 20]
-                                                      consumer-sid [:hello producer-sid]
-                                                      })))
-                                   chan>)
-                              )
-                  :expands? true}
+                                             ;; here we expand once
+                                             (async/put! chan>
+                                                         {producer-sid [:8 20]
+                                                          consumer-sid [:hello producer-sid]
+                                                          })))
+                                       chan>)
+                                  )
+                      :expands? true}
 
      :xpand-8-result {
-                 :fn (fn [sids]
-                       (let [nu-steps (reduce (fn [a sid]
-                                         (if (clojure.string/starts-with? (name sid) "xpand-result-")
-                                             (assoc a (base/rand-sid "result") [:identity sid])
-                                             a))
-                                       {} sids)]
+                      :fn       (fn [sids]
+                                  (let [nu-steps (reduce (fn [a sid]
+                                                           (if (clojure.string/starts-with? (name sid) "xpand-result-")
+                                                               (assoc a (base/rand-sid "result") [:identity sid])
+                                                               a))
+                                                         {} sids)]
 
-                            nu-steps
-                            )
-                       )
-                 :expands? true
-                 }
+                                       nu-steps
+                                       )
+                                  )
+                      :expands? true
+                      }
 
-     :first-collect {
-                      :fn (fn [v]
+     :first-collect  {
+                      :fn       (fn [v]
 
-                            (if (= :nil v)
-                                ;; do we need to throw exception here?
-                                (utils/throw! "empty sid list provided for :first-collect"))
-                            ;(.log js/console :first-collect v)
+                                  (if (= :nil v)
+                                      ;; do we need to throw exception here?
+                                      (utils/throw! "empty sid list provided for :first-collect"))
+                                  ;(.log js/console :first-collect v)
 
-                            (if (and (seq? v) (seq v))
-                                (first v)
-                                v)
-                            )
+                                  (if (and (seq? v) (seq v))
+                                      (first v)
+                                      v)
+                                  )
 
                       :collect? true
                       }
 
+     :async*         (base/expand-into :async)
+
+     :async          {:fn (fn [a]
+                            (let [worker-chan (&worker-chan params)
+
+                                  t (utils/now)
+
+                                  handler-fn (fn []
+                                    (.log js/console "WORKER" a t)
+
+                                    (let [c (make-chan (wf/rand-sid))]
+                                      (go
+                                        (async/<! (utils/timeout
+
+                                                    100 ;(+ 1 (rand-int 100))
+                                                    ))
+
+                                        ; (.log js/console a "took" (- t  (utils/now)))
+
+                                        (async/put! c (str "Hello! " (pr-str a)))
+                                        )
+                                      c)
+                                    )
+                                  ]
+
+                                (.log js/console "STEP-HANDLER" a t)
+
+                                (if true
+                                  (let [outbound-chan (make-chan (wf/rand-sid))]
+                                    (queue! worker-chan
+                                                    handler-fn
+                                                    outbound-chan)
+                                    outbound-chan
+                                    )
+                                  (handler-fn)
+                                  )
+
+
+
+                                 )
+
+                            )}
      }
     )
 
@@ -131,6 +206,10 @@
 (defn sandbox-steps-fn [params]
 
   {
+   ::vals [:async* (range 170)]
+   }
+
+  #_{
 
    ::xpnd [:xpand-8 {}]
 
@@ -314,11 +393,18 @@
 
    :steps-fns  [sandbox-steps-fn]
 
-   :opt-fns    [st-wf/chan-factory-opts-fn]
+   :opt-fns    [st-wf/chan-factory-opts-fn
+
+                (fn [params]
+                  {:execute (partial base/_timed-execute-fn 100)}
+                  )
+                ]
 
    :wf-actions {
                 :not-started []
                 :running     [
+                              ; ["debug" (fn [])]
+
                               ["emit step" (partial emit-step_ *wf)]
                               ]
                 :done        []
