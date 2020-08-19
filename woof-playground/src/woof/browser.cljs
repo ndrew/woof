@@ -65,7 +65,17 @@
               :collect? true
               }
 
-   :prn     {:fn (fn[v] (prn v) "")}
+   :prn     {:fn (fn[v] (.log js/console v) "")}
+   :*prn     {:fn (fn[v] (.log js/console v) "")
+              :collect? true
+              }
+   :prn-seq{:fn (fn[vs]
+                   (doseq [v vs]
+                     (.log js/console (d/pretty! v))
+                     )
+                    "")
+              :collect? true
+              }
 
    :wait-rest      {
                     :fn       (fn [[v & rest]] v)
@@ -231,7 +241,7 @@
    :op-handlers-map {
                      :done  (fn [result]
                               ;; todo: nicer display of results
-                              (.log js/console "WF DONE: " result)
+                              ;; (.log js/console "WF DONE: " result)
 
                               ;; handle wf results if needed
                               (let [wf-done (&display-results-fn params)]
@@ -296,7 +306,11 @@
                         :ws/skip-processed? false
                         ;; custom on-done
                         :wf/display-results-fn (fn [wf-results]
-                                                 ;; (.log js/console wf-results)
+                                                 (.groupCollapsed js/console "RESULTS")
+                                                 (.log js/console (d/pretty! wf-results))
+                                                 (.groupEnd js/console)
+
+                                                 wf-results
                                                  )
 
                         })
@@ -519,7 +533,7 @@
     (cond
       ;; map localhost to a specific wf
       (clojure.string/starts-with? url "http://localhost:9500/scraper")        (scrapping-test-wf!)
-      (clojure.string/starts-with? url "http://localhost:9500/browser.html")   (domik-scraping!)
+      (clojure.string/starts-with? url "http://localhost:9500/domik.html")   (domik-scraping!)
 
       ;; dispatch url to a corresponding scraper
       (clojure.string/starts-with? url "https://auto.ria.com")    (autoria-sraping!)
