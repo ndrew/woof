@@ -1,0 +1,30 @@
+{
+  "name": "Woof Chrome",
+  "description": "Loads woof workflows from chrome",
+  "version": "2.0",
+  "permissions": [
+    "activeTab"
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": false
+  },
+  "browser_action": {
+    "default_title": "Load workflow",
+    "default_icon": "woof_16x16.png"
+  },
+  "commands": {
+    "_execute_browser_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+W"
+      }
+    }
+  },
+  "permissions": [
+     "tabs", 
+     "http://*/*",
+     "https://*/*"
+ ],
+  "content_security_policy": "script-src 'self' http://localhost; object-src 'self'",
+  "manifest_version": 2
+}
