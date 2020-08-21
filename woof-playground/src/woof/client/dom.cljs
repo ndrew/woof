@@ -11,8 +11,6 @@
     [woof.base :as base]
     [woof.data :as d]
     [woof.utils :as u]
-
-
     ))
 
 
@@ -71,9 +69,17 @@
   )
 
 
+(defn query-selector*
+  ([selector]
+   (query-selector* (.-body js/document) selector))
+  ([el selector]
+   (array-seq (.querySelectorAll el selector))))
+
+
 (defn dom-ctx [params]
   {
-
+   ;;
+   ;; js
    :add-script {
                 :fn (fn [src]
                       (let [chan-factory (base/&chan-factory params)
@@ -87,7 +93,13 @@
                       )
                 }
 
+   ;;
    ;; gets html elements
+   :query-selector {
+                    :fn (fn [selector]
+                          (.querySelector (.-body js/document) selector))
+                    }
+
    :query-selector-all {
                         :fn (fn [selector]
                               (array-seq (.querySelectorAll (.-body js/document) selector)))
@@ -105,6 +117,8 @@
                          :expands? true
                          }
 
+   ;;
+   ;; CSS
    :css-rule    {
                         :fn (fn [rule]
                               ;; todo: maybe add a style with specific id

@@ -49,7 +49,6 @@
 
 
 
-
 ;; state
 
 (defonce chan-factory (base/chan-factory (atom {})))
@@ -65,8 +64,8 @@
               :collect? true
               }
 
-   :prn     {:fn (fn[v] (.log js/console v) "")}
-   :*prn     {:fn (fn[v] (.log js/console v) "")
+   :prn     {:fn (fn[v] (.log js/console (d/pretty! v)) "")}
+   :*prn     {:fn (fn[v] (.log js/console (d/pretty! v)) "")
               :collect? true
               }
    :prn-seq{:fn (fn[vs]
@@ -296,36 +295,19 @@
   )
 
 
-(defn domik-scraping! []
+(defn domik-scraping! [url]
 
   ;; todo: rework domik scraping similar to scraper/ws workflow
   ;; pass configuration to the workflow
-  (let [meta-init-fn (fn [params]
-                       {
-                        :ws? true                 ;
-                        :ws/skip-processed? false
-                        ;; custom on-done
-                        :wf/display-results-fn (fn [wf-results]
-                                                 (.groupCollapsed js/console "RESULTS")
-                                                 (.log js/console (d/pretty! wf-results))
-                                                 (.groupEnd js/console)
-
-                                                 wf-results
-                                                 )
-
-                        })
-
-        *internal-state (atom {})
+  (let [*internal-state (atom {})
 
         wf-impl (base/wf!
                   :init [(base/build-init-chan-factory-fn chan-factory)
                          (evt-loop/build-evt-loop-init-fn (base/make-chan chan-factory (base/rand-sid "evt-")))
 
                          (base/build-init-state-fn *internal-state)
-                         meta-init-fn
-
                          domik-scraper/scraper-init
-                         ;; scraping-test-ws/init-fn
+
                          ]
 
                   :ctx [
@@ -336,8 +318,6 @@
                         ws/ws-ctx-fn
                         evt-loop/evt-loop-ctx-fn
 
-                        ;; scraping-test-ws/scraper-ctx
-
                         domik-scraper/scraper-ctx
 
                         ]
@@ -347,14 +327,28 @@
                          ]
 
                   :steps [
-                          ; scraping-test-ws/scraper-steps
-                          domik-scraper/scraper-steps
+
+                          (cond
+                            (= url "http://localhost:9500/domik.html") domik-scraper/parse-listings-steps
+                            (= url "http://localhost:9500/domik_house.html") domik-scraper/parse-house-steps
+
+                            (clojure.string/starts-with? url "http://domik.ua/poleznoe/photoalbum/")  domik-scraper/parse-house-steps
+                            (clojure.string/starts-with? url "http://domik.ua/nedvizhimost/") domik-scraper/parse-listings-steps
+
+                            :else {
+                                   ::err [:log (str "unknown URL: " url)]
+                                   }
+                            )
+
+
                           ]
 
                   ;; think better name
                   :wf-impl (dbg/dbg-wf)
                   )
         ]
+
+    ;; todo: maybe choose whether to run wf from workflow itself?
 
     (run-wf! wf-impl)
     )
@@ -533,12 +527,13 @@
     (cond
       ;; map localhost to a specific wf
       (clojure.string/starts-with? url "http://localhost:9500/scraper")        (scrapping-test-wf!)
-      (clojure.string/starts-with? url "http://localhost:9500/domik.html")   (domik-scraping!)
+      ;; domik
+      (clojure.string/starts-with? url "http://localhost:9500/domik")     (domik-scraping! url)
+      (clojure.string/starts-with? url "http://domik.ua/")                (domik-scraping! url)
 
       ;; dispatch url to a corresponding scraper
       (clojure.string/starts-with? url "https://auto.ria.com")    (autoria-sraping!)
       (clojure.string/starts-with? url "https://blagovist.ua")    (blagovist-scraping!)
-      (clojure.string/starts-with? url "http://domik.ua/")        (domik-scraping!)
       (clojure.string/starts-with? url "https://lun.ua/")         (lun-scraping!)
 
       :else (do

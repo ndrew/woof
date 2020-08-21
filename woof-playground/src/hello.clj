@@ -1,6 +1,5 @@
 (ns hello
-  (:require [woof.base :as base])
-  )
+  (:require [woof.base :as base]))
 
 
 ;; ensure that base lib is avaialable
