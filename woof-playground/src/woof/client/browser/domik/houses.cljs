@@ -17,34 +17,6 @@
     [woof.client.browser.scraper.scraping-ui :as sui]
     ))
 
-(comment
-  (let [        aEl      (.querySelector el ".tittle_obj [clickcntid]")
-        houseEls (.querySelectorAll el ".adress_addInfo a")
-        metroEl  (.querySelector el ".adress_addInfo .metro")
-
-        projectEl (.querySelector el ".objava_detal_info .project_link")
-
-        ;_ (.warn js/console
-        ;         el
-        ;         (.querySelector el ".objava_detal_info .project_link"))
-
-        bodyEls (array-seq (.querySelectorAll el ".objava_detal_info .color-gray"))
-
-        houseTypeEl (.querySelector el ".objava_detal_info .color-gray a")
-        ; color-gray
-
-        raw-address (dom/getTextContent (.querySelector el ".adress_text"))
-
-        [_ _ district street building] (str/split raw-address #", ")
-
-        project (if projectEl (.getAttribute projectEl "href") nil)
-
-        birka (.querySelector el ".birka")
-        ]
-    123
-    )
-  )
-
 
 (defn- address-text [s]
   (if-let [[_ addr] (re-matches #"Адрес: (.*)" s)]
@@ -62,60 +34,81 @@
 
 (defn- detail-k [k]
   (let [s (str/trim k)
-        kw (get {"Год постройки" :year
-                 "Высота стен" :h
-                 "Этажность" :floors-total
-                 "GPS-координаты" :gps
-                 "Тип дома" :house-type
-                 "Тип" :type
-                 "Материал стен" :walls
+        kw (get {"Год постройки" [:house :year]
+                 "Высота стен" [:house :ceiling]
+                 "Этажность" [:house :floors]
+                 "GPS-координаты" [[:house :lat]
+                                   [:house :lng]]
+                 "Тип дома" [:house :type]
+                 "Тип" [:house :t]
+                 "Материал стен" [:house :walls]
                  } s s)]
 
     (cond
-      (keyword? kw) kw
+      (keyword? kw) [kw]
+      (vector? kw) kw
+
 
       ;;(str/starts-with? kw "Метро ") :nearest
-
-      :else kw
+      :else (do
+              [:house :metro kw]
+              )
       )
-
-
     )
   )
+
 
 (defn- detail-v [k v]
   (if v
     (let [s (str/trim v)]
+
       (cond
-        (= :gps k) (vec (map js/parseFloat (str/split s " ")))
-        (= :year k) (js/parseInt s 10)
+        (= [[:house :lat]
+            [:house :lng]
+            ] k) (vec (map js/parseFloat (str/split s " ")))
+        (= [:house :year] k) (js/parseInt s 10)
+
         ;; (= :nearest k) (str s " " k)
         :else s
         )
       )
-    "AAAAA")
-  )
+      "NO VALUE!"))
+
 
 
 (defn- parse-details [els]
 
   (reduce (fn [a el]
+            ;;; handle `Property: value` text values
             (let [s (dom/getTextContent el)
+                  ;; try spliting
                   [_k _v] (str/split s ":")]
-
-              (if _v
+              (if _v ; k: v property
                 ;; handle KKK: asdasd
-                (let [k (detail-k _k)]
-                  (assoc a k (detail-v k _v)))
+                (let [k (detail-k _k)
+                      nu-v (detail-v k _v)]
+
+                  (if (every? vector? k)
+                    ;; handle nested key selectors like [[:a :b] [:a :c]]
+                    ;; not that value should be in a vector [:b-val :c-val]
+                    (reduce
+                      (fn [a [k v]] (assoc-in a k v))
+                      a
+                      (partition 2 (interleave k nu-v)))
+                    ;; handle map selector [:k]
+                    (assoc-in a k nu-v)
+                    )
+                  )
 
                 ;; handle ZZZ - asasa
                 (let [[_k _v] (str/split _k "-")
-                      k (detail-k _k)]
-                  (assoc a k (detail-v k _v)))
+                      k (detail-k _k)
+                      v (detail-v k _v)]
+                  (assoc-in a k v)
+                  )
+
                 )
-
               )
-
             )
           {} els)
   )
@@ -130,6 +123,16 @@
     (let [$details (wdom/query-selector* ".krat_op > p")]
       (parse-details $details)
       )
+
+    (let [$el (.querySelector el ".krat_op .rating_block")]
+      {:rating (wdom/attr $el "ratingval")
+       :rating-num-votes (wdom/attr $el "votes_count")}
+      )
+
+    (let [$el (.querySelector el ".link-for-video a")]
+      {:video (wdom/href $el)}
+      )
+
     {}
     )
 

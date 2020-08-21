@@ -76,6 +76,19 @@
    (array-seq (.querySelectorAll el selector))))
 
 
+(defn attr [$el s]
+  (if $el (.getAttribute $el s) nil))
+
+(defn href [$el]
+  (attr $el "href"))
+
+(defn dataset [el]
+  (js->clj (.parse js/JSON (.stringify js/JSON el.dataset))
+           :keywordize-keys true
+           )
+  )
+
+
 (defn dom-ctx [params]
   {
    ;;
