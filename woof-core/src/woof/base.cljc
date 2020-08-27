@@ -116,10 +116,15 @@
                      b2)
 
 
+        ;; todo: how to handle waiting for resources from opts-handler
         combine-ops-maps (fn [o1 o2]
                            ;; why not
                            ;; (merge-with juxt op1 op2)
-                            (merge-with comp o1 o2))
+
+                           ;; FIXME: can op map return channels??
+                            (merge-with comp o1 o2)
+
+                           )
 
         bp-b (get b :before-process (fn [wf-chan xtor] :ok))
         bp-a (get a :before-process (fn [wf-chan xtor] :ok))
@@ -634,6 +639,9 @@
 
 
 
+;;
+;; FIXME: find ways of notifying that workflow had ended
+;;
 (defn stateful-wf
   [*state wf & {:keys [on-stop api] :or {on-stop (fn [stop-chan]) api {}}}]
 
@@ -645,25 +653,25 @@
 
           :start-wf! (fn [] (run-wf! wf))
 
-          ;; todo: how to handle waiting for resources from opts-handler
           :stop-wf!  (fn
                        ([]
                         (if-let [xtor (state-get-xtor *state)]
-                          (let [stop-ch (end! xtor)]
-                            ;; use global on-stop
-                            (on-stop stop-ch)
-                            ;; don't return the stop channel, as it might be depleted by on-stop
-                            ::wf-stop-started)
                           (do
-                            ;; <?> should we treat this as an error? or it's okay to do nothing in this case?
-                            ::no-wf-running))
-
-                        )
-                       ([on-stop]
+                            (end! xtor)
+                            ::wf-stop-started)
+                          ::no-wf-running))
+                       ([on-stop] ;; stop handler that will trigger on-stop callback
                         (if-let [xtor (state-get-xtor *state)]
-                          (let [stop-ch (end! xtor)]
-                            ;; use stop specific on-stop
-                            (on-stop stop-ch)
+
+                          ;; for now try waiting for stop channel, if it's in state
+                          (let [_ (end! xtor)
+                                stop-ch (get-in @*state [:STOP-CHAN])]
+
+                            (if-not (nil? stop-ch)
+                              ;; use stop specific on-stop
+                              (on-stop stop-ch)
+                              )
+
                             ;; don't return the stop channel, as it might be depleted by on-stop
                             ::wf-stop-started)
                           (do
@@ -757,3 +765,11 @@
     ;; (async/chan 1 (wf/chunk-update-xf 20))
 
     exec-chann))
+
+
+(defn &
+  "generic accessor"
+  [params k msg]
+  (if-let [v (get params k)]
+    v
+    (utils/throw! msg)))
