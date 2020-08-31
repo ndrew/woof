@@ -587,6 +587,18 @@
    }
   )
 
+#_(defn chain-expanded-ctx-cfg [wrapper-step]
+  {
+   :fn       (fn [sid-list]
+               (reduce (fn [a p]
+                         (assoc a (wf/rand-sid) [wrapper-step p]))
+                       {} sid-list))
+   :expands? true
+   :collect? false
+   }
+  )
+
+
 (defonce expand-into (if false expand-into-prefixed
                           expand-into-normal))
 
@@ -618,15 +630,6 @@
 (defn build-init-state-fn [*STATE]
   (fn [_] {::state *STATE}))
 
-;; keep xtor in state as ::xtor
-(defn build-opt-state-fn [*state]
-  (fn [params]
-    {:before-process  (fn [wf-chan xtor]
-                        (swap! *state assoc ::xtor xtor)
-
-                        :ok)})
-  )
-
 ;; state accessor
 (defn &state [params]
   ;; todo: throw if no state is provided
@@ -637,71 +640,84 @@
   (get-in @*state [::xtor]))
 
 
+;; keep xtor in state as ::xtor
+(defn build-opt-state-fn [*state] ;;  & {:keys [remove-state-key] :or {state-key :STATE}}
+  (fn [params]
+    {:before-process  (fn [wf-chan xtor]
+                        (swap! *state assoc ::xtor xtor)
+
+                        :ok)})
+  )
+
+
 
 
 ;;
-;; FIXME: find ways of notifying that workflow had ended
+;; TODO: find ways of notifying that workflow had ended and implement them in base
 ;;
 (defn stateful-wf
-  [*state wf & {:keys [on-stop api] :or {on-stop (fn [stop-chan]) api {}}}]
+  "build a stateful workflow map with :start-wf! and :stop-wf! 'methods' to start and stop workflow. Providing :api allows to have other user 'methods' or data "
+  [*state wf & {:keys [api] :or {api {}}}]
 
   (merge api
          {
           :wf        wf
 
-          :state     *state
+          ;; if the :state is needed to be stored here, it can be done via api
+          ;; :state     *state
 
           :start-wf! (fn [] (run-wf! wf))
 
-          :stop-wf!  (fn
-                       ([]
+          :stop-wf!  (fn []
                         (if-let [xtor (state-get-xtor *state)]
                           (do
                             (end! xtor)
                             ::wf-stop-started)
-                          ::no-wf-running))
-                       ([on-stop] ;; stop handler that will trigger on-stop callback
-                        (if-let [xtor (state-get-xtor *state)]
+                          (utils/throw! "no xtor in state")))
 
-                          ;; for now try waiting for stop channel, if it's in state
-                          (let [_ (end! xtor)
-                                stop-ch (get-in @*state [:STOP-CHAN])]
-
-                            (if-not (nil? stop-ch)
-                              ;; use stop specific on-stop
-                              (on-stop stop-ch)
-                              )
-
-                            ;; don't return the stop channel, as it might be depleted by on-stop
-                            ::wf-stop-started)
-                          (do
-                            ;; <?> should we treat this as an error? or it's okay to do nothing in this case?
-                            ::no-wf-running))
-                        )
-                       )
           }
          )
   )
 
 
+;; <?> for stateful-wf we provide an wf instance, here we provide a function that return an wf instance
 (defn auto-run-wf!
   "runs workflow, if wf is already running, stops, waits until it is finished and then started"
-  [*wf-instance wf-constructor-fn]
-  (let [WF! (fn []
-              (reset! *wf-instance (wf-constructor-fn))
-              ;; todo: check whether wf had been properly initialized
-              ((:start-wf! @*wf-instance)))]
-    (if-let [old-instance @*wf-instance]
-      ;; re-start wf if it's already running
-      (let [stop-wf-fn! (:stop-wf! old-instance)]
-        (stop-wf-fn! (fn [stop-chan]
-                       (go
-                         (let [stop-signal (async/<! stop-chan)] ;; todo: timeout if stop-signal is not being sent?
-                           (WF!))))))
-      ;; else
-      (WF!)
+  [*wf-instance wf-constructor-fn & {:keys [on-stop]}]
+
+  (if-let [old-instance @*wf-instance]
+    ;; re-start wf if it's already running
+    (let [stop-wf-fn! (:stop-wf! old-instance)]
+      ;; trigger wf stop
+      (stop-wf-fn!)
+
+      (let [on-stop (:on-stop old-instance)
+            stop-signal (if on-stop (on-stop @*wf-instance))
+            ]
+        (if (and (not (nil? stop-signal))
+                 (utils/channel? stop-signal))
+          (go
+            ;; get signal from stop-channel
+            (let [_ (async/<! stop-signal)]
+              (reset! *wf-instance (wf-constructor-fn @*wf-instance))
+              ((:start-wf! @*wf-instance))
+              ))
+          (do
+            ;; start wf right away
+            (reset! *wf-instance (wf-constructor-fn @*wf-instance))
+            ((:start-wf! @*wf-instance))
+            )
+          )
+        )
+    )
+    ;; else, start workflow if atom has no previous workflow
+    (let [WF (wf-constructor-fn nil)]
+      (reset! *wf-instance (if on-stop (assoc WF :on-stop on-stop)
+                                       WF))
+      ((:start-wf! @*wf-instance))
       )
     )
+
   )
 
 

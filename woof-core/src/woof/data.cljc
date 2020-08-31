@@ -43,6 +43,7 @@
        (partial substitute substitute data) {} data)))
 
 
+;; todo: this can trigger error for atoms and other nested structures
 (defn pretty!
   "pretty print edn as string"
   [data]     ;; TODO: maybe use fipp here

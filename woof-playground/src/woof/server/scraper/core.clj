@@ -67,6 +67,7 @@
     )
   )
 
+
 (defn ws-broadcast-ctx [params]
   (let [broadcast-chan (&broadcast-chan params)
         chan-factory (base/&chan-factory params)
@@ -346,8 +347,7 @@
         EVT-LOOP (base/make-chan CHAN-FACTORY (base/rand-sid "server-loop"))
 
         STOP-CHAN (async/chan) ;; do not use chan factory - as it will be closed
-
-        _ (info "[STOP-CHAN]\t" STOP-CHAN)
+        ;; _ (info "[STOP-CHAN]\t" STOP-CHAN)
 
         ;; fixme: this state is not actually used anywhere
         ;; here we'll have state hidden in this closure.
@@ -402,7 +402,6 @@
                                               (let [*session (&scraping-session params)]
                                                 (info "[WF].DONE\t[SCRAPING SESION]\t" @*session "\t" STOP-CHAN)
 
-
                                                 ;; (info "	[WF].DONE	[WAIT TEST] start")
                                                 ;; (Thread/sleep 1000)
                                                 ;; (info "	[WF].DONE	[WAIT TEST] stop")
@@ -456,75 +455,6 @@
     )
   )
 
-#_(defn reload-test-wf []
-    (let [*CHAN-STORAGE (atom {})
-          CHAN-FACTORY (base/chan-factory *CHAN-STORAGE)
-
-          EVT-LOOP (base/make-chan CHAN-FACTORY (base/rand-sid "server-loop"))
-
-          *STATE (atom {})
-
-          WF (base/wf! :init [(base/build-init-chan-factory-fn CHAN-FACTORY)
-                              (evt-loop/build-evt-loop-init-fn EVT-LOOP)
-                              (base/build-init-state-fn *STATE)
-                              ]
-
-                       :ctx [
-                             evt-loop/evt-loop-ctx-fn
-                             (fn [params]
-                               {:v {:fn (fn [v]
-                                          (info "[V]" v)
-                                          v
-                                          )}})]
-                       :steps [
-                               (fn [params]                   ;; evt-loop-steps-fn + ws-steps-fn
-                                 {
-                                  ::evt-loop [:evt-loop (evt-loop/&evt-loop params)]
-                                  ::v        [:v "BOO"]
-                                  })
-                               ]
-                       :opts [
-                              (base/build-opt-state-fn *STATE)
-
-                              (base/build-opts-chan-factory-fn CHAN-FACTORY)
-
-                              #_(base/build-opt-on-done (fn [params result]
-                                                          (info "ON-DONE" result)
-
-                                                          result
-                                                          ))
-                              (fn [params]
-                                {
-                                 ;; log errors
-                                 :op-handlers-map {
-                                                   :error (fn [err] (error err))
-                                                   ;:process (fn [result] (info ::process "\n" (d/pretty result)))
-                                                   :done    (fn [result]
-                                                              (info "[DONE]\t" result)
-                                                              result
-                                                              )
-                                                   }
-                                 })
-
-                              (fn [params]
-                                {:after-process  (fn [exec-chan]
-                                                   (info exec-chan)
-
-                                                   exec-chan
-                                                   )})
-
-                              ])
-          ]
-
-      (base/stateful-wf *STATE WF
-
-                        :on-stop (fn [stop-chan]
-                                   (info "ON-STOP")
-                                   )
-                        )
-      )
-    )
-
 
 
 ;; ----------------- reloadable wf here --------------------
@@ -536,48 +466,19 @@
 
 
 
-
-
 (info "\n\n[RELOAD] \t" (System/currentTimeMillis) "\n") ;; why this happens after :start-server
 
 ;(reset! state/*server-wf nil)
 
 
-(defn auto-run-wf!
-  "runs workflow, if wf is already running, stops, waits until it is finished and then started"
-  [*wf-instance wf-constructor-fn]
-
-  (let [WF! (fn []
-              (reset! *wf-instance (wf-constructor-fn))
-              ;; todo: check whether wf had been properly initialized
-              ((:start-wf! @*wf-instance)))]
-    (if-let [old-instance @*wf-instance]
-      ;; re-start wf if it's already running
-      (let [stop-wf-fn! (:stop-wf! old-instance)]
-        (stop-wf-fn! (fn [stop-chan]
-                       (info "!!! waiting for signal" stop-chan )
-                       (go
-                         (let [stop-signal (async/<! stop-chan)] ;; todo: timeout if stop-signal is not being sent?
-                           (info "!!! got the signal")
-                           (WF!))))))
-      ;; else
-      (do
-        (WF!)
-        )
-      )
-    )
-  )
-
-
-
 (when state/AUTO-RUN-WF?
-  (auto-run-wf! state/*server-wf
-                (fn []
+  (base/auto-run-wf! state/*server-wf
+                (fn [prev-state]
                   (info "[RELOAD] re-runing wf\n")
 
                   (scraper-wf! state/ws-cfg)
-                  ;; (reload-test-wf)
-
-                  )))
+                  )
+                    ;; TODO: provide :on-stop
+                     ))
 
 ;; ---------------------------------------------------------
