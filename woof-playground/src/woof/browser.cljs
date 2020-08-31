@@ -335,6 +335,8 @@
                             (clojure.string/starts-with? url "http://domik.ua/poleznoe/photoalbum/")  domik-scraper/parse-house-steps
                             (clojure.string/starts-with? url "http://domik.ua/nedvizhimost/") domik-scraper/parse-listings-steps
 
+
+
                             :else {
                                    ::err [:log (str "unknown URL: " url)]
                                    }
@@ -533,7 +535,8 @@
 
       ;; dispatch url to a corresponding scraper
       (clojure.string/starts-with? url "https://auto.ria.com")    (autoria-sraping!)
-      (clojure.string/starts-with? url "https://blagovist.ua")    (blagovist-scraping!)
+      (clojure.string/starts-with? url "https://blagovist.ua")                   (blagovist-scraping!)
+      (clojure.string/starts-with? url "http://localhost:9500/browser_2.html")    (blagovist-scraping!)
       (clojure.string/starts-with? url "https://lun.ua/")         (lun-scraping!)
 
       :else (do

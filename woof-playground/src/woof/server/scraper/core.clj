@@ -474,7 +474,7 @@
 (when state/AUTO-RUN-WF?
   (base/auto-run-wf! state/*server-wf
                 (fn [prev-state]
-                  (info "[RELOAD] re-runing wf\n")
+                  (info "[RELOAD] re-runing wf\n" prev-state)
 
                   (scraper-wf! state/ws-cfg)
                   )
