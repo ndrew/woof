@@ -180,8 +180,10 @@
   )
 
 
-;; parametrizible ws init function for ws scraping session
-(defn _ws-init-fn [process-ws-msg params]
+(defn _ws-init-fn
+  "parameterizable ws init function for ws scraping session
+  process-ws-msg should be provided for processing ws messages"
+  [process-ws-msg params]
   (let [chan-factory (base/&chan-factory params)]
     {
      :ws/chan-fn (fn []
@@ -195,7 +197,8 @@
      ;                      )
      :ws/gen-msg-handler (fn []
                            (fn [msg-envelope]
-                             (.log js/console (d/pretty! msg-envelope))
+
+                             ;; (.log js/console (d/pretty! msg-envelope))
 
                              (try
                                (process-ws-msg params msg-envelope)

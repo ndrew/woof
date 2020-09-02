@@ -1,7 +1,5 @@
 (ns woof.client.browser.scraper.session
   (:require
-    [clojure.string :as str]
-
     [cljs.core.async :as async]
 
     [woof.utils :as u]
@@ -9,7 +7,7 @@
 
 ;; scraping session impl
 
-;; scraping session is a generic way to store and process parsed listings from scraping worklfows
+;; scraping session is a generic way to store and process parsed listings from scraping workflows
 
 
 (defn scraping-data-msg [data summary]
@@ -24,22 +22,34 @@
    ])
 
 
-(defn init-scraping-msg []
-  [:scraping/session
+(defn start-scraping-session-msg []
+  [:scraping-client/connect
    {
     :host (.. js/window -location -host)
     :url (str (.-location js/window))
     }])
 
 
-(defn _get-summary-msg-fn [summary-chan params msg-envelope]
+(defn ask-for-update-msg []
+  [:scraping-client/broadcast
+   {
+    :host (.. js/window -location -host)
+    :url (str (.-location js/window))
+    }
+   ]
+  )
+
+
+(defn _get-summary-msg-fn
+  ""
+  [summary-chan params msg-envelope]
   (let [{ws-id   :ws-id
          [t msg] :msg} msg-envelope]
 
     (cond
-      (= :scraping/session t)
+      ;; server sends current scraping session summary
+      (= :scraping/summary t)
       (let [summary (get msg :summary {})]
-        ; (.warn js/console "GOT" msg)
 
         ;; propagate summary further via separate channel
         (async/put! summary-chan summary)
@@ -53,6 +63,6 @@
                          }))
         )
       :else (do
-              (.warn js/console "unknow message " msg-envelope)
+              (.warn js/console "unknown message " msg-envelope)
               )
       )))

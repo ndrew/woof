@@ -160,31 +160,41 @@
 ;; vanilla js
 
 (defn <scraping-ui> []
-  (let [el (dom/createDom "div" "woof-scraper-ui"
-                          "")
-        ]
+  (if-let [prev-el (.querySelector (.-body js/document) ".woof-scraper-ui")]
+    (do
+      ;; what to do with existing scraping ui?
+      (set! (. prev-el -innerHTML) "")
+      )
+    (let [el (dom/createDom "div" "woof-scraper-ui"
+                            "")]
 
-    ;; provide default styling
-    (set! (-> el .-style .-zIndex) "10000")
-    (set! (-> el .-style .-position) "fixed")
-    (set! (-> el .-style .-bottom) "0px")
-    (set! (-> el .-style .-left) "0px")
-    (set! (-> el .-style .-width) "100%")
-    (set! (-> el .-style .-paddingLeft) ".5rem")
-    (set! (-> el .-style .-backgroundColor) "rgba(255, 240, 240, 1)")
-    (set! (-> el .-style .-borderTop) "1px solid #000")
+      ;; provide default styling
+      (set! (-> el .-style .-zIndex) "10000")
+      (set! (-> el .-style .-position) "fixed")
+      (set! (-> el .-style .-bottom) "0px")
+      (set! (-> el .-style .-left) "0px")
+      (set! (-> el .-style .-width) "100%")
+      (set! (-> el .-style .-paddingLeft) ".5rem")
+      (set! (-> el .-style .-backgroundColor) "rgb(241 251 255)")
+      (set! (-> el .-style .-borderTop) "1px solid #000")
 
 
-    (css-add-rule! ".woof-scraper-ui .panel { display: inline-block; }")
+      (css-add-rule! ".woof-scraper-ui .panel { display: inline-flex;  flex-flow: row wrap; align-items: baseline; }")
+      (css-add-rule! ".woof-scraper-ui .panel + .panel { margin-left: .5rem; }")
+      (css-add-rule! ".woof-scraper-ui .panel button { margin: .5rem .1rem; }")
+      (css-add-rule! ".woof-scraper-ui .panel header { font-weight: bolder; margin-right: .25rem }")
 
-    (css-add-rule! ".woof-scraper-ui .panel + .panel { margin-left: 1.5rem; }")
+      (css-add-rule! ".woof-scraper-ui #wf-indicator { height: 12px;\n  width: 12px;\n  background-color: #000;\n  border-radius: 50%; }")
 
-
-    (css-add-rule! ".woof-scraper-ui .panel button { margin: .5rem .1rem; }")
-    ;;
-    ;; add a placeholder element to dom
-    (add-el! ".woof-scraper-ui" el)
+      (css-add-rule! "@keyframes dots {\n    0%, 20% {\n        opacity: 20%;\n    }\n    40% {\n        opacity: 30%;\n    }\n    60% {\n        opacity: 70%;\n    }\n    80%, 100% {\n        opacity: 100%;\n    }\n}\n")
+      (css-add-rule! ".woof-scraper-ui .woof-indicator-blink { animation: dots 1500ms steps(5, end) infinite; }")
+      ;;
+      ;; add a placeholder element to dom
+      (add-el! ".woof-scraper-ui" el)
+      )
     )
+
+
   )
 
 (defn ui-add-el! [el]

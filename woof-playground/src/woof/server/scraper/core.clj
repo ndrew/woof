@@ -48,7 +48,8 @@
 ;; ws communication
 ;;
 
-(declare _ws-handle-msg-fn)
+
+(declare _scraping-msg-fn) ;; scraping ws backend communication protocol
 
 (defn &broadcast-mult [params]
   (base/& params ::mult "no ::mult provided in params. Ensure that `ws-broadcast-init-fn` had been called in :init"))
@@ -76,7 +77,7 @@
         *scraping-session (&scraping-session params)
 
         ;; (fn [ws-msg])
-        ws-handler (partial _ws-handle-msg-fn
+        ws-handler (partial _scraping-msg-fn
                             chan-factory *state *scraping-session)
         ]
     {
@@ -90,8 +91,8 @@
                     :expands? true
                     }
 
-     ;; wf message handling
 
+     ;; todo: remove this
      :test         {:fn (fn [v]
                           (prn v)
                           v)}
@@ -100,9 +101,10 @@
 
   )
 
+
 ; ws impl
-(defn _ws-handle-msg-fn [chan-factory *state *scraping-session ws-msg]
-  ;; destructure ws msg
+(defn _scraping-msg-fn [chan-factory *state *scraping-session ws-msg]
+
   (let [{ws-id :ws-id
          msg   :msg} ws-msg
 
@@ -111,32 +113,33 @@
 
 
     ;; todo: modify state
-
     (info "[WS]\t" ws-msg)
 
     (let [[t body] msg]
       (cond
-        (= :scraping/session t) (let [{host :host
-                                       url :url} body]
-                                  (let [session (state/get-scraping-session *scraping-session host)
-                                        summary (get session :summary {})]
 
-                                    (info "[WS] sending :summary\n" summary)
+        ;; client scraper wants to get current scraping session or start a new one
+        (= :scraping-client/connect t)
+        (let [{host :host
+               url  :url} body]
+          (let [session (state/get-scraping-session *scraping-session host)
+                summary (get session :summary {})]
 
-                                    ;; put just message with summary onto a channel
-                                    (async/put! out-chan [:scraping/session { :ws-id ws-id
-                                                                             :summary summary}]))
+            (info "[WS] sending :summary\n" summary)
 
-                                  {}
-                                  )
+            ;; put just message with summary onto a channel
+            (async/put! out-chan [:scraping/summary {:ws-id   ws-id
+                                                     :summary summary}]))
 
+          {}
+          )
+
+        ;; updates d
         (= :scraping/data t) (let [{host :host
                                     url :url
                                     data :data
                                     summary :summary
                                     } body
-
-
                                    ]
 
 
@@ -167,6 +170,14 @@
                                       )
                                {}
                                )
+
+
+        (= :broadcast-test t)
+        (do
+          {
+           (base/rand-sid) [:test (d/pretty @*scraping-session)]
+           }
+          )
 
         ;; fixme: saving listings via ws. is this needed?
         (= :listings t) (let [ids-msg (fn [*state]

@@ -143,11 +143,6 @@
                         :expands? true
                         }
 
-
-   :scraping-ui        {:fn (fn [_]
-                              (sui/scraping-ui-impl!)
-                              (wf-ui-impl!)
-                              )}
    }
   )
 
@@ -266,24 +261,40 @@
      }
     ;; WS: IN
     {
-     :ws/URL           [:v "ws://localhost:8081/scraper-ws"]
+     :ws/URL         [:v "ws://localhost:8081/scraper-ws"]
 
-     :ws/INITIAL-MSG   [:v (ss/init-scraping-msg)]   #_:--->   :ws/SUMMARY [:v (&summary-chan params)]
+     :ws/INITIAL-MSG [:v (ss/start-scraping-session-msg)]   #_:---> :ws/SUMMARY [:v (&summary-chan params)]
 
-     :ws/RESULTS-MSG   [:scraping-msg [:ws/SUMMARY
-                                       :ws/LISTINGS-MAP]]
+     :ws/RESULTS-MSG [:scraping-msg [:ws/SUMMARY
+                                     :ws/LISTINGS-MAP]]
+
      }
     ;; WS: IMPL - send :ws/INITIAL-MSG, do parsing/processing, send :ws/RESULTS-MSG
     {
      :ws/init-scraping-session [:ws-send! [:ws/socket :ws/INITIAL-MSG]]
      :ws/socket                [:ws-socket :ws/URL]
 
+
+     :ws/store-socket [:save-to-state [:ws/__k :ws/socket]]
+       :ws/__k [:v :ws-socket]
+
+
      :ws/send-scraping-session [:ws-send! [:ws/socket :ws/RESULTS-MSG]]
 
      ;; add timeout here, so websocket won't be closed too soon, to test /test
 
 
-     :wf/wait                   [:wait-rest [:ws/socket :ws/send-scraping-session]]
+
+     :wf/broadcast-request [:wait-rest [:ws/broadcast-msg :ws/>broadcast-timeout]]
+        :ws/broadcast-msg [:v (ss/ask-for-update-msg)]
+        :ws/>broadcast-timeout [:v (u/timeout 5000)]
+
+     ::log-broadcast [:log :wf/broadcast-request]
+     :ws/ask-broad-cast! [:ws-send! [:ws/socket :wf/broadcast-request]]
+
+
+     :wf/wait                   [:wait-rest [:ws/socket
+                                             :ws/send-scraping-session :ws/ask-broad-cast!]]
      :ws/close                 [:ws-close! :wf/wait]
      }
     ;; WS: OUT
@@ -330,9 +341,6 @@
       (css-steps params)
       {
        :ui/mark-progress [:new-listing-ui* :ui/LISTINGS-MAP]
-       }
-      {
-       :ui/scraping-session [:scraping-ui nil]
        }
       )
     ;; UI: OUT
