@@ -62,6 +62,12 @@
                          ;; :ws/SUMMARY [:identity summary]
                          }))
         )
+
+      (= :broadcast t)
+      (do
+        (.log js/console "GOT THE BROADCAST MESSAGE" msg)
+        )
+
       :else (do
               (.warn js/console "unknown message " msg-envelope)
               )

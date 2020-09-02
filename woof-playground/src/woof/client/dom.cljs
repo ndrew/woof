@@ -184,10 +184,10 @@
       (css-add-rule! ".woof-scraper-ui .panel button { margin: .5rem .1rem; }")
       (css-add-rule! ".woof-scraper-ui .panel header { font-weight: bolder; margin-right: .25rem }")
 
-      (css-add-rule! ".woof-scraper-ui #wf-indicator { height: 12px;\n  width: 12px;\n  background-color: #000;\n  border-radius: 50%; }")
+      (css-add-rule! ".woof-scraper-ui #wf-indicator { height: 12px;\n  width: 12px;\n  background-color: #000;\n  border-radius: 50%; border: 1px solid rgba(0,0,0,.133); }")
 
-      (css-add-rule! "@keyframes dots {\n    0%, 20% {\n        opacity: 20%;\n    }\n    40% {\n        opacity: 30%;\n    }\n    60% {\n        opacity: 70%;\n    }\n    80%, 100% {\n        opacity: 100%;\n    }\n}\n")
-      (css-add-rule! ".woof-scraper-ui .woof-indicator-blink { animation: dots 1500ms steps(5, end) infinite; }")
+      (css-add-rule! "@keyframes dots { from { opacity: 0.333; } to { opacity: 1; } } ")
+      (css-add-rule! ".woof-scraper-ui .woof-indicator-blink { animation: dots 1500ms infinite; animation-direction: alternate; }")
       ;;
       ;; add a placeholder element to dom
       (add-el! ".woof-scraper-ui" el)

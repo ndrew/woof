@@ -50,7 +50,7 @@
 ;; configure scraping workflow
 (def META-INFO {
                 :ws? true
-                :evt-loop? false
+                :evt-loop? true
                 })
 
 
@@ -299,14 +299,21 @@
                                        (sui/wf-indicator-ui!)
 
                                        (when (seq api)
-                                         (sui/wf-api-ui! api))
 
+                                         (sui/wf-api-ui!
+                                           (if (get meta-info :evt-loop? false)
+                                             ;;
+                                             (assoc api
+                                               "WF: stop!" (fn []
+                                                             ;; todo: maybe do this by getting :stop-fn from *wf-instance ?
+                                                            (js* "woof.browser.stop_workflow();")
+                                                            ))
+                                             api))
+                                         )
 
                                        (if (get meta-info :ws? false)
                                          ;; show scraping ui by default?
                                          (sui/scraping-ui-impl!))
-
-
 
                                        (__log "🚀" (if prev-state "re-starting" "starting") " scraping wf!")
 
@@ -541,12 +548,12 @@
   ;; should be a generic one for all scraping workflows? or per wf?
 
 
-(defn default-wf! [*wf-state meta-info scraper-fn]
-  ;; generic implementation of the scraping workflow, so
-  (let [
-        ;;
-        meta-init-fn (fn [params]
 
+;; generic implementation of the scraping workflow, so
+
+(defn scraper-wf! [*wf-state meta-info scraper-fn]
+  (let [
+        meta-init-fn (fn [params]
                        ;; use this as starting point
                        (sui/indicate-wf-started)
 
@@ -575,6 +582,11 @@
                   [])
 
                 (get scraper-impl-map :init [])
+
+                [(fn [last-params]
+                  (swap! *wf-state assoc :WF/params last-params)
+                  {}
+                  )]
                 )
 
         ctx* (concat
@@ -600,7 +612,8 @@
                       (get scraper-impl-map :opts []))
 
         steps* (concat (if evt-loop?
-                         [] ;; todo: add event loop step
+                         [(fn [params]
+                            {:evt/loop [:evt-loop (evt-loop/&evt-loop params)]})]
                          []
                          )
 
@@ -618,7 +631,6 @@
                   :wf-impl (dbg/dbg-wf)
                   )
         ]
-
 
 
     (run-wf! wf-impl
@@ -642,10 +654,24 @@
           "ping" (fn []
                    (__log "API CALL FOR FREE"))
 
-          "custom wf stop!" (fn []
-                              ;; hardcode way to call stop wf
-                              (js* "woof.browser.stop_workflow();")
-                              )
+          "request broad cast" (fn []
+                                 (let [params (get @*wf-state :WF/params {})
+                                       evt-loop (evt-loop/&evt-loop params)
+
+                                       MSG (base/rand-sid)
+                                       ]
+
+                                   (async/put! evt-loop {
+                                                         MSG [:v (ss/ask-for-update-msg)]
+                                                         (base/rand-sid) [:ws-send! [:ws/socket MSG]]
+
+                                                         })
+
+                                   ;; (.log js/console @*wf-state)
+
+                                   )
+                                 )
+
           )
 
    :on-stop (fn [state]
@@ -675,7 +701,7 @@
 
     (cond
       ;; map localhost to a specific wf
-      (clojure.string/starts-with? url "http://localhost:9500/scraper")   (default-wf! *wf-instance META-INFO scrapping-test-wf!)
+      (clojure.string/starts-with? url "http://localhost:9500/scraper")   (scraper-wf! *wf-instance META-INFO scrapping-test-wf!)
       ;; domik
       (clojure.string/starts-with? url "http://localhost:9500/domik")     (domik-scraping! url)
       (clojure.string/starts-with? url "http://domik.ua/")                (domik-scraping! url)

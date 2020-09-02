@@ -281,21 +281,25 @@
 
      :ws/send-scraping-session [:ws-send! [:ws/socket :ws/RESULTS-MSG]]
 
+
+     ;; sending request to trigger server broadcast after some timeout
+     ;;
      ;; add timeout here, so websocket won't be closed too soon, to test /test
+;     :wf/broadcast-request [:wait-rest [:ws/broadcast-msg :ws/>broadcast-timeout]]
+;        :ws/broadcast-msg [:v (ss/ask-for-update-msg)]
+;        :ws/>broadcast-timeout [:v (u/timeout 5000)]
+;     ::log-broadcast [:log :wf/broadcast-request]
+;     :ws/ask-broad-cast! [:ws-send! [:ws/socket :wf/broadcast-request]]
 
 
-
-     :wf/broadcast-request [:wait-rest [:ws/broadcast-msg :ws/>broadcast-timeout]]
-        :ws/broadcast-msg [:v (ss/ask-for-update-msg)]
-        :ws/>broadcast-timeout [:v (u/timeout 5000)]
-
-     ::log-broadcast [:log :wf/broadcast-request]
-     :ws/ask-broad-cast! [:ws-send! [:ws/socket :wf/broadcast-request]]
-
-
-     :wf/wait                   [:wait-rest [:ws/socket
-                                             :ws/send-scraping-session :ws/ask-broad-cast!]]
-     :ws/close                 [:ws-close! :wf/wait]
+     ;; no need to close ws as:
+     ;; a) we can receive broad-cast messages,
+     ;; b) ws will be closed on stop
+     ;:wf/wait                   [:wait-rest [:ws/socket
+     ;                                        :ws/send-scraping-session
+                                             ;:ws/ask-broad-cast!
+      ;                                       ]]
+     ;:ws/close                 [:ws-close! :wf/wait]
      }
     ;; WS: OUT
 
@@ -405,7 +409,6 @@
      }
     )
   )
-
 
 
 (defn scraper-steps [params]

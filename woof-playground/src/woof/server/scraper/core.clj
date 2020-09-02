@@ -134,7 +134,7 @@
           {}
           )
 
-        ;; updates d
+        ;; updates the data in scraping session
         (= :scraping/data t) (let [{host :host
                                     url :url
                                     data :data
@@ -171,34 +171,25 @@
                                {}
                                )
 
-
-        (= :broadcast-test t)
+        (= :scraping-client/broadcast t)
         (do
           {
-           (base/rand-sid) [:test (d/pretty @*scraping-session)]
+           ;; todo: how to send broadcast message
+           (base/rand-sid)
+
+           [:ws-broadcast [:broadcast (str (System/currentTimeMillis) "\thello from the broadcast service!")]] ; [:test (d/pretty @*scraping-session)]
+
            }
           )
 
-        ;; fixme: saving listings via ws. is this needed?
-        (= :listings t) (let [ids-msg (fn [*state]
-                                        [:ids (into #{} (keys (:listings @*state)))])
-                              ]
-                          (swap! *state update-in [:listings] #(merge % body))
-
-                          (spit "/Users/ndrw/m/woof/woof-playground/listings.edn"
-                                (pr-str (:listings @*state)))
-
-                          (async/put! out-chan {:ws-id ws-id
-                                                :msg   (ids-msg *state)})
-                          {
-                           (base/rand-sid) [:test (d/pretty (:listings @*state))]
-                           }
-                          )
-
         :else
-        {
-         (base/rand-sid) [:test (str "uknown message" (d/pretty ws-msg))]
-         }
+        (do
+          (warn "[WS]\t unknown message" (d/pretty ws-msg))
+          {
+           (base/rand-sid) [:test (str "uknown message" (d/pretty ws-msg))]
+           }
+          )
+
         )
       )
     )

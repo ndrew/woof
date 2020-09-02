@@ -18,7 +18,6 @@
 
 
 
-
 (defn scraping-ui-impl! []
   ;; todo: pass configuration for urls
   (let [clear-session-btn-el (dom/createDom "button" "" "clear session")
@@ -98,7 +97,7 @@
   (indicate "rgb(26 232 175)" true))
 
 (defn indicate-wf-done []
-  (indicate "rgb(104 226 42)" false))
+  (indicate "rgb(101 189 132)" false))
 
 (defn indicate-wf-error []
   (indicate "rgb(255 0 0)" false))
