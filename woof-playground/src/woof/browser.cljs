@@ -21,6 +21,7 @@
     ;; blagovist.ua
     [woof.client.browser.blago.scraper :as blago-scraper]
 
+    [woof.client.browser.in-view :as in-view]
 
     ;; common wf
 
@@ -711,6 +712,8 @@
       (clojure.string/starts-with? url "https://blagovist.ua")                   (blagovist-scraping!)
       (clojure.string/starts-with? url "http://localhost:9500/browser_2.html")    (blagovist-scraping!)
       (clojure.string/starts-with? url "https://lun.ua/")         (lun-scraping!)
+
+      (clojure.string/starts-with? url "http://localhost:9500/inview.html")   (scraper-wf! *wf-instance META-INFO in-view/in-view-wf!)
 
       :else (do
               (let [el (dom/createDom "h3" ""
