@@ -153,6 +153,15 @@
                }
 
    ;; todo: convenience wrapper for working with collection instead single css rule
+
+   ;;
+   ;; scroll by a page
+   :scroll            {:fn (fn [dy]
+                             (.scrollBy js/window 0  (* (.-innerHeight js/window)
+                                                        dy
+                                                        )))}
+
+
    }
   )
 

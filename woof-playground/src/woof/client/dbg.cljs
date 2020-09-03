@@ -3,7 +3,8 @@
     [woof.base :as base]
 
     [clojure.string :as str]
-    [woof.utils :as u]))
+    [woof.utils :as u]
+    [woof.data :as d]))
 
 ;; capturing wf with nicer logging
 
@@ -17,7 +18,7 @@
 
 (defn log-steps [steps]
   (.groupCollapsed js/console "STEPS")
-    (.log js/console "STEPS" steps)
+    (.log js/console "STEPS" (d/pretty! steps))
   (.groupEnd js/console))
 
 
