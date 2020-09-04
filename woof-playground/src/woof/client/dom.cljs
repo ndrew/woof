@@ -25,28 +25,55 @@
     (dom/appendChild (.-body js/document) el)))
 
 
-(defn add-el! [el-present-selector el]
+
+
+(defn add-el!
+  ([el-present-selector el2add]
   "dynamically adds or replaces element to dom"
+   (add-el! (.-body js/document) el-present-selector el2add)
+  )
+  ([root-el el-present-selector el2add]
+   (let [els (array-seq (.querySelectorAll root-el
+                                           el-present-selector
+                                           ))]
 
-  (let [
-        els (array-seq (.querySelectorAll (.-body js/document)
-                                          el-present-selector
-                                          ))]
+     (.log js/console "!" root-el "!" els)
 
-    (if-not (empty? els)
-      (dom/replaceNode el (first els))          ;; replace el from dom
-      (dom/appendChild (.-body js/document) el) ;; append element
-      )
-    )
+     (if-not (empty? els)
+       (dom/replaceNode el2add (first els))          ;; replace el from dom
+       (dom/appendChild root-el el2add)       ;; append element
+       )
+     )
+   )
   )
 
 
-(defn add-stylesheet [src]
+(defn add-first-el!
+  ([el-present-selector el2add]
+   "dynamically adds or replaces element to dom"
+   (add-el! (.-body js/document) el-present-selector el2add)
+   )
+  ([root-el el-present-selector el2add]
+   (let [els (array-seq (.querySelectorAll root-el
+                                           el-present-selector))]
+     (if-not (empty? els)
+       (dom/replaceNode el2add (first els))          ;; replace el from dom
+       (dom/insertChildAt root-el el2add 0)       ;; append element
+       )
+     )
+   )
+  )
+
+
+(defn add-stylesheet [src class-name]
 
   (let [el (dom/createElement "link")]
     (set! (.-href el) src)
     (set! (.-rel el) "stylesheet")
     (set! (.-type el) "text/css")
+
+    (if class-name
+      (set! (.-className el) class-name))
 
     (set! (.-onload el) (fn []
                           ; todo: check
@@ -58,16 +85,28 @@
   )
 
 
-(defn css-add-rule! [rule]
-  (let [style-el (.createElement js/document "style")]
-    (.appendChild (.-head js/document) style-el)
+(defn css-add-rule!
+  ([rule]
+   (css-add-rule! rule ""))
+  ([rule class-name]
 
-    (let [sheet (.-sheet style-el)]
-      (.insertRule sheet rule)
-      )
-    )
+   (let [style-el (.createElement js/document "style")]
+     (if class-name
+       (set! (.-className style-el) class-name))
+
+     (.appendChild (.-head js/document) style-el)
+     (let [sheet (.-sheet style-el)]
+       (.insertRule sheet rule)))
+   )
   )
 
+
+(defn remove-added-css []
+  (let [style-els (array-seq (.querySelectorAll js/document ".woof-css"))]
+    (doseq [el style-els]
+      (dom/removeNode el))
+    )
+  )
 
 (defn query-selector*
   ([selector]
@@ -130,12 +169,13 @@
                          :expands? true
                          }
 
+
    ;;
    ;; CSS
    :css-rule    {
                         :fn (fn [rule]
                               ;; todo: maybe add a style with specific id
-                              (css-add-rule! rule)
+                              (css-add-rule! rule "woof-css")
                               true)
                         }
 
@@ -151,6 +191,13 @@
                       )
                :expands? true
                }
+
+
+   :css-file {:fn (fn [src]
+                    (add-stylesheet src "woof-css"))}
+
+
+
 
    ;; todo: convenience wrapper for working with collection instead single css rule
 
@@ -222,3 +269,71 @@
 
 (defn on-click [btn handler]
   (goog.events.listen btn goog.events.EventType.CLICK handler))
+
+
+
+;; breadth first search of element children and keep the selector and other nice properties, like
+;; if the node has text. parsing can be skipped via skip-fn, in order to not traverse svgs, or other stuff
+(defn el-map
+  [root skip-fn]
+
+  (loop [ret []
+         queue (into cljs.core/PersistentQueue.EMPTY
+                     (map-indexed
+                       (fn [i el]
+                         {:$   [{:t (.-tagName el)
+                                 :i (inc i)}]
+                          :el  el}
+                         )
+                       (array-seq (.-children root))))]
+    (if (seq queue)
+      (let [node (peek queue)
+            $ (get node :$)
+            $el (get node :el)
+
+            children (array-seq (.-children $el))
+            child-count (count children)
+            text (.-textContent $el)
+
+            has-text? (not= "" text )
+            use-text? (volatile! true) ;; ugly, but works
+
+            *i (volatile! 0)
+
+            children-nodes (reduce
+                             (fn [a el]
+                               (vswap! *i inc)
+                               (if-not (skip-fn el $)
+                                 (do
+                                   (if (and has-text? (str/includes? text (.-textContent el)))
+                                     (vreset! use-text? false))
+                                   (conj a
+                                         {:$   (conj $
+                                                     {:t (.-tagName el)
+                                                      :i @*i
+                                                      :child-count child-count
+                                                      })
+                                          :el  el}))
+                                 a
+                                 ))
+                             []
+                             children)
+
+            new-ret (conj ret
+                          (merge
+                            {
+                             :child-count child-count
+                             ;; if at least one of children has same text - ommit
+                             :text (if @use-text? text "")
+                             }
+                            node
+                            ))
+            new-children (into (pop queue)
+                               children-nodes)
+            ]
+        (recur new-ret new-children)
+        )
+      ret
+      )
+    )
+  )
