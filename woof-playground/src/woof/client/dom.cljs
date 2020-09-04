@@ -37,8 +37,6 @@
                                            el-present-selector
                                            ))]
 
-     (.log js/console "!" root-el "!" els)
-
      (if-not (empty? els)
        (dom/replaceNode el2add (first els))          ;; replace el from dom
        (dom/appendChild root-el el2add)       ;; append element
@@ -336,4 +334,15 @@
       ret
       )
     )
+  )
+
+
+(defn to-selector [$]
+  (str/join " > "
+            (map #(str
+                    (:t %)
+                    (if (> (:child-count %) 1)
+                      (str ":nth-child(" (:i %) ")")
+                      "")
+                    ) $))
   )

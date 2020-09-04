@@ -130,7 +130,8 @@
   {
 
    :scraping-ui        {:fn (fn [_]
-                              (sui/scraping-ui-impl!))}
+                              ;; todo: provide meta-info here
+                              (sui/scraping-ui-impl! {}))}
 
    :scraping-url {:fn (fn[_]
                         [:scraping/session

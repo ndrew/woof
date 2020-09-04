@@ -1,9 +1,5 @@
-(ns ^:figwheel-hooks woof.client.browser.domik.scraper
+(ns woof.client.browser.domik.scraper
   (:require
-    [goog.object]
-    [goog.dom :as dom]
-    [goog.object]
-    [goog.dom.classes :as classes]
 
     [cljs.core.async :as async :refer  [go go-loop]]
     [clojure.string :as str]
@@ -36,8 +32,8 @@
                             )
 
    ::debug? false
-
    })
+
 
 ;; todo: async parsing with confirming via ui button
 
@@ -72,7 +68,8 @@
   {
 
    :scraping-ui        {:fn (fn [_]
-                              (sui/scraping-ui-impl!))}
+                              ;; todo: provide meta-info here
+                              (sui/scraping-ui-impl! {}))}
 
 
    :process-sync       {
@@ -162,7 +159,7 @@
 
 
 (defn parse-listings-steps [params]
-  #_(if (&ws? params)
+   (if (&ws? params)
     (.log js/console "will be using ws")
     )
 
@@ -238,6 +235,9 @@
     )
   )
 
+
+;;
+;; steps to parse house reviews and additional info
 (defn parse-house-steps [params]
   {
 

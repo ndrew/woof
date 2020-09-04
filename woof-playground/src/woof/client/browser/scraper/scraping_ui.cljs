@@ -18,33 +18,36 @@
 
 
 
-(defn scraping-ui-impl! []
-  ;; todo: pass configuration for urls
-  (let [clear-session-btn-el (dom/createDom "button" "" "clear session")
-        get-session-btn-el   (dom/createDom "button" "" "get session")
-        panel (dom/createDom "div" "panel")
-        ]
+(defn scraping-ui-impl! [meta-info]
 
-    (dom/appendChild panel (dom/createDom "header" "" "SCRAPING SESSION "))
+  (if (get meta-info :ws? false)
+    (let [clear-session-btn-el (dom/createDom "button" "" "clear session")
+          get-session-btn-el   (dom/createDom "button" "" "get session")
+          panel (dom/createDom "div" "panel")]
 
-    (dom/appendChild panel get-session-btn-el)
-    (dom/appendChild panel clear-session-btn-el)
+      (js-debugger)
+
+      (dom/appendChild panel (dom/createDom "header" "" "SCRAPING SESSION "))
+
+      (dom/appendChild panel get-session-btn-el)
+      (dom/appendChild panel clear-session-btn-el)
 
 
-    (woof-dom/on-click get-session-btn-el
-              (fn [e]
-                (ws/GET "http://localhost:8081/scraping-session"
-                        (fn [raw-edn]
-                          (.log js/console raw-edn)))))
 
-    (woof-dom/on-click clear-session-btn-el
-              (fn [e]
-                (ws/GET "http://localhost:8081/clear-scraping-session"
-                        (fn [raw-edn]
-                          (.log js/console raw-edn)))))
+      (woof-dom/on-click get-session-btn-el
+                         (fn [e]
+                           (ws/GET "http://localhost:8081/scraping-session"
+                                   (fn [raw-edn]
+                                     (.log js/console raw-edn)))))
 
-    (woof-dom/ui-add-el! panel)
+      (woof-dom/on-click clear-session-btn-el
+                         (fn [e]
+                           (ws/GET "http://localhost:8081/clear-scraping-session"
+                                   (fn [raw-edn]
+                                     (.log js/console raw-edn)))))
 
+      (woof-dom/ui-add-el! panel)
+      )
     )
   )
 
