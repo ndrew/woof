@@ -206,6 +206,7 @@
 
 
    :css-file {:fn (fn [src]
+                    (.log js/console "LOADING CSS: " src)
                     (add-stylesheet src "woof-css"))}
 
 
@@ -385,3 +386,22 @@
     )
   )
 
+
+
+
+(defn remove-class* [el class]
+  (doseq [el (q* (str "." class))]
+    (classes/remove el class)))
+
+
+
+
+;; todo:
+(defn parent-while [el pred]
+  (loop [el el]
+    (if-not (pred el)
+      (recur (.-parentElement el))
+      )
+    )
+  ;el.parentElement.parentElement.childElementCount
+  )

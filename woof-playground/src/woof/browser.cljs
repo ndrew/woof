@@ -23,6 +23,8 @@
 
     [woof.client.browser.in-view :as in-view]
 
+    [woof.client.browser.scraper.generic :as default-scraper]
+
     ;; common wf
 
     [woof.wfs.evt-loop :as evt-loop]
@@ -50,7 +52,7 @@
 
 ;; configure scraping workflow
 (def META-INFO {
-                :ws? true
+                :ws? false
                 :evt-loop? true
                 })
 
@@ -146,6 +148,9 @@
    :identity {:fn identity }
    :identity*    (base/expand-into :identity)
    :v {:fn identity }
+   :v-8 {:fn identity
+         :infinite true
+         }
    :v* (base/expand-into :v)
 
 
@@ -165,6 +170,20 @@
                            ))
                    :collect? true
                    }
+
+   :tick {:fn       (fn [[t max-num]]
+                      (let [chan-factory (base/&chan-factory params)
+                            chan (base/make-chan chan-factory (base/rand-sid))]
+
+                        (async/go-loop [i 0]
+                                       (async/>! chan (u/now))
+                                       (async/<! (u/timeout t))
+
+                                       (if (< i max-num)
+                                         (recur (inc i))))
+
+                        chan))
+          :infinite true}
 
    }
   )
@@ -314,7 +333,7 @@
 
                                        (if (get meta-info :ws? false)
                                          ;; show scraping ui by default?
-                                         (sui/scraping-ui-impl!))
+                                         (sui/scraping-ui-impl! meta-info))
 
                                        (__log "🚀" (if prev-state "re-starting" "starting") " scraping wf!")
 
@@ -332,6 +351,7 @@
 
     (.groupCollapsed js/console "WF")
 
+    ;; todo: handle reload via extension
     (if AUTO-START-WF?
       (run-fn!)
       (let [btn-el (dom/createDom "button" "" "run!")]
@@ -345,8 +365,6 @@
 
     )
   )
-
-
 
 
 #_(base/auto-run-wf! state/*server-wf
@@ -377,7 +395,6 @@
       )
     )
   )
-
 
 (defn domik-scraping! [url]
 
@@ -441,7 +458,6 @@
     (run-wf! wf-impl)
     )
   )
-
 
 (defn blagovist-scraping! []
 
@@ -716,11 +732,16 @@
       (clojure.string/starts-with? url "http://localhost:9500/inview.html")   (scraper-wf! *wf-instance META-INFO in-view/in-view-wf!)
 
       :else (do
-              (let [el (dom/createDom "h3" ""
+              (scraper-wf! *wf-instance META-INFO default-scraper/wf!)
+
+
+              #_(let [el (dom/createDom "h3" ""
                                       (str "can't find scraping wf for URL: " url))]
 
                 (woof-dom/ui-add-el! el)
-                ))
+                )
+
+              )
       )
 
     )
@@ -770,4 +791,11 @@
 
 
 (defn ^:after-load on-js-reload []
-  (dbg/__log "browser wf: JS RELOAD"))
+  (dbg/__log "browser wf: JS RELOAD")
+
+  ;; handle re-load from other ns
+  (if AUTO-START-WF?
+    (run_workflow)
+    )
+
+  )
