@@ -106,11 +106,21 @@
     )
   )
 
+(defn query-selector
+  ([selector]
+   (query-selector (.-body js/document) selector))
+  ([el selector]
+   (.querySelector el selector)))
+
+
 (defn query-selector*
   ([selector]
    (query-selector* (.-body js/document) selector))
   ([el selector]
    (array-seq (.querySelectorAll el selector))))
+
+(def q query-selector)
+(def q* query-selector*)
 
 
 (defn attr [$el s]
@@ -118,6 +128,10 @@
 
 (defn href [$el]
   (attr $el "href"))
+
+(defn html! [el h]
+  (set! (. el -innerHTML) h)  )
+
 
 (defn dataset [el]
   (js->clj (.parse js/JSON (.stringify js/JSON el.dataset))
@@ -265,8 +279,25 @@
    })
 
 
+
 (defn on-click [btn handler]
   (goog.events.listen btn goog.events.EventType.CLICK handler))
+
+(defn btn!
+  ([title handler]
+   (let [btn-el (dom/createDom "button" "" title)]
+     ;; todo: expose api actions and show them in um
+
+     (on-click btn-el handler)
+     btn-el
+     )
+   )
+  ([title handler panel]
+   (dom/appendChild panel (btn! title handler))
+   )
+  )
+
+
 
 
 
@@ -346,3 +377,11 @@
                       "")
                     ) $))
   )
+
+(defn sel-text-el []
+  (let [selection (.getSelection js/window)
+        node (.-anchorNode selection)]
+    (.-parentElement node)
+    )
+  )
+
