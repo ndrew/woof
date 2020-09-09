@@ -272,8 +272,7 @@
 (rum/defcs <app-ui>
   < rum/reactive [local *STATE]
 
-  [:div#app
-
+  [:div
 
    [:pre
     "app state:\n"
