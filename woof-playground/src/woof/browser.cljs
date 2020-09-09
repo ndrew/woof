@@ -569,8 +569,7 @@
 ;; generic implementation of the scraping workflow, so
 
 (defn scraper-wf! [*wf-state meta-info scraper-fn]
-  (let [
-        meta-init-fn (fn [params]
+  (let [meta-init-fn (fn [params]
                        ;; use this as starting point
                        (sui/indicate-wf-started)
 
@@ -649,7 +648,6 @@
                   )
         ]
 
-
     (run-wf! wf-impl
              :api (get scraper-impl-map :api {})
              :on-stop (get scraper-impl-map :on-stop (fn [_]))
@@ -712,6 +710,7 @@
 ;; export runner workflow to be accessible from console dev tools
 
 
+
 (defn ^:export run_workflow []
   (let [url (.. js/document -location -href)]
     (woof-dom/<scraping-ui>)
@@ -764,7 +763,8 @@
 ;;
 
 ;; start wf automatically - if we are in browser playground
-(when (goog.object/get js/window "BROWSER_PLAYGROUND")
+(when (and (goog.object/get js/window "BROWSER_PLAYGROUND") AUTO-START-WF?)
+
   (dbg/__log-start)
   ;(dbg/__log-once "auto-starting browser workflow")
   (run_workflow))
@@ -776,7 +776,9 @@
 ;; run wf - if we are auto-scraping
 (defonce *initialized (volatile! false))
 
-(when-not (goog.object/get js/window "BROWSER_PLAYGROUND")
+;; (not (goog.object/get js/window "PLAYGROUND"))
+(when (and (not (goog.object/get js/window "BROWSER_PLAYGROUND"))
+           AUTO-START-WF?)
   (.requestIdleCallback js/window
                         (fn []
                           (when-not @*initialized
