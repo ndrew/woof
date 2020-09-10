@@ -306,15 +306,17 @@
 
             _upd-map (select-keys nu-wf-map [:ui-fn :actions :title :wf-actions :explanation
 
-                                             :init-fns :steps-fns :opt-fns
-                                             ])
+            keys-for-update (get nu-wf-map :playground/keys-to-update-on-reload [:ui-fn :actions :title :wf-actions :explanation
+                                                                                 :init-fns :steps-fns :opt-fns])
+
+            _upd-map (select-keys nu-wf-map keys-for-update)
             upd-map (into {
                            :error nil
                            } (filter (fn [[k v]] (not (nil? v)))
                                      _upd-map))
             ]
         ;; what of wf map can be updated for running workflow
-        (.log js/console "updating the selected workflow " wf-id )
+        (.log js/console "updating " keys-for-update " in the current workflow " wf-id  )
         ;(.warn js/console upd-map)
         (swap! *TREE update-in curr merge upd-map)
 
@@ -332,16 +334,23 @@
 
 
 (rum/defc <wf-ui> < rum/reactive [*TREE current-selector wf-actions]
-  (let [*wf (rum/cursor-in *TREE current-selector)]
+  (let [*wf (rum/cursor-in *TREE current-selector)
+        wf @*wf]
     [:div.woof-playground
 
      (ui/menubar (pr-str current-selector)
                  (concat
-                   [["←" (partial back-to-project-selector *TREE current-selector)]]
+                   [
+
+                    ["←" (partial back-to-project-selector *TREE current-selector)]
+                    [(str "stop WF on reload " (ui/shorten-bool (:stop-wf-on-reload? @*INTERNAL))) (fn []
+                              (swap! *INTERNAL update :stop-wf-on-reload? not)
+
+                              )]
+                    ]
                    (global-menu-items wf-actions)))
 
-     (let [wf @*wf]
-       ((:ui-fn wf) *wf))
+     ((:ui-fn wf) *wf)
      ]
     )
   )
