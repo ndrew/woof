@@ -1,0 +1,20 @@
+.woof-el {
+    outline: 1px solid blue;
+}
+
+.woof-err {
+    background-color: lightcoral;
+}
+
+.woof-err-parse {
+    background-color: red;
+}
+
+.woof-err-district {
+    background-color: yellowgreen;
+}
+
+.woof-processed {
+    opacity: .33;
+    display: none;
+}
