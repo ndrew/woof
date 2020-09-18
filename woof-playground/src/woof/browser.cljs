@@ -11,7 +11,6 @@
 
     ;; scraper example
     [woof.client.browser.scraper.test-wf :as scraping-test-ws]
-
     ;; auto.ria.com
     [woof.client.browser.autoria.scraper :as autoria-scraper]
     ;; domik
@@ -20,10 +19,12 @@
     [woof.client.browser.lun.scraper :as lun-scraper]
     ;; blagovist.ua
     [woof.client.browser.blago.scraper :as blago-scraper]
-
+    ;; twitter/in-view test
     [woof.client.browser.in-view :as in-view]
 
     [woof.client.browser.scraper.generic :as default-scraper]
+
+    [woof.client.browser.scraper.streets :as streets]
 
     ;; common wf
 
@@ -47,8 +48,16 @@
 (enable-console-print!)
 
 
-;; whether to run wf automatically, or display run button
-(defonce AUTO-START-WF? true)
+;; whether to run wf automatically, or run via separate button
+(defonce AUTO-START-WF?
+         (and
+           ;; do not start the browser workflow if we
+            ;; are in playground
+            (not (goog.object/get js/window "PLAYGROUND"))
+            ;; passed --auto-run-browser-wf via clojure deps
+            (seq (has-cli-arg? "--auto-run-browser-wf"))
+           ))
+
 
 ;; configure scraping workflow
 (def META-INFO {
@@ -189,7 +198,7 @@
   )
 
 ;; browser
-(defn copy-to-clipboard [v]
+(defn- copy-to-clipboard [v]
   (when js/navigator.clipboard.writeText
     (let [clipboard js/navigator.clipboard
 
@@ -715,24 +724,35 @@
   (let [url (.. js/document -location -href)]
     (woof-dom/<scraping-ui>)
 
+    ;; map localhost to a specific wf
     (cond
-      ;; map localhost to a specific wf
       (clojure.string/starts-with? url "http://localhost:9500/scraper")   (scraper-wf! *wf-instance META-INFO scrapping-test-wf!)
-      ;; domik
-      (clojure.string/starts-with? url "http://localhost:9500/domik")     (domik-scraping! url)
-      (clojure.string/starts-with? url "http://domik.ua/")                (domik-scraping! url)
 
-      ;; dispatch url to a corresponding scraper
+      ;; sites
+      (clojure.string/starts-with? url "http://domik.ua/")        (domik-scraping! url)
       (clojure.string/starts-with? url "https://auto.ria.com")    (autoria-sraping!)
-      (clojure.string/starts-with? url "https://blagovist.ua")                   (blagovist-scraping!)
-      (clojure.string/starts-with? url "http://localhost:9500/browser_2.html")    (blagovist-scraping!)
+      (clojure.string/starts-with? url "https://blagovist.ua")    (blagovist-scraping!)
       (clojure.string/starts-with? url "https://lun.ua/")         (lun-scraping!)
 
-      (clojure.string/starts-with? url "http://localhost:9500/inview.html")   (scraper-wf! *wf-instance META-INFO in-view/in-view-wf!)
+      ;; internal workflows
 
+      ;; kyiv streets parsing
+      (clojure.string/starts-with? url "http://localhost:9500/s/streets.html")   (scraper-wf! *wf-instance META-INFO streets/wf!)
+      (clojure.string/starts-with? url "http://localhost:9500/browser_2.html")    (blagovist-scraping!)
+      (clojure.string/starts-with? url "http://localhost:9500/domik")        (domik-scraping! url)
+
+
+      ;; prototype todo: convert this to example
+      (clojure.string/starts-with? url "http://localhost:9500/inview.html")   (scraper-wf! *wf-instance META-INFO in-view/in-view-wf!)
+      ;; copied data
+      (clojure.string/starts-with? url "http://localhost:9500/twitter.html")   (scraper-wf! *wf-instance META-INFO in-view/in-view-wf!)
+      ;; prod)
+      (clojure.string/starts-with? url "https://twitter.com/__ndrw/likes")   (scraper-wf! *wf-instance META-INFO in-view/in-view-wf!)
+
+
+      ;; try the generic scraper
       :else (do
               (scraper-wf! *wf-instance META-INFO default-scraper/wf!)
-
 
               #_(let [el (dom/createDom "h3" ""
                                       (str "can't find scraping wf for URL: " url))]
@@ -762,21 +782,32 @@
 ;; side-effects, start wf automatically if there is certain var on the page
 ;;
 
-;; start wf automatically - if we are in browser playground
-(when (and (goog.object/get js/window "BROWSER_PLAYGROUND") AUTO-START-WF?)
 
+;; CASE 1: auto-start of browser workflow in BROWSER_PLAYGROUND
+
+;; start wf automatically - if we are in browser playground
+(when (and (goog.object/get js/window "BROWSER_PLAYGROUND")
+           AUTO-START-WF?)
   (dbg/__log-start)
   ;(dbg/__log-once "auto-starting browser workflow")
   (run_workflow))
 
 
+(defn ^:after-load on-js-reload []
+  (dbg/__log "browser wf: JS RELOAD")
+
+  ;; handle re-load from other ns
+  (if AUTO-START-WF?
+    (run_workflow)
+    )
+  )
 
 
+;; CASE 2: auto-start from extension or after manual script load
 
 ;; run wf - if we are auto-scraping
 (defonce *initialized (volatile! false))
 
-;; (not (goog.object/get js/window "PLAYGROUND"))
 (when (and (not (goog.object/get js/window "BROWSER_PLAYGROUND"))
            AUTO-START-WF?)
   (.requestIdleCallback js/window
@@ -792,12 +823,3 @@
   )
 
 
-(defn ^:after-load on-js-reload []
-  (dbg/__log "browser wf: JS RELOAD")
-
-  ;; handle re-load from other ns
-  (if AUTO-START-WF?
-    (run_workflow)
-    )
-
-  )
