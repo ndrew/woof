@@ -345,7 +345,7 @@
              ]
 
    ;; р-н СТ "Арсеналець"
-   :otps    [
+   :opts    [
              ;;
              (fn [params]
                ;; update
