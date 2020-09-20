@@ -1,0 +1,86 @@
+.marker-1:before {
+    content: "MARKER 1";
+    outline: 5px solid red;
+}
+
+.marker-2:before {
+    content: "MARKER 2";
+    outline: 5px solid red;
+}
+
+.marker-3:before {
+    content: "MARKER 3";
+    outline: 5px solid red;
+}
+
+.marker-4:before {
+    content: "MARKER 4";
+    outline: 5px solid red;
+}
+
+.marker-5:before {
+    content: "MARKER 5";
+    outline: 5px solid red;
+}
+
+.marker-6:before {
+    content: "MARKER 6";
+    outline: 5px solid red;
+}
+
+.marker-7:before {
+    content: "MARKER 7";
+    outline: 5px solid red;
+}
+
+.marker-8:before {
+    content: "MARKER 8";
+    outline: 5px solid red;
+}
+
+.marker-9:before {
+    content: "MARKER 9";
+    outline: 5px solid red;
+}
+
+.marker-10:before {
+    content: "MARKER 10";
+    outline: 5px solid red;
+}
+
+.marker-11:before {
+    content: "MARKER 11";
+    outline: 5px solid red;
+}
+
+
+.marker-12:before {
+    content: "MARKER 12";
+    outline: 5px solid red;
+}
+
+.marker-13:before {
+    content: "MARKER 13";
+    outline: 5px solid red;
+}
+
+
+
+.marker-1,
+.marker-2,
+.marker-3,
+.marker-4,
+.marker-5,
+.marker-6,
+.marker-7,
+.marker-8,
+.marker-9,
+.marker-10 {
+    padding-top: 1rem;
+    padding-right: 1rem;
+    padding-left: 1rem;
+    padding-bottom: 1rem;
+    background-color: rgba(255, 235, 205, 10);
+    border: 1px solid chocolate;
+}
+
