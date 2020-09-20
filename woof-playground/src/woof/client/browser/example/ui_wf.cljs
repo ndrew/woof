@@ -123,7 +123,7 @@
                              :UI/state  [:watch WATCHER-ID]
                              :UI/render [:ui :UI/state]})
                ]
-     :otps    [
+     :opts    [
                watcher/watcher-opts
                ]
 
