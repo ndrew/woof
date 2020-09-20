@@ -54,7 +54,7 @@
 (defn _parse-article-in-order [i el]
   (.log js/console "parse: i=" i el)
 
-  (classes/add el (str "marker-" i))
+  (classes/add el (str "marker-" (rem i 10)))
 
   {
    :i i
@@ -76,7 +76,8 @@
                (fn [params]
 
                  ;; clean up-previously added css classes
-                 (woof-dom/remove-added-css ["marker-1"
+                 (woof-dom/remove-added-css ["marker-0"
+                                             "marker-1"
                                              "marker-2"
                                              "marker-3"
                                              "marker-4"
@@ -147,6 +148,35 @@
                                       :expands? true
                                       }
 
+
+                    :process-seq-async*    {
+                                      ;; here should be used ::linearizer worker
+
+                                      :fn       (partial alpha/_seq-worker-expander
+                                                         ::linearizer
+                                                         (fn [el]
+                                                           (let [i (swap! *i inc)
+                                                                 make-chan (fn []
+                                                                             (base/make-chan (base/&chan-factory params) (base/rand-sid)))
+                                                                 ]
+                                                             (.log js/console ":process-seq-async*\ti=" i el)
+                                                             (let [c (make-chan)
+                                                                   res (_parse-article-in-order i el)]
+                                                               (.scrollIntoView el true)
+                                                               (go
+                                                                 (async/<! (u/timeout 1000))
+                                                                 (async/put! c res)
+                                                                 )
+                                                               c
+                                                               )
+
+                                                             )
+                                                           )
+                                                         params
+                                                         )
+                                      :expands? true
+                                      }
+
                     }
                    )
                  )
@@ -170,7 +200,10 @@
                   ;;::processed-articles [:process-normal* ::$articles]
 
                   ;; expand in proper order
-                  ::processed-articles [:process-seq* ::$articles]
+                  ;;::processed-articles [:process-seq* ::$articles]
+
+                  ;; expand async
+                  ::processed-articles [:process-seq-async* ::$articles]
 
 
 

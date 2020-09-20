@@ -62,13 +62,27 @@
     (reduce (fn [a e]
               (let [outbound-chan (make-chan)
 
-                    _handler (fn []
+                    __handler (fn []
                                (let [c (make-chan)]
                                  (go
                                    (if-let [r (shandler-fn e)]
                                      (async/put! c r)
                                      (async/put! c :nil)))
                                  c))
+
+                    _handler (fn []
+                               (let [res (shandler-fn e)]
+                                 (if (u/channel? res)
+                                   res
+                                   (let [c (make-chan)]
+                                     (go
+                                       (if res
+                                         (async/put! c res)
+                                         (async/put! c :nil)))
+                                     c
+                                     )
+                                   )
+                                 ))
 
                     handler-fn (with-meta _handler {:v e})
                     ]

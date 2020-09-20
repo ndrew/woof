@@ -1,3 +1,8 @@
+.marker-0:before {
+    content: "MARKER 0";
+    outline: 5px solid red;
+}
+
 .marker-1:before {
     content: "MARKER 1";
     outline: 5px solid red;
@@ -65,7 +70,7 @@
 }
 
 
-
+.marker-0,
 .marker-1,
 .marker-2,
 .marker-3,
