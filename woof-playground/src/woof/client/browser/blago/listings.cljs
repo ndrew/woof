@@ -1,4 +1,4 @@
-(ns ^:figwheel-hooks woof.client.browser.blago.listings
+(ns woof.client.browser.blago.listings
   (:require
     [goog.object]
     [goog.dom :as dom]

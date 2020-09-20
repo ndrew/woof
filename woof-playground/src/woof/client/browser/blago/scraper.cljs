@@ -18,6 +18,8 @@
 
     [woof.client.browser.scraper.scraping-ui :as sui]
 
+    [woof.client.dom :as woof-dom]
+    [woof.wfs.alpha :as alpha]
     ))
 
 
@@ -32,8 +34,8 @@
 
 
 (defn listing-text-ui [listing]
-  (d/pretty listing)
-  )
+  (d/pretty listing))
+
 
 ;;
 (defn custom-ui [listing]
@@ -85,7 +87,7 @@
                    }))
 
 
-(defn scraper-init [params]
+#_(defn scraper-init [params]
   (let [ws? (&ws? params)]
     (if ws?
       {
@@ -198,19 +200,14 @@
 
 
 
+(defn css-steps [params]
+  {
+   :CSS/custom-styles [:css-file "http://localhost:9500/css/b.css"]
+   }
+  )
+
 (defn scraper-steps [params]
   (let [
-        css-steps {
-                   ; :css/hide-listings [:css-rule ".cnt { display: none; }"]
-                   ;:css/css-1 [:css-rule ".woof-custom-listing-ui { font-family: 'DejaVu Sans Mono'; font-size: 7pt; }" ]
-                   ;:css/css-2 [:css-rule ".woof-listing-hide { opacity: 0.25;}" ]
-                   ;:css/css-3 [:css-rule ".woof-listing-show { outline: 3px solid crimson;  }" ]
-
-                   :css/scraping-ui [:css-rules* [".search-item" "outline: 1px solid red"]]
-                   :css/scraping-01 [:css-rules* [".search-item > .col-md-1" "display: none;"]]
-                   :css/scraping-02 [:css-rules* [".search-item .house-photo" "display: flex;"]]
-                   :css/scraping-03 [:css-rules* [".search-item .house-photo img" "max-height: 1  00px"]]
-                   }
 
 
         parse-steps {
@@ -264,9 +261,89 @@
       ui-steps
       css-steps
 
-      ws-steps
+
+      ;; todo: for now don't use ws
+
+      ;;
+      ;;ws-steps
       )
 
     )
+
+  )
+
+
+(defn wf! [*wf-state meta-info]
+  (let [WATCHER-ID :blago
+        SEQ-ID ::seq
+
+        ;; watch for changes in internal state
+        *state (atom {
+                      :internal ::state
+                      :confirms {}
+                      })
+
+
+        ]
+
+    {
+     :init  [
+
+             (fn [params]
+
+               ;; clean up-previously added css classes
+               (woof-dom/remove-added-css [])
+
+               {
+
+                })
+
+             (partial alpha/_seq-worker-init SEQ-ID)
+
+             ;;
+             ;; scraper-init
+             ]
+     :ctx   [
+             (fn [params]
+               {
+                :process-seq*    {
+                                  ;; here should be used ::linearizer worker
+
+                                  :fn       (partial alpha/_seq-worker-expander SEQ-ID
+                                                     (fn [el]
+                                                       (listings/parse-listing el)
+                                                       )
+                                                     params)
+                                  :expands? true
+                                  }
+
+
+                }
+               )
+             scraper-ctx]
+
+     :opts  []
+
+     :steps [
+             css-steps
+
+             (fn [params]
+               {
+                :blago/__listing-els* [:query-selector-all ".search-item"]
+
+                :blago/parsed-listings* [:process-seq* :blago/__listing-els*]
+
+                }
+               )
+
+             ;; scraper-steps
+             ]
+
+     :api   (array-map
+              "hello" (fn [] (.log js/console "foo"))
+              )
+     }
+    )
+
 
   )
