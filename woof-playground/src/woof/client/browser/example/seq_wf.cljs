@@ -29,22 +29,46 @@
   ([]
    ;; init UI
    (let [$panel (dom/createDom "div" "panel woof-scrape-panel")
-         $pre  (dom/createDom "pre" "woof-scrape-pre" "")]
+         $pre  (dom/createDom "pre" "woof-scrape-pre" "")
+         $conf  (dom/createDom "div" "woof-scrape-conf" "")
+         ]
 
      (dom/appendChild $panel (dom/createDom "header" "" "SCRAPER STATE:"))
      (dom/appendChild $panel $pre)
+     (dom/appendChild $panel $conf)
 
      (woof-dom/ui-add-el! $panel)
      )
    )
   ([*state STATE]
    ;; update UI on state change
-   (let [$panel (q ".woof-scrape-panel")
-         $pre (q ".woof-scrape-pre")
+   (let [$pre (q ".woof-scrape-pre")
+         $conf (q ".woof-scrape-conf")
          ]
 
-     (html! $pre (d/pretty! STATE))
-     ;; (html! root "")
+     ;; (html! $pre (d/pretty! STATE))
+     (html! $pre "")
+
+     (let [confirms (get STATE :confirms)
+           panel (dom/createDom "div" "" "")]
+
+       (html! $conf "")
+
+       (dom/appendChild $conf panel)
+       (doseq [[k v] confirms]
+         (let [btn! (woof-dom/btn! (str k) (fn []
+                                             (swap! *state update-in [:confirms] dissoc k)
+                                             (async/put! v (u/now))
+                                             ) panel)
+               ]
+           ;;
+           )
+
+         )
+       )
+     ;;(html! $conf (pr-str (get STATE :confirms)))
+
+
      )
    )
   )
@@ -70,6 +94,7 @@
         ;; watch for changes in internal state
         *state (atom {
                       :internal ::state
+                      :confirms {}
                       })]
     {
      :init    [
@@ -99,8 +124,39 @@
                  {}
                  )
 
+               #_(_watcher-chan-init WATCHER-ID
+                                   (base/make-chan (base/&chan-factory params) (base/rand-sid))
+                                   *state params)
                ;; state watcher for react like UI updates
-               (partial watcher/_watcher-cf-init WATCHER-ID *state)
+               (fn [params]
+                 (let [cf (base/&chan-factory params)
+                       ch (base/make-chan cf (base/rand-sid))
+
+                       dbg-chan (base/make-chan cf (base/rand-sid))
+
+                       mult-c (async/mult ch)
+
+                       ]
+
+                   (async/tap mult-c dbg-chan)
+
+                   (go-loop []
+                     (when-let [state (async/<! dbg-chan)]
+                       (.log js/console "wiretap UI:" state)
+                       (<ui> *state state)
+
+                       (recur)
+                       )
+                     )
+
+
+                   (watcher/do-watcher-chan-init WATCHER-ID
+                                                 ch
+                                                 *state params)
+                   )
+                 )
+
+               ;;(partial watcher/_watcher-cf-init WATCHER-ID *state)
 
                ;; add linearization worker
                (partial alpha/_seq-worker-init ::linearizer)
@@ -111,7 +167,12 @@
                (fn [params]
                  {
                   :ui {:fn       (fn [state]
-                                   (<ui> *state state))
+
+                                   ;;(<ui> *state state)
+
+                                   (.log js/console "UI update from WF")
+
+                                   )
                        :collect? true
                        }
                   }
@@ -177,6 +238,70 @@
                                       :expands? true
                                       }
 
+
+                    :process-confirm  {
+                                      :fn (fn [el]
+                                            (let [i (swap! *i inc)
+                                                  make-chan (fn [] (base/make-chan (base/&chan-factory params) (base/rand-sid)))]
+                                              (.log js/console ":process-confirm\ti=" i el)
+
+                                              (let [c (make-chan)
+                                                    conf-chan (make-chan)]
+
+                                                (.scrollIntoView el true)
+
+                                                (swap! *state update-in [:confirms] assoc (keyword (str "confirm-" i)) conf-chan )
+
+                                                (go
+                                                  ;; wait from confirm channel
+                                                  ; (async/<! (u/timeout 1000))
+
+                                                  (async/<! conf-chan)
+                                                  (async/put! c (_parse-article-in-order i el))
+                                                  )
+                                                c
+                                                )
+                                              )
+                                            )
+                                       }
+                    :process-confirm* (base/expand-into :process-confirm)
+
+                    :process-seq+confirm*    {
+                                            ;; here should be used ::linearizer worker
+
+                                            :fn       (partial alpha/_seq-worker-expander
+                                                               ::linearizer
+                                                               (fn [el]
+                                                                 (let [i (swap! *i inc)
+                                                                       make-chan (fn [] (base/make-chan (base/&chan-factory params) (base/rand-sid)))
+                                                                       ]
+                                                                   (.log js/console ":process-seq+confirm**\ti=" i el)
+                                                                   (let [c (make-chan)
+                                                                         conf-chan (make-chan)]
+
+
+                                                                     (swap! *state update-in [:confirms] assoc (keyword (str "confirm-" i)) conf-chan )
+
+                                                                     (go
+                                                                       ;; wait from confirm channel
+                                                                       ; (async/<! (u/timeout 1000))
+
+                                                                       (async/<! conf-chan)
+
+                                                                       (.scrollIntoView el true)
+
+                                                                       (async/put! c (_parse-article-in-order i el))
+                                                                       )
+                                                                     c
+                                                                     )
+
+                                                                   )
+                                                                 )
+                                                               params
+                                                               )
+                                              :expands? true
+                                              }
+
                     }
                    )
                  )
@@ -184,6 +309,14 @@
                ]
 
      :steps   [
+
+
+               ;; render UI on state change
+               (fn [params] {
+                             :UI/state  [:watch WATCHER-ID]
+
+                             :UI/render [:ui :UI/state]
+                             })
 
                (fn [params]
                  {
@@ -203,7 +336,15 @@
                   ;;::processed-articles [:process-seq* ::$articles]
 
                   ;; expand async
-                  ::processed-articles [:process-seq-async* ::$articles]
+                  ;;::processed-articles [:process-seq-async* ::$articles]
+
+
+                  ;; confirm seq
+                  ::processed-articles [:process-seq+confirm* ::$articles]
+
+
+                  ;; confirm non-deterministic order
+                  ;;::processed-articles [:process-confirm* ::$articles]
 
 
 
@@ -230,17 +371,18 @@
                      )
                    )
 
-               ;; render UI on state change
-               (fn [params] {
-                             :UI/state  [:watch WATCHER-ID]
-                             :UI/render [:ui :UI/state]})
                ]
      :opts    [
                watcher/watcher-opts
                ]
 
      :api     {
+               "refresh" (fn []
+                           (<ui> *state @*state)
+                           )
+
                "change state" (fn []
+                                ;; should be updated
                                 (swap! *state assoc :t (u/now))
                                 )
 

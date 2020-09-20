@@ -13,7 +13,7 @@
 ;; atom watcher via init
 
 
-(defn _watcher-chan-init [watcher-id ch DATA* params]
+(defn do-watcher-chan-init [watcher-id ch DATA* params]
   ;; todo: throw exception if watcher-is is qualified keyword? as it will break [:watch WATCHER-ID]
 
   (async/put! ch @DATA*)
@@ -41,9 +41,9 @@
 
 
 (defn _watcher-cf-init [WATCHER-ID *state params]
-  (_watcher-chan-init WATCHER-ID
-                      (base/make-chan (base/&chan-factory params) (base/rand-sid))
-                      *state params))
+  (do-watcher-chan-init WATCHER-ID
+                        (base/make-chan (base/&chan-factory params) (base/rand-sid))
+                        *state params))
 
 
 (def watcher-opts (base/build-opt-on-done
