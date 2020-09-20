@@ -77,7 +77,6 @@
   [dict *dict]
 
   [:div
-
    (pg-ui/menubar "streets"
                   [
                    ["load pre-parsed streets" (fn []
@@ -90,9 +89,124 @@
                              )]
                    ])
 
-   ;; process raw-streets
+   [:p "processing streets via visual repl"]
+
 
    (when-let [raw-streets (:raw-streets dict)]
+
+     [:div.zzz
+
+
+      (pg-ui/menubar "extract geonim types"
+                     [["copy 📋"
+                       (fn []
+                         (let [clipboard js/navigator.clipboard
+                               copy-handler (fn []
+                                              (let [
+                                                    t-map (->>
+                                                        (group-by :ua raw-streets)
+                                                        ;(filter (fn [[k vs]] (> (count vs) 1)))
+                                                        (map first)
+                                                        ;(take 10)
+                                                        (sort)
+                                                        (map (fn [street]
+                                                               [street (reduce (fn [a [geonim sh]]
+                                                                                 (if (nil? (str/index-of street (str " " geonim)))
+                                                                                   a
+                                                                                   (assoc a geonim
+                                                                                            (str/trim
+                                                                                              (str/replace street geonim ""))
+                                                                                            )
+                                                                                   )
+                                                                                 ) {} geonim-2-short)]
+                                                               ))
+                                                        (reduce (fn [a [street geonim-map]]
+                                                                  (let [ks (keys geonim-map)]
+                                                                        (if (= (count ks) 0)
+                                                                          (assoc a street {:type "вулиця"
+                                                                                           :auto-guess true
+                                                                                           :short-name street
+                                                                                           })
+                                                                          (assoc a
+                                                                            street {:type (first (keys geonim-map))
+                                                                                    :short-name (first (vals geonim-map))
+                                                                                    }
+                                                                            )
+
+                                                                          )
+                                                                        )
+                                                                  ) {}
+                                                                )
+
+                                                        )
+
+                                                    ]
+                                                (-> (.writeText clipboard (d/pretty! t-map))
+                                                    (.then (fn [response] (.log js/console "Copied to clipboard - " response))
+                                                           (fn [err] (.warn js/console "Failed to copy to clipboard" err))))
+
+                                                )
+
+
+                                              )
+                               ]
+                           (copy-handler)))]
+                      ])
+
+      #_(pr-str
+
+      geonim-2-short
+
+        )
+
+      (->> (group-by :ua raw-streets)
+           ;(filter (fn [[k vs]] (> (count vs) 1)))
+           (map first)
+           ;(take 10)
+           (sort)
+           (map (fn [street]
+                  [street (reduce (fn [a [geonim sh]]
+                                    (if (nil? (str/index-of street (str " " geonim)))
+                                      a
+                                      (assoc a geonim
+                                               (str/trim
+                                                 (str/replace street geonim ""))
+                                               )
+                                      )
+                                    ) {} geonim-2-short)]
+                  ))
+           (filter (fn [[street geonim-map]]
+
+                     ;; unknown classification
+                     ;(= (count geonim-map) 0)
+
+                     ;; more than one  geonim
+                     ;;  (> (count geonim-map) 1)
+
+
+
+                     ;; only geonims from several worlds
+                     (> (count (str/split (first (vals geonim-map)) #" ")) 1)
+
+
+                     ))
+           (map #(apply <street-name> %))
+
+
+           )
+
+      ]
+
+
+     ;; [:pre (pr-str (count raw-streets)) " streets"]
+
+
+
+     )
+
+   ;; process raw-streets
+
+   #_(when-let [raw-streets (:raw-streets dict)]
      [:div
       ;; uncomment the checks
 
@@ -318,7 +432,6 @@
                      :streets []
                      :raw-streets []
                      }
-
 
              }
 
