@@ -72,7 +72,13 @@
                  )
 
                ;; state watcher for react like UI updates
-               (partial watcher/_watcher-cf-init WATCHER-ID *state)
+               ;; (partial watcher/_watcher-cf-init WATCHER-ID *state)
+
+               (partial watcher/_watcher-cf-init-cb WATCHER-ID *state
+                        (fn [*state state]
+                          (.log js/console "UI: upd" state (= state @*state))
+                          (<ui> *state state)
+                          ))
                ]
 
      :ctx     [watcher/watcher-ctx
@@ -90,6 +96,17 @@
                ]
 
      :steps   [
+
+               ;; render UI on state change
+               (fn [params] {
+                             :UI/state  [:watch WATCHER-ID]
+
+                             ;; :UI/render [:ui :UI/state]
+
+                             :UI/log [:log :UI/state]
+
+                             })
+
 
                (fn [params]
                  {
@@ -118,10 +135,6 @@
                    )
                  )
 
-               ;; render UI on state change
-               (fn [params] {
-                             :UI/state  [:watch WATCHER-ID]
-                             :UI/render [:ui :UI/state]})
                ]
      :opts    [
                watcher/watcher-opts

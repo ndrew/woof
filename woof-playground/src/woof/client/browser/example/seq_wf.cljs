@@ -128,7 +128,17 @@
                                    (base/make-chan (base/&chan-factory params) (base/rand-sid))
                                    *state params)
                ;; state watcher for react like UI updates
-               (fn [params]
+
+               (partial watcher/_watcher-cf-init-cb WATCHER-ID *state
+                        (fn [*state state]
+                          (.log js/console "UI: upd" state (= state @*state))
+                          (<ui> *state state)
+                          ))
+
+
+
+               ;; why does this version is not working
+               #_(fn [params]
                  (let [cf (base/&chan-factory params)
                        ch (base/make-chan cf (base/rand-sid))
 
@@ -168,9 +178,11 @@
                  {
                   :ui {:fn       (fn [state]
 
-                                   ;;(<ui> *state state)
-
                                    (.log js/console "UI update from WF")
+
+                                   ;; (<ui> *state state)
+
+
 
                                    )
                        :collect? true
@@ -342,13 +354,10 @@
                   ;; confirm seq
                   ::processed-articles [:process-seq+confirm* ::$articles]
 
-
                   ;; confirm non-deterministic order
-                  ;;::processed-articles [:process-confirm* ::$articles]
+                  ;; ::processed-articles [:process-confirm* ::$articles]
 
 
-
-                  ;; add infinite step in order to keep wf running
 
                   }
                  )

@@ -21,8 +21,11 @@
              watcher-id
              (fn [key atom old-state new-state]
 
+               ;; #?(:cljs (.log js/console "upd:" watcher-id key (= old-state new-state)))
+
                (if (not= old-state new-state)
-                 (async/put! ch new-state))
+                 (async/put! ch new-state)
+                 )
                ))
   {
    ::watchers (merge {
@@ -44,6 +47,36 @@
   (do-watcher-chan-init WATCHER-ID
                         (base/make-chan (base/&chan-factory params) (base/rand-sid))
                         *state params))
+
+
+(defn _watcher-cf-init-cb [WATCHER-ID *state cb params]
+  (let [cf (base/&chan-factory params)
+        ch (base/make-chan cf (base/rand-sid))]
+
+    ;; why this is not properly working with mult
+    (let [nu-state @*state]
+      (cb *state nu-state)
+      (async/put! ch nu-state))
+
+    (add-watch *state
+               WATCHER-ID
+               (fn [key atom old-state new-state]
+
+                 ;; #?(:cljs (.log js/console "WATCHER UPD:" WATCHER-ID key (= old-state new-state)))
+
+                 (when (not= old-state new-state)
+                   (cb *state new-state)
+                   (async/put! ch new-state)
+                   )
+                 ))
+    {
+     ::watchers (merge {
+                        WATCHER-ID [ch *state]
+                        } (get params ::watchers {}))
+     }
+    )
+  )
+
 
 
 (def watcher-opts (base/build-opt-on-done
