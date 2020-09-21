@@ -99,12 +99,6 @@
   )
 
 
-(defn remove-added-css []
-  (let [style-els (array-seq (.querySelectorAll js/document ".woof-css"))]
-    (doseq [el style-els]
-      (dom/removeNode el))
-    )
-  )
 
 (defn query-selector
   ([selector]
@@ -404,4 +398,53 @@
       )
     )
   ;el.parentElement.parentElement.childElementCount
+  )
+
+
+(defn remove-added-css
+  ([]
+   (remove-added-css []))
+
+  ([additional-classes-2-remove]
+   "provide list of css-class without dot."
+   ;; find better way of dealing with selector <-> class name mapping
+   (let [style-els (array-seq (.querySelectorAll js/document ".woof-css"))]
+     (doseq [el style-els]
+       (dom/removeNode el)))
+
+   (doseq [s* additional-classes-2-remove]
+     (doseq [el (q* (str "." s*))]
+       (classes/remove el s*)))
+   )
+
+  )
+
+
+(defn save-json [edn]
+
+  (let [a (.createElement js/document "a")]
+    (.appendChild (.-body js/document) a)
+    (set! (.-style a) "display: none")
+
+    (let [s (.stringify js/JSON (clj->js edn))
+          blob (js/Blob. (clj->js [s])
+                         (js-obj "type" "octet/stream"))
+          url (.createObjectURL (.-URL js/window) blob)]
+
+      (set! (.-href a) url)
+      (set! (.-download a) (str (u/now) ".json"))
+
+      (.click a)
+      (.revokeObjectURL (.-URL js/window) url)
+      ;; todo: remove a element
+      )
+    )
+
+  )
+
+
+(defn dataset->clj [el]
+  (js->clj (.parse js/JSON (.stringify js/JSON el.dataset))
+           :keywordize-keys true
+           )
   )
