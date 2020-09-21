@@ -30,15 +30,15 @@
 
     (go-loop []
       (when-let [[handler out-chan] (async/<! in-chan)]
-        ;; (.log js/console "got handler" (meta handler))
         (let [ready-chan (handler)
               val (async/<! ready-chan)]
 
           ;; (.log js/console "got val. " (meta handler) val)
           ;; (async/<! (u/timeout 5000))
           (async/put! out-chan val)
+          (recur)
           )
-        (recur)))
+        ))
 
     ;; return worker-chan-id in params
     {worker-chan-id in-chan}
@@ -61,14 +61,6 @@
 
     (reduce (fn [a e]
               (let [outbound-chan (make-chan)
-
-                    __handler (fn []
-                               (let [c (make-chan)]
-                                 (go
-                                   (if-let [r (shandler-fn e)]
-                                     (async/put! c r)
-                                     (async/put! c :nil)))
-                                 c))
 
                     _handler (fn []
                                (let [res (shandler-fn e)]

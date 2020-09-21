@@ -9,10 +9,12 @@
     [clojure.string :as str]
 
     [woof.base :as base]
-    [woof.client.ws :as ws]
     [woof.client.dom :as woof-dom]
     [woof.data :as d]
     [woof.utils :as u]
+
+    [goog.dom.dataset :as dataset]
+
 
     [woof.client.browser.scraper.scraping-ui :as sui]
     ))
@@ -94,63 +96,161 @@
 
   )
 
+
+(def text dom/getTextContent)
+
+
+(defn dataset->clj [el]
+  (js->clj (.parse js/JSON (.stringify js/JSON el.dataset))
+           :keywordize-keys true
+           )
+  )
+
+
+
+(defn- extract-uah [uah]
+  {:uah (->
+          uah
+          (str/replace #"\s" "")
+          (str/replace #"\*грн\." "")
+          int
+          )
+   }
+  )
+
+(defn- extract-apartment [ap]
+  (let [re #"(\d+) кім. квартира (\d*).+"
+        [_ rooms m2 ] (re-matches re ap)
+        ]
+    {:rooms (int rooms)
+     :m2 (int m2)
+     }
+    )
+  )
+
+(defn- extract-addr [addr]
+  (let [[ap
+         street
+         house
+         city] (str/split addr ",")]
+    (merge
+      (extract-apartment ap)
+      {:street (str/trim street)
+       :house  (str/trim house)}
+      )
+    )
+
+  )
+
+(defn- extract-usd [usd]
+  (let [[_usd
+         _
+         _rate
+         ] (->
+             usd
+             (str/replace #"\s" "")
+             (str/split #"\$")
+             )]
+
+    {
+     :usd (int _usd)
+     :usd2uah (-> _rate
+                  (str/replace #"=" "")
+                  (str/replace #"грн\.\)" "")
+                  js/parseFloat
+                  )
+     }
+
+    )
+  )
+
+
+(defn- extract-eur [eur]
+  (let [[_eur
+         _
+         _rate
+         ] (->
+             eur
+             (str/replace #"\s" "")
+             (str/split #"€")
+             )]
+
+    {
+     :eur (int _eur)
+     :eur2uah (-> _rate
+                  (str/replace #"=" "")
+                  (str/replace #"грн\.\)" "")
+                  js/parseFloat
+                  )
+     }
+    )
+  )
+
+
 ;; parsing implementation
 (defn parse-listing [el]
-  ;; (js-debugger)
-  (.log js/console "parsing" el)
-  #_(let [
-
-          aEl      (.querySelector el ".tittle_obj [clickcntid]")
-          houseEls (.querySelectorAll el ".adress_addInfo a")
-          metroEl  (.querySelector el ".adress_addInfo .metro")
-
-          ;; to know that it's a novobudova
-          projectEl (.querySelector el ".project_link")
-
-          bodyEls (array-seq (.querySelectorAll el ".objava_detal_info .color-gray"))
-
-          houseTypeEl (.querySelector el ".objava_detal_info .color-gray a")
-          ; color-gray
-
-          raw-address (dom/getTextContent (.querySelector el ".adress_text"))
-
-          [_ _ district street building] (str/split raw-address #", ")
-
-          ]
-      (merge {
-
-              :id      (.getAttribute aEl "clickcntid") ;; or get id from top of the page
-
-              :kod     (dom/getTextContent (.querySelector el ".objava_data_cod > span"))
-              :date    (dom/getTextContent (.querySelector el ".objava_data_cod > span + span"))
-
-              :url     (.getAttribute aEl "href")
-              :project (if projectEl (.getAttribute projectEl "href") nil)
-
-              :title   (dom/getTextContent aEl)
-
-              :addr    {
-                        :lat          (.getAttribute el "geolat")
-                        :lng          (.getAttribute el "geolng")
-
-                        :full-addr    raw-address
-                        :district     district
-                        :street       street
-                        :building     building
-
-                        :metro        (if metroEl (.getAttribute metroEl "title") nil)
-                        :house        (if houseEls (map #(.getAttribute % "href") (array-seq houseEls)) nil)
-                        :houseTypeUrl (if houseTypeEl (.getAttribute houseTypeEl "href"))
-                        :houseType    (if houseTypeEl (dom/getTextContent houseTypeEl))
-                        }
 
 
-              :price   (extract-listing-price (.querySelector el ".price .cost")
-                                              (.querySelector el ".price .commission"))
+  (let [
 
-              }
-             (extract-listing-text bodyEls)
-             )
+        $link (.querySelector el ".col-md-11 a.link")
+
+        raw-link-text (dom/getTextContent $link)
+
+        link-href (.getAttribute $link "href")
+
+        $uah (.querySelector el ".price > p")
+        $eur (.querySelector el ".price > .m-euro")
+        $usd (.querySelector el ".price > .m-dollar")
+
+        $regs (woof-dom/q* el ".info-region a")
+
+        $complex (.querySelector el ".info-complex a")
+
+        $photos (woof-dom/q* el ".house-photo img")
+        $info (woof-dom/q el ".info-text .col-md-9")
+        ]
+
+
+    (merge
+      {
+       :id (:objectCode (dataset->clj el))
+       :href link-href
+       }
+      (extract-addr raw-link-text)
+      (extract-uah (text $uah))
+      (extract-eur (text $eur))
+      (extract-usd (text $usd))
+      {
+       :link-text raw-link-text
+
+
+       :short-info (text $info)
+
+       ;:uah (text $uah)
+       ;:eur (text $eur)
+       ;:usd (text $usd)
+
+       :region (vec (map (fn [$el]
+                           {:href (.getAttribute $el "href")
+                            :t (text $el)
+                            }
+                           ) $regs))
+
+       :photos (vec (map (fn [$el]
+                           {:src (.getAttribute $el "src")
+                            :alt (.getAttribute $el "alt")
+                            :title (.getAttribute $el "alt")
+                            }) $photos))
+
+
+       }
+
       )
+
+
+
+    )
+
   )
 

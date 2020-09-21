@@ -5,7 +5,7 @@
     [goog.object]
     [goog.dom.classes :as classes]
 
-    [cljs.core.async :as async]
+    [cljs.core.async :refer [go go-loop] :as async]
     [woof.base :as base]
 
     [clojure.string :as str]
@@ -150,8 +150,8 @@
    ;;;;;;;;;;;;;;;
 
    ;; splits sid-list into
-   ;; :process*           (base/expand-into :process)
-   :process*           (expand-limited :process 1)
+   :process*           (base/expand-into :process)
+   :process*_1           (expand-limited :process 1)
 
    :process            {
                         :fn (fn [el]
@@ -283,13 +283,12 @@
                       :confirms {}
                       })
 
-
         ]
 
     {
      :init  [
-
              (fn [params]
+               (.clear js/console)
 
                ;; clean up-previously added css classes
                (woof-dom/remove-added-css [])
@@ -298,7 +297,10 @@
 
                 })
 
-             (partial alpha/_seq-worker-init SEQ-ID)
+             (fn [params]
+               (alpha/_seq-worker-init SEQ-ID params)
+               )
+
 
              ;;
              ;; scraper-init
@@ -311,6 +313,7 @@
 
                                   :fn       (partial alpha/_seq-worker-expander SEQ-ID
                                                      (fn [el]
+                                                       (.log js/console "PROCESS:" el)
                                                        (listings/parse-listing el)
                                                        )
                                                      params)
@@ -333,6 +336,15 @@
 
                 :blago/parsed-listings* [:process-seq* :blago/__listing-els*]
 
+                ;; :blago/parsed-listings* [:process* :blago/__listing-els*]
+
+
+                ::collect [:collect :blago/parsed-listings*]
+
+                ::log [:log ::collect]
+
+
+                :clipboard/copy-results [:copy-to-clipboard ::collect]
                 }
                )
 
