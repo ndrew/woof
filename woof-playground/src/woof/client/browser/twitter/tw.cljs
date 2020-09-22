@@ -2,7 +2,7 @@
   (:require
 
     [woof.base :as base]
-    [woof.client.dom :as woof-dom]
+    [woof.client.dom :as wdom :refer [q q*]]
     [woof.client.dbg :as dbg :refer [__log]]
     [woof.data :as d]
     [woof.utils :as u]
@@ -79,7 +79,7 @@
 (defn scrape-tweet [el]
 
   (.log js/console el)
-  (.warn js/console (d/pretty! (woof-dom/dataset el)))
+  (.warn js/console (d/pretty! (wdom/dataset el)))
 
   (swap! *SCRAPED-TWEETS conj (. (. el -parentElement) -innerHTML))
 
@@ -198,7 +198,7 @@
 ;;;;;;;;;;;;;;
 
 (defn scrape-tweet-local [el]
-  (let [[root] (woof-dom/query-selector* el "div > div > div > div > div:nth-of-type(2)")
+  (let [[root] (wdom/query-selector* el "div > div > div > div > div:nth-of-type(2)")
           [user-block tweet-block] (array-seq (.-children root))]
 
       (.clear js/console)
@@ -230,32 +230,76 @@
   )
 
 
-(defn parse-plan [nodes]
+(defn parse-plan [evt-loop nodes]
   (reduce
     (fn [s n]
       (let [$ (get n :$)
             curr-tag (:t (last $))
-            selector (woof-dom/to-selector $)]
+            selector (wdom/to-selector $)
+
+            color (rand-nth ["aqua"
+                             "cyan"
+                             "lightcyan"
+                             "paleturquoise"
+                             "aquamarine"
+                             "turquoise"
+                             "mediumturquoise"
+                             "darkturquoise"
+                             "cadetblue"
+                             "steelblue"
+                             "lightsteelblue"
+                             "powderblue"
+                             "lightblue"
+                             "skyblue"
+                             "lightskyblue"
+                             "deepskyblue"
+                             "dodgerblue"
+                             "cornflowerblue"
+                             "mediumslateblue"
+                             "royalblue"
+                             "blue"
+                             "mediumblue"
+                             "darkblue"
+                             "navy"
+                             "midnightblue"])
+            ]
+
+
+        (async/put! evt-loop
+                    {
+                     (base/rand-sid) [:css-rule (str selector " { background: " color "; color: #fff; }")]
+
+                     })
         (str s
 
              "<div class='selector-box'>"
 
-             "<span class='selector'>"
+             "<span class='selector' style='background-color: " color "'>"
 
              (gstr/htmlEscape selector)
              "</span>"
 
+             ;"<div>" (gstr/htmlEscape (d/pretty! n))  "</div>"
+
+             "<div class='outer-tag'>" (gstr/htmlEscape (wdom/tag-only (:el n))) "</div>"
+
+
              (if (= "IMG" curr-tag)
                (str
-                 "<img class='el-img' src='" (woof-dom/attr (:el n) "src") "'/>"
+                 "<img class='el-img' src='" (wdom/attr (:el n) "src") "'/>"
                  )
                "")
 
              (if (= "A" curr-tag)
                (str
-                 "<div class='el-attr'>" (woof-dom/attr (:el n) "href") "</div>"
+                 "<div class='el-attr'>" (wdom/attr (:el n) "href") "</div>"
                  )
                "")
+
+             (if (= "TIME" curr-tag)
+               (str (wdom/attr (:el n) "datetime"))
+               ""
+               )
 
 
              (let [t (:text n)]
@@ -269,10 +313,11 @@
                )
 
 
-             (if-let [data (woof-dom/dataset->clj (:el n))]
-               (str "<div class='el-data'>" (pr-str data) "</div>")
-               ""
-               )
+             (let [data (wdom/dataset->clj (:el n))]
+               (if (or (nil? data) (= {} data))
+                 ""
+                 (str "<div class='el-data'>" (pr-str data) "</div>")
+                 ))
 
 
              "</div>"
@@ -286,128 +331,173 @@
 
 
 
-(defn analyze-el [el]
-  (.log js/console "parsing" el)
+(defn- parse-img [img]
+  {:src   (wdom/attr img "src")
+   :alt   (wdom/attr img "alt")
+   :tag   (wdom/tag-only img)
+   })
+
+(defn- parse-a [a]
+  {:href  (wdom/attr a "href")
+   :title (wdom/attr a "title")
+   :text  (wdom/txt a)
+
+   :tag   (wdom/tag-only a)
+   }
+  )
+
+(defn analyze-el [evt-loop el]
 
   (classes/add el "woof-el")
 
   (let [$details (dom/createDom "div" "woof-details" "")
 
-        dom-map (woof-dom/el-map el (fn [$el $]
-                                (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el)))
-                                ))
-
-        ;;find-interesting (fn [x] true)
-        find-interesting (fn [node]
-                           (cond
 
 
-                             ;; images
-                             (= "IMG" (.-tagName (:el node))) true
-                             ;; leafs
-                             (= 0 (:child-count node)) true
-                             ;; links
-                             (= "A" (.-tagName (:el node))) true
+        model (let [
+                    content-root (q el "DIV > DIV > DIV > DIV:nth-child(2) > DIV:nth-child(2) > DIV:nth-child(2)")
 
-                             (not= "" (:text node)) true
+                    content-1 (q content-root "DIV > DIV > SPAN")
 
-                             :else false
-                             )
-                           )
+                    tw-content* (q* el "DIV > DIV > DIV > DIV:nth-child(2) > DIV:nth-child(2) > DIV:nth-child(2) > DIV > DIV")
 
-        interesting-nodes (filter find-interesting dom-map)
+                    embed-root (q content-root "DIV > DIV > DIV > DIV > DIV:nth-child(2)")
 
-        dom-plan (parse-plan interesting-nodes)
+                    links (q* el "A")
+                    imgs (q* el "IMG")
+
+                    $tw-id (q el "DIV > DIV > DIV > DIV:nth-child(2) > DIV:nth-child(2) > DIV:nth-child(1) > DIV > DIV > DIV:nth-child(1) > A:nth-child(3)")
+                    TW-ID (wdom/attr $tw-id "href")
+                    exclude-links #{TW-ID
+                                    (let [[_ a] (str/split TW-ID "/")]
+                                      (str "/" a))
+                                    }
+
+                    tw-nick (q  el "DIV > DIV > DIV > DIV:nth-child(2) > DIV:nth-child(2) > DIV:nth-child(1) > DIV > DIV > DIV:nth-child(1) > DIV:nth-child(1) > A > DIV > DIV:nth-child(2) > DIV > SPAN")
+                    tw-title (q el "DIV > DIV > DIV > DIV:nth-child(2) > DIV:nth-child(2) > DIV:nth-child(1) > DIV > DIV > DIV:nth-child(1) > DIV:nth-child(1) > A > DIV > DIV:nth-child(1) > DIV:nth-child(1) > SPAN > SPAN")
+
+                    own-photos (q* el "DIV > DIV > DIV > DIV:nth-child(2) > DIV:nth-child(2) > DIV:nth-child(2) > DIV:nth-child(2) > DIV > DIV > DIV > DIV > DIV > DIV:nth-child(2) > DIV > DIV:nth-child(1) > A")
+
+                    replies (q* el "DIV > DIV > DIV > DIV:nth-child(2) > DIV:nth-child(2) > DIV:nth-child(2) > DIV:nth-child(1) > DIV > DIV > A")
+                    ]
+
+                {
+                 :eeee exclude-links
+
+                 :links   (reduce
+
+                            #(let [url-data (parse-a %2)]
+                               (if-not (exclude-links (:href url-data))
+                                 %1
+                                 (conj %1 url-data)
+                              ))
+
+                            [] links)
+
+                 :imgs    (reduce
+                            #(conj %1 (parse-img %2))
+                            [] imgs)
+
+
+
+                 :content  (wdom/txt content-1)
+
+                 :content* (map #(do {
+                                      :txt (wdom/txt %1)
+                                      :tag   (wdom/tag-only %1)
+                                      }) tw-content*)
+
+                 :embed (if embed-root (.-innerHTML embed-root) nil)
+
+                 :dom-plan (parse-plan evt-loop
+                                       (filter (fn [node]
+                                                 (cond
+                                                   ;; images
+                                                   ;                             (= "IMG" (.-tagName (:el node))) true
+
+                                                   ;                             (= "TIME" (.-tagName (:el node))) true
+
+                                                   ;; leafs
+                                                   ;; (= 0 (:child-count node)) true
+                                                   ;; links
+                                                   (= "A" (.-tagName (:el node))) true
+
+                                                   (not= "" (:text node)) true
+
+                                                   :else false
+                                                   )
+                                                 )
+
+                                               (wdom/el-map content-root (fn [$el $]
+                                                                 (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el)))
+                                                                 ))
+                                               )
+                                       )
+
+                 :tw-id    TW-ID
+                 :nick     (wdom/txt tw-nick)
+                 :title    (wdom/txt tw-title)
+
+                 :photos   (reduce #(conj %1 {:href (wdom/attr %2 "href")
+                                              :img  (parse-img (q %2 "img"))
+                                              })
+                                   []
+                                   own-photos
+                                   )
+
+                 :replies  (reduce #(conj %1 {
+                                              :tw-nick (wdom/attr %2 "href")
+                                              :nick    (wdom/txt %2)
+                                              })
+                                   []
+                                   replies
+                                   )
+
+                 ;;:innerHTML (.-innerHTML tw-content)
+
+                 }
+                )
+
         ]
 
 
    ;; (.log js/console dom-plan)
 
     (set! (. $details -innerHTML)
-
           (str
-            dom-plan
-            ;"<hr>"
-            ;(d/pretty! interesting-nodes)
-           )
+            ;; "<code>" (gstr/htmlEscape (d/pretty! model))  "</code>" "<hr>"
+            (if-let [dom-plan (:dom-plan model)]
+              dom-plan
+              (parse-plan evt-loop
+                          (filter
+                            (fn [node]
+                            (cond
+                              ;; images
+                              ;                             (= "IMG" (.-tagName (:el node))) true
 
+                              ;                             (= "TIME" (.-tagName (:el node))) true
 
+                              ;; leafs
+                              ;; (= 0 (:child-count node)) true
+                              ;; links
+                              (= "A" (.-tagName (:el node))) true
 
-            )
+                              (not= "" (:text node)) true
+
+                              :else false
+                              )
+                            )
+                            (wdom/el-map el (fn [$el $]
+                                              (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el)))
+                                              ))))
+
+              )
+           ))
     ;; add
-    (woof-dom/add-el! el ".woof-details" $details)
+    (wdom/add-el! el ".woof-details" $details)
 
-
-    interesting-nodes
-
+   model
     )
-
-
-
-
-
-
-  #_(let [v (woof-dom/el-map el (fn [$el $]
-                                  (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el)))
-                                  ))
-          interesting-nodes (filter (fn [node]
-                                      (let [no-text? (= "" (:text node))
-                                            no-children? (< (:child-count node) 2)
-                                            div? (= "DIV" (.-tagName (:el node)))
-                                            ]
-                                        #_(.log js/console no-text?
-                                                no-children?
-                                                div? node)
-                                        (not
-                                          (and
-                                            no-text?
-                                            no-children?
-                                            div?
-                                            ))
-                                        )
-
-                                      ) v)
-          ]
-      ;; (.log js/console v)
-
-      (.log js/console  interesting-nodes)
-
-      (doseq [{el :el
-               $ :$
-               cnt :child-count
-               text :text} interesting-nodes]
-
-        (when (>= cnt 2)
-          (set! (-> el .-style .-margin) (str "15px !important"))
-          (set! (-> el .-style .-backgroundColor) (str "rgba(128,0,128,.0333)"))
-          )
-
-        (when (not= "" text)
-          (set! (-> el .-style .-padding) (str "25px !important"))
-          (set! (-> el .-style .-backgroundColor) "yellow")
-          (set! (-> el .-style .-color) "black")
-          (set! (-> el .-style .-fontSize) "18pt"))
-
-
-        (if (= "IMG" (last $))
-          (.log js/console el)
-          )
-
-        (if (= "A" (last $))
-          (.log js/console el)
-          )
-
-
-
-        ; (set! (-> el .-style .-outline) (str "1px solid " (rand-nth ["red" "blue" "yellow" "orange"])))
-
-        )
-      )
-
-  ; (set! (-> el .-style .-padding) "20px")
-  #_(set! (. el -innerHTML)
-          (rand-nth ["AAA" "BBB" "CCC" "DDD" "EEE"]))
-
 
   )
 
@@ -419,13 +509,13 @@
 (defn css-cleaup-on-init [params]
 
   ;; remove previosly added styles sheets + added classes like woof-el
-  (woof-dom/remove-added-css
+  (wdom/remove-added-css
     ["woof-el"]
     )
 
 
   ;; remove dynamically inserted debug nodes
-  (doseq [$details (woof-dom/q* ".woof-details")]
+  (doseq [$details (wdom/q* ".woof-details")]
     (dom/removeNode $details))
 
 
@@ -438,6 +528,7 @@
         WATCHER-ID :css
 
         *brute-force-counter (atom 0)
+
         ]
     {
      :init    [css-cleaup-on-init
@@ -445,7 +536,8 @@
                (fn [params] ;; watcher
                  (watcher/do-watcher-chan-init WATCHER-ID
                                                (base/make-chan (base/&chan-factory params) (base/rand-sid))
-                                               *selectors params))]
+                                               *selectors params))
+               ]
 
      :ctx     [watcher/watcher-ctx
 
@@ -485,7 +577,8 @@
                   :scrape-tweet      {:fn scrape-tweet}
 
 
-                  :analyze-dom       {:fn analyze-el}
+                  :analyze-dom       {:fn (partial analyze-el (evt-loop/&evt-loop params))}
+                  :analyze-dom*      (base/expand-into :analyze-dom)
 
                   :scrape-tweet!     {:fn scrape-tweet-local}
 
@@ -508,16 +601,24 @@
                     :CSS/custom-styles [:css-file "http://localhost:9500/css/twitter.css"]
                     }
 
+                   {::evt-loop [:evt-loop ]}
+
                    ;; local version, scrape just single tweet
                    {
 
                     ::selector         [:v "article"]
                     ;; query first tweet
-                    ::el               [:query-selector ::selector]
+                    ;;::el               [:query-selector ::selector]
+                    ;; ::log              [:log ::el]
+                    ;;::scrape           [:analyze-dom ::el]
 
-                    ::log              [:log ::el]
-                    ::scrape           [:analyze-dom ::el]
 
+                    ::els [:query-selector-all* ::selector]
+                    ::processed [:analyze-dom* ::els]
+
+                    ::scrape [:collect ::processed]
+
+                    ;::log-1            [:prn ::scrape]
                     ::log-1            [:log ::scrape]
 
                     }
