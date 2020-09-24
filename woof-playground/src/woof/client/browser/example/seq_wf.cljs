@@ -9,7 +9,7 @@
     [goog.dom.classes :as classes]
 
     [woof.base :as base]
-    [woof.client.dom :as woof-dom :refer [q q* html! btn!]]
+    [woof.client.dom :as wdom :refer [q q* html! btn!]]
     [woof.client.dbg :as dbg :refer [__log]]
     [woof.data :as d]
     [woof.utils :as u]
@@ -37,7 +37,7 @@
      (dom/appendChild $panel $pre)
      (dom/appendChild $panel $conf)
 
-     (woof-dom/ui-add-el! $panel)
+     (wdom/ui-add-el! $panel)
      )
    )
   ([*state STATE]
@@ -56,7 +56,7 @@
 
        (dom/appendChild $conf panel)
        (doseq [[k v] confirms]
-         (let [btn! (woof-dom/btn! (str k) (fn []
+         (let [btn! (wdom/btn! (str k) (fn []
                                              (swap! *state update-in [:confirms] dissoc k)
                                              (async/put! v (u/now))
                                              ) panel)
@@ -87,7 +87,9 @@
 
 
 
-(defn wf! [*wf-state meta-info]
+(defn wf!
+  "sequential expands scraping wf"
+  [*wf-state meta-info]
 
   (let [WATCHER-ID :state
 
@@ -101,7 +103,7 @@
                (fn [params]
 
                  ;; clean up-previously added css classes
-                 (woof-dom/remove-added-css ["marker-0"
+                 (wdom/remove-added-css ["marker-0"
                                              "marker-1"
                                              "marker-2"
                                              "marker-3"
@@ -177,13 +179,9 @@
                (fn [params]
                  {
                   :ui {:fn       (fn [state]
-
                                    (.log js/console "UI update from WF")
 
                                    ;; (<ui> *state state)
-
-
-
                                    )
                        :collect? true
                        }
@@ -394,21 +392,10 @@
                                 ;; should be updated
                                 (swap! *state assoc :t (u/now))
                                 )
-
                }
 
-     :on-stop (fn [state]
-                (__log "GENERIC: ON STOP")
-
-
-
-                #_(when-let [*old-state (get-in state [:WF/params ::state])]
-                    (.log js/console "OLD STATE:" @*old-state)
-                    ; (reset! *state @*old-state)
-                    )
-
-                ;; can return channel
-                )
+     :on-stop (fn [state] ;; can return channel
+                (__log "GENERIC: ON STOP"))
      }
     )
   )
