@@ -16,7 +16,7 @@
   (:gen-class))
 
 
-;; ring handler for playground
+;; ring handler for playground - needed for figwheel reload, kinda
 
 (compojure/defroutes
   app
@@ -32,6 +32,5 @@
       ;; wf-result will contain ns-specific keywords, we have to map this to response properly
       (ping/prepare-response wf-result)
       )
-
     )
   )
