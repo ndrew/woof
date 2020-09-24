@@ -1,0 +1,18 @@
+^{
+  :watch-dirs [
+               "test"
+               "src"
+               ; "../woof-core/src"
+               ]
+
+  :css-dirs ["resources/public/css"]
+
+  :auto-testing false
+
+  :open-url "http://[[server-hostname]]:[[server-port]]/"
+
+  ;; use dummy ring handler for handling reload
+  :ring-handler woof.server.core/ring-handler
+
+  }
+{:main woof.scraper}

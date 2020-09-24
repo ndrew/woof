@@ -91,6 +91,14 @@
                                    ;; todo: pass port here
 
                                    ] }
+
+           :scraper {
+                     :jvm-opts ["-Dorg.eclipse.jetty.util.log.announce=false"]
+                     :main-opts   ["-m" "figwheel.main" "-b" "scraper"
+                                   ;; run scraping session ws
+                                   "-r"  "--run-backend-wf"
+                                   ] }
+
            ;; this generates the code that can be run in browser
            :browser-min { :main-opts   ["-m" "figwheel.main" "-O" "advanced" "-b" "browser" ] }
 
