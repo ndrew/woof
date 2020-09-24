@@ -25,7 +25,13 @@
     [cljs.core.async.interop :refer-macros [<p!]]
     [clojure.string :as str]))
 
-
+;; GENERIC SCRAPING WORKFLOW
+;;
+;; WF that is run if no other scraping workflow is configured to run
+;; Idea is to have a dev-tools like tooling for
+;; * extracting html for furher analyisis
+;; * building el-plan for element/s for certain selector
+;; * etc
 
 (defn selector-el [el]
   (let [parent (.-parentElement el)]
@@ -38,10 +44,9 @@
 
   )
 
-(defn- traverse [pred additional-map]
+(defn- traverse-up [el pred additional-map]
 
-  (let [el (woof-dom/sel-text-el)
-
+  (let [
         ;; (> (.-childElementCount parent) 10)
 
         _ (do
@@ -90,9 +95,16 @@
 
     ;; parent selector
 
-    (let [part (dom/createDom "span" "woof-selector-part" "")]
-      (dom/appendChild part (dom/createDom "span" "woof-selector-v"
-                                           ".woof-range-start"))
+    (let [part (dom/createDom "span" "woof-selector-part" "")
+          body (dom/createDom "span" "woof-selector-v" ".woof-range-start")
+          ]
+      (dom/appendChild part body)
+
+      (btn! "marker 1" (fn []
+                         (set! (.-innerText body) ".marker-1")
+
+
+                         ) body)
       (dom/appendChild root part)
       )
 
@@ -134,7 +146,53 @@
   )
 
 
+(defn finder! [*state finder-fn]
+
+  (woof-dom/remove-class* (.-body js/document) "woof-range-start")
+  (woof-dom/remove-class* (.-body js/document) "woof-range-end")
+
+
+  (let [finder (finder-fn *state)]
+    (swap! *state assoc :finder finder)
+
+
+    (when-let [el* (:el* finder)]
+      (classes/add (first el*) "woof-range-start")
+      (classes/add (last el*) "woof-range-end")
+      )
+
+    ;; todo: return these
+    ;;  (classes/add (:parent finder) "woof-range-start")
+    ;; (classes/add (:el finder) "woof-range-end")
+    )
+  )
+
+
 (defn <ui>
+  ([]
+   (let [$panel (dom/createDom "div" "panel woof-scrape-panel")
+         $pre  (dom/createDom "pre" "woof-scrape-pre" "")]
+     (dom/appendChild $panel (dom/createDom "header" "" "SCRAPER"))
+     (dom/appendChild $panel $pre)
+
+     (woof-dom/ui-add-el! $panel)
+     )
+   )
+  ([*state STATE]
+   (let [$panel (q ".woof-scrape-panel")
+         $pre (q ".woof-scrape-pre")
+         ]
+
+     (html! $pre (d/pretty! STATE))
+
+     ;; (html! root "")
+     )
+     )
+  )
+
+
+
+(defn <ui-1>
   ([] ;; first initailization
    (let [panel (dom/createDom "div" "panel woof-scrape-panel")
 
@@ -149,14 +207,13 @@
      (woof-dom/ui-add-el! panel)
      )
    )
-  ([state]
+  ;; pass state atom for updates, but use state instead
+  ([*state state]
 
   (.log js/console "upd.." (u/now))
-
-  (let [panel (q ".woof-scrape-panel")
+   (let [panel (q ".woof-scrape-panel")
         el (q ".woof-scrape-pre")
-        root (q ".woof-scrape-selected")
-        ]
+        root (q ".woof-scrape-selected")]
 
     (html! root "")
 
@@ -181,24 +238,105 @@
 
         (dom/appendChild panel span)
 
-        (btn! "mark by selector" (fn []
+        (btn! "start: UP" (fn []
+                             #_(finder! *state (fn [*state]
 
-                                   (let [selector (str/join " > " (map
-                                                                    (fn [el]
-                                                                      (.-innerText el))
-                                                                    (q* span ".woof-selector-v")))]
+                                                    (let [st @*state
+                                                          initial-level (get-in st [:level])
+                                                          initial-selector (get-in st [:finder :$])
 
-                                     (.log js/console selector)
+                                                          el (get-in st [:finder :parent])
 
-                                     (doseq [el (q* selector)]
-                                       (classes/add el "woof-tmp")
-                                       )
+                                                          *inner-i (volatile! 1)
+                                                          pred (fn [el]
+                                                                 (vswap! *inner-i inc)
+
+                                                                 (>= @*inner-i initial-level)
+                                                                 )
+
+                                                          parent (.-parentElement el)
+                                                          ]
+
+                                                      {
+                                                       :el          (get-in st [:finder :el])
+                                                       :parent      parent
+                                                       :$           (conj initial-selector (selector-el parent))
+                                                       :level (inc initial-level)
+                                                       }
+
+                                                      #_(loop [el el
+                                                             selector (conj '() (selector-el el))]
+
+                                                        (let [parent (.-parentElement el)]
+                                                          (if-not (pred el)
+                                                            (do
+                                                              (recur parent
+                                                                     (conj selector (selector-el parent))
+                                                                     ))
+                                                            (do
+                                                              {
+                                                               :el          el
+                                                               :parent      parent
+                                                               :$           selector
+                                                               :zzz @*inner-i
+                                                               :level (+ initial-level @*inner-i)
+                                                               }
+                                                              )
+                                                            )
+                                                          )
+                                                        )
+                                                      )
 
 
-                                     )
-                                   ;(classes/add (:parent finder) "woof-range-start")
+                                                    ))
 
-                                   ) panel)
+                             ) panel)
+
+        (btn! "end: UP" (fn []
+                           #_(finder! *state (fn [*state]
+                                                  (let [st (swap! *state update-in [:level] inc)
+                                                        level (:level st)
+                                                        top-i level
+                                                        *inner-i (volatile! 1)
+                                                        ;; browse until predicate returns true
+                                                        pred (fn [el]
+                                                               (vswap! *inner-i inc)
+
+                                                               (>= @*inner-i top-i)
+                                                               )
+
+                                                        el (get-in st [:finder :el])
+                                                        parent (.-parentElement el)
+                                                        ]
+
+                                                    (traverse-up parent
+                                                                 pred
+                                                                 {:level (:level st)})
+                                                    )))
+
+                           ) panel)
+
+
+        (btn! "mark!" (fn []
+
+                        (doseq [el (q* ".woof-tmp")]
+                          (classes/remove el "woof-tmp"))
+
+                        (let [selector (str/join " > " (map
+                                                         (fn [el]
+                                                           (.-innerText el))
+                                                         (q* span ".woof-selector-v")))]
+
+                          (.log js/console selector)
+
+                          (doseq [el (q* selector)]
+                            (classes/add el "woof-tmp")
+                            )
+
+                          )
+                        ;(classes/add (:parent finder) "woof-range-start")
+
+                        ) panel)
 
         ;(btn! "mark start" (fn [] (classes/add (:parent finder) "woof-range-start")) panel)
         ;(btn! "mark end" (fn [] (classes/add (:el finder) "woof-range-end")) panel)
@@ -265,12 +403,88 @@
 
 
 
+(defn from-selection! [*state ]
+  (let [st @*state
+        el (woof-dom/sel-text-el)]
+    {
+     :el* [el]
+     }
+    )
+  )
+
+
+(defn move-up! [*state ]
+  (let [st @*state
+          el* (get-in st [:finder :el*])
+          start-el (first el*)]
+
+    {
+     :el* (vec (concat [(.-parentElement start-el)]
+                       (drop-last el*)))
+     }
+    )
+  )
+
+(defn start-up! [*state ]
+  (let [st @*state
+        el* (get-in st [:finder :el*])
+        start-el (first el*)
+        ]
+    {
+     :el* (vec (concat [(.-parentElement start-el)] el*))
+     }
+    )
+  )
+
+(defn end-up! [*state ]
+  (let [st @*state
+        el* (get-in st [:finder :el*])
+        ;;last-el (last el*)
+        ]
+    {
+     :el* (vec (drop-last el*))
+     }
+    )
+  )
+
+
+
+(defn extract-renamed-lists [raw-district el]
+
+  (let [r1 (woof-dom/query-selector* el "tr > td:nth-child(2)")
+        r2 (woof-dom/query-selector* el "tr > td:nth-child(3)")
+
+        els (partition 2 (interleave r1 r2))
+
+        district (str/replace (str/capitalize raw-district) #"район" "р-н")
+        ]
+
+
+
+    {district
+     (reduce (fn [a [old nu]]
+               (let [old-text (.-innerText old)
+                     nu-text (.-innerText nu)
+                     ]
+                 (if (not= ["Стара назва" "Нова назва"] [old-text nu-text])
+                   (assoc a (.-innerText old)
+                            (.-innerText nu))
+                   a
+                   )
+                 )
+               ) {} els)
+     }
+    )
+
+
+  )
+
 
 (defn wf! [*wf-state meta-info]
 
   (let [WATCHER-ID :state
         *state (atom {
-                      :level 1
+                      ;; :level 1
 
                       })
 
@@ -284,13 +498,32 @@
                        (woof-dom/remove-added-css)
 
                        ;; remove classes for previously added elements
-                       (doseq [el (concat
-                                    ;; todo: get these from state
-                                    (q* ".woof-el")
-                                    (q* ".woof-start")
-                                    )
+                       (doseq [s* ["woof-el"
+                                   "woof-start"
+                                   "woof-tmp"
+                                   "woof-err"
+                                   "woof-processed"
+
+                                   "marker-1"
+                                   "marker-2"
+                                   "marker-3"
+                                   "marker-4"
+                                   "marker-5"
+                                   "marker-6"
+                                   "marker-7"
+                                   "marker-8"
+                                   "marker-9"
+                                   "marker-10"
+                                   "marker-11"
+                                   "marker-12"
+                                   "marker-13"
+
+                                   ]
                                ]
-                         (classes/remove el "woof-el"))
+                         (doseq [el (q* (str "." s*))]
+                           (classes/remove el s*)
+                           )
+                         )
 
                        ;; send signal to re-load all css
                        (async/put! style-upd-chan :update)
@@ -302,7 +535,9 @@
      :init    [
                (fn [params]
                  (clean-up-css)
-                 {})
+                 {
+                  ::state *state
+                  })
 
                (fn [params]
                  ;; add ui for scraping
@@ -315,21 +550,116 @@
                ]
 
      :ctx     [watcher/watcher-ctx
+
                (fn [params]
                  {
 
                   :rnd-scroll {:fn (fn [_]
                                      (rand-nth [1 2 3]))}
 
-                  :ui         {:fn <ui>}
+                  :ui         {:fn       (fn [state]
+                                           (<ui> *state state))
+
+                               :collect? true
+                               }
+
+                  :blob       {:fn (fn [edn]
+
+                                     (let [a (.createElement js/document "a")]
+                                       (.appendChild (.-body js/document) a)
+                                       (set! (.-style a) "display: none")
+
+                                       (let [s (pr-str edn)
+                                             blob (js/Blob. (clj->js [s])
+                                                            (js-obj "type" "octet/stream"))
+                                             url (.createObjectURL (.-URL js/window) blob)]
+
+                                         (set! (.-href a) url)
+                                         (set! (.-download a) (str "zzz-" (u/now) ".edn"))
+
+                                         (.click a)
+                                         (.revokeObjectURL (.-URL js/window) url)
+                                         ;; todo: remove a element
+                                         )
+                                       )
+
+                                     )}
                   }
                  )
+
+               (fn [params]
+                 (let [*i (atom 0)]
+                   {
+                    :process-renamed*      (base/expand-into :process-renamed-table)
+
+                    :process-renamed-table {
+                                            :fn (fn [el]
+                                                  (let [i (swap! *i inc)]
+                                                    ;; (.log js/console "i=" i)
+                                                    (classes/add el (str "marker-" i))
+
+                                                    (if-let [first-row-el (woof-dom/query-selector el "tr:nth-child(1) > td strong ")]
+                                                      (if-let [text (.-innerText first-row-el)]
+                                                        (if (re-find #"РАЙОН" text)
+                                                          (do
+                                                            (extract-renamed-lists text el)
+
+                                                            ; (str i "\t" text)
+                                                            )
+                                                          )
+                                                        )
+                                                      )
+                                                    )
+                                                  )
+                                            }
+                    :filter-nil? {
+                                  :fn (fn [vs]
+                                        (filter #(not= :nil %) vs))
+
+                                  :collect? true
+                                  }
+
+                    :merge {
+                            :fn (fn [vs]
+                                  (apply merge vs)
+                                  )
+                            :collect? true
+                            }
+                    })
+                 )
+
                ]
 
      :steps   [
+
+               #_(fn [params]
+                   {
+
+                    ::css-1              [:css-rule ".woof-processed { display: none; }"]
+
+                    ::selector           [:v "P"]
+                    ;; get the elements to be parsed
+                    ::els                [:query-selector-all ::selector]
+
+                    ;; process the elements similar to pmap
+                    ::processed-elements [:process* ::els]
+
+                    ::collect            [:collect ::processed-elements]
+
+                    ;; ::save-results [:blob ::collect]
+
+                    ::log                [:log ::collect]
+
+                    }
+                   )
+
+
+               ;;
                (fn [params]
                  (let [STEPS {
-                              ::css-1 [:css-rule ".woof-scrape-panel { height: 150px; width: 100%; }"]
+
+                              ;; ::css-1 [:css-rule ".woof-scrape-panel { height: 150px; width: 100%; }"]
+
                               ::css-2 [:css-file "http://localhost:9500/css/t.css"]
                               }
 
@@ -344,143 +674,91 @@
                (fn [params]
                  {
 
-                  :UI/state          [:watch WATCHER-ID]
-                  :UI/render         [:ui :UI/state]
+                  :UI/state  [:watch WATCHER-ID]
+                  :UI/render [:ui :UI/state]
 
-                  ::hello            [:prn (u/now)]
+                  ::hello    [:prn (u/now)]
 
                   ;; recurring parse
                   }
                  )]
-     :otps    [
+     :opts    [
                watcher/watcher-opts
                ]
 
-     :api     (array-map
-
-                "refresh CSS" (fn []
-                                (clean-up-css)
-
-                                (swap! *state assoc :level 1)
-
-                                (woof-dom/remove-class* (.-body js/document) "woof-range-start")
-                                (woof-dom/remove-class* (.-body js/document) "woof-range-end")
-                                )
-
-                "select!" (fn []
-
-                            (let [st (swap! *state update-in [:level] #(identity 1))
-                                  finder (traverse identity {:level (:level st)})]
-                              (swap! *state assoc :finder finder)
-
-                              (classes/add (:parent finder) "woof-range-start")
-                              (classes/add (:el finder) "woof-range-end")
-                              )
-
-                            )
-
-                "-1 level" (fn []
-                             ; (.clear js/console)
-
-                             (woof-dom/remove-class* (.-body js/document) "woof-range-start")
-                             (woof-dom/remove-class* (.-body js/document) "woof-range-end")
-
-                             (let [st (swap! *state update-in [:level] inc)
-                                   level (:level st)
-                                   top-i level
-                                   *inner-i (volatile! 0)
-                                   ;; browse until predicate returns true
-                                   pred (fn [el]
-                                          (vswap! *inner-i inc)
-
-                                          (>= @*inner-i top-i)
-                                          )
-                                   ]
-
-                               (.log js/console "I- " top-i)
-
-                               (let [finder (traverse pred {:level (:level st)})]
-                                 (swap! *state assoc :finder finder)
-
-                                 (classes/add (:parent finder) "woof-range-start")
-                                 (classes/add (:el finder) "woof-range-end")
-                                 )
-                               )
-                             )
-
-                "+1 level" (fn []
-                             (woof-dom/remove-class* (.-body js/document) "woof-tmp")
-                             (let [
-                                   ;; browse until predicate returns true
-                                   pred (fn [el]
-                                          (swap! *state update-in :level dec)
-                                          true)
-                                   ]
-                               ;; todo:
-                               (swap! *state assoc
-                                      :finder (traverse pred {})
-                                      )
-
-                               )
-                             )
-
-
-
-                ;; manually marking start and end of the scraping range
-
-                ;; "mark start" (fn [] (swap! *state assoc :start (woof-dom/sel-text-el)))
-                ;; "mark end" (fn [] (swap! *state assoc :end (woof-dom/sel-text-el)))
-
-                "common ancestor" (fn []
-                                    (let [{start :start
-                                           end   :end} @*state]
-
-                                      ;; todo: finding common ancestor
-                                      ;; - container that holds both elements
-
-                                      (let [range (.createRange js/document)]
-
-                                        (.selectNode range start)
-                                        (.selectNode range end)
-
-                                        ;; (js-debugger)
-
-                                        (.log js/console range)
-                                        )
-
-                                      ;var range = document.createRange();
-                                      ;var nodes = [document.head, document.body];  // or any other set of nodes
-                                      ;nodes.forEach(range.selectNode, range);
-                                      ;range.commonAncestorContainer;
-
-                                      )
-                                    )
-
-
-
-
-                "selected el" (fn []
-                                (let [el (woof-dom/sel-text-el)]
-
-                                  (swap! *state assoc :selected el)
-                                  )
-
-                                )
-
-                "scroll" (fn []
-                           (let [params (get @*wf-state :WF/params {})
-                                 evt-loop (evt-loop/&evt-loop params)]
-                             (async/put! evt-loop {
-                                                   (base/rand-sid) [:scroll 1]
-                                                   })
-                             )
+     :api     {}
+     #_(array-map
+         "refresh state" (fn []
+                           (swap! *state assoc :t (u/now))
                            )
-                )
+
+         "refresh CSS" (fn []
+                         (clean-up-css)
+
+                         (swap! *state assoc :level 1)
+
+                         (woof-dom/remove-class* (.-body js/document) "woof-range-start")
+                         (woof-dom/remove-class* (.-body js/document) "woof-range-end")
+
+                         (woof-dom/remove-class* (.-body js/document) "woof-tmp")
+                         )
+
+
+         ;; todo: handle selection through several elements
+         "select!" (fn [] (finder! *state from-selection!))
+         "start: up" (fn [] (finder! *state start-up!))
+         "move: up" (fn [] (finder! *state move-up!))
+         "end: up" (fn [] (finder! *state end-up!))
+
+
+
+         "marker 1" (fn []
+                      (woof-dom/remove-class* (.-body js/document) "marker-1")
+                      (let [el (woof-dom/sel-text-el)]
+                        (classes/add el "marker-1")))
+
+         "marker 2" (fn [] (woof-dom/remove-class* (.-body js/document) "marker-2")
+                      (let [el (woof-dom/sel-text-el)]
+                        (classes/add el "marker-2")))
+
+         "\uD83D\uDCCB between markers" (fn []
+
+                                          (let [range (q* ".marker-1 ~ *:not(.marker-2)")
+                                                clipboard js/navigator.clipboard
+
+                                                html (reduce (fn [s el]
+
+                                                               (str s (.-outerHTML el) "\n")
+                                                               ) "" range)
+
+                                                ]
+
+                                            (-> (.writeText clipboard html)
+                                                (.then (fn [response] (.log js/console "Copied to clipboard - " response))
+                                                       (fn [err] (.warn js/console "Failed to copy to clipboard" err))))
+                                            )
+                                          ;;
+                                          )
+
+
+         ;; manually marking start and end of the scraping range
+
+         "scroll" (fn []
+                    (let [params (get @*wf-state :WF/params {})
+                          evt-loop (evt-loop/&evt-loop params)]
+                      (async/put! evt-loop {
+                                            (base/rand-sid) [:scroll 1]
+                                            })
+                      )
+                    )
+         )
+
+
+
 
      :on-stop (fn [state]
-                (__log "ON STOP")
-                (.log js/console state)
-
+                (__log "GENERIC: ON STOP")
+                ;; (.log js/console state)
                 ;; can return channel
                 )
      }
