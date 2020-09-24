@@ -1,8 +1,8 @@
 (ns woof.client.dom
   (:require
     [goog.object]
+    [goog.events]
     [goog.dom :as dom]
-    [goog.object]
     [goog.dom.classes :as classes]
 
     [cljs.core.async :as async]
@@ -125,6 +125,16 @@
 
 (defn html! [el h]
   (set! (. el -innerHTML) h)  )
+
+(defn txt [el]
+  (dom/getTextContent el))
+
+(defn tag-only [el]
+  (str/replace (.-outerHTML el)
+               (.-innerHTML el)
+               ""
+               )
+  )
 
 
 (defn dataset [el]
@@ -447,4 +457,30 @@
   (js->clj (.parse js/JSON (.stringify js/JSON el.dataset))
            :keywordize-keys true
            )
+  )
+
+
+
+(defn copy-to-clipboard-handler [v]
+  (when js/navigator.clipboard.writeText
+    (let [clipboard js/navigator.clipboard
+
+          copy-handler (fn []
+                         (-> (.writeText clipboard (d/pretty! v))
+                             (.then (fn [response] (.log js/console "Copied to clipboard - " response))
+                                    (fn [err]      (.warn js/console "Failed to copy to clipboard" err))))
+                         )
+          ]
+
+      (let [btn-el (dom/createDom "button" ""
+                                  "copy results to clipboard")]
+
+        (goog.events.listen btn-el goog.events.EventType.CLICK copy-handler)
+        (ui-add-el! btn-el)
+
+        (.focus btn-el)
+        )
+      )
+    )
+
   )
