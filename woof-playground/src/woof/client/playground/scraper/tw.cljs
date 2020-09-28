@@ -14,7 +14,7 @@
 
     [woof.browser :as woof-browser]
 
-    [woof.client.dom :as woof-dom]
+    [woof.client.dom :as wdom]
     [woof.client.playground.ui :as pg-ui]
     [woof.client.playground.ui.wf :as wf-ui]
 
@@ -57,14 +57,20 @@
    ]
   )
 
+
 (rum/defc <tweet> < rum/static
                     {:key-fn (fn [m] (:tw-id  m))}
   [tw]
 
   [:.tw
+
+   (if-not (:tw-id tw) [:div.assertion "no :tw-id"])
+
+   (if (empty? (:replies tw))
+     [:div.assertion "no :replies"])
+
    [:header (:title tw) " " [:a {:href (str "https://twitter.com" (:tw-id tw))  :target "_blank"} (:nick tw) ]]
 
-   [:div.content (:content tw)]
 
    (let [links (->
            (group-by :href (:links tw))
@@ -105,38 +111,125 @@
 
    ]
 
-  #_[:div.blago
-   [:span.id (:id item)]
-   [:a {:href (:href item)
-        :target "_blank"} (:link-text item) ]
-   ;[:.addr  (extract-addr (:link-text item))]
-   ;[:.uah (pr-str (extract-uah (:uah item)))]
-   ;[:.usd (pr-str (extract-usd (:usd item)))]
-   ;[:.eur (pr-str (extract-eur (:eur item)))]
-   [:.photos
-    (map (fn [ph]
-           [:img {:src (:src ph)}]
-           ) (:photos item))
-    ]
+  )
 
-   [:pre
-    (d/pretty! item)
-    ]
 
+
+
+
+
+(rum/defc <v> < rum/static
+  [parent plan]
+
+  (let [selector (:_$ plan)
+        parent-selector (if parent (:_$ parent) "")
+        ]
+    [:.plan
+     [:header
+      [:div (str/trim (str/replace selector parent-selector ""))]
+      (:text plan)
+      ]
+     (if-let [ch (:children plan)]
+       (map (fn [child] (<v>
+                          plan
+                          child))
+            ch))
+     ]
+    )
+
+  )
+
+(rum/defc <h-plan> < rum/static
+
+  [plan]
+
+  [:.plan-root
+
+   (let [tree-plan (wdom/el-plan-as-tree plan)
+
+         gr (group-by :parent-idx plan)
+         roots (sort (keys gr))
+         ]
+
+     [:div.flex
+
+      [:div
+       #_[:pre
+          (d/pretty! tree-plan)
+          ]
+       [:header "TREE:"]
+
+       (map (fn [item] (<v> nil item)) tree-plan)]
+
+
+      [:div
+       [:header "PLAN GROUPED BY PARENT IDX:"]
+       (map
+         (fn [root]
+           [:.plan
+            [:header (pr-str root)]
+
+            (map (fn [ch]
+                   [:.plan
+                    (pr-str (wdom/to-selector (:$ ch)))
+                    ])
+                 (get gr root))
+            ]
+           )
+
+         roots
+         )
+       ]
+
+
+      [:div
+       [:header "FULL PLAN:"]
+       (let []
+         (map (fn [a]
+                [:div.plan
+                 [:header
+                  (:idx a) " "
+                  (:parent-idx a) " ___ "
+                  (wdom/to-selector (:$ a))]
+
+                 (pr-str a)
+                 ])
+              plan
+              )
+         )
+       ]
+      ]
+     )
    ]
   )
 
 
+(rum/defc <full-plan> < rum/static
+  [plan]
+
+  [:.plan-box
+   (<h-plan> plan)
+   ;[:hr]
+   ; [:pre (d/pretty! plan)]
+
+   ]
+  )
+
 (rum/defc <tw> < rum/reactive
-  [st *dict]
+  [st *state]
 
   [:div
    (pg-ui/menubar "tw"
                   [
-                   ["load tw 1" (fn [] (load-edn *dict "/s/twitter/parsed.edn" :tweets))]
-                   ["load tw 2" (fn [] (load-edn *dict "/s/twitter/parsed_real.edn" :tweets))]])
+                   ;["load tw 1" (fn [] (load-edn *state "/s/twitter/parsed.edn" :tweets))]
+                   ;["load tw 2" (fn [] (load-edn *state "/s/twitter/parsed_real.edn" :tweets))]
 
-   [:p "processing stuff via visual repl"]
+                   ["load tw 01" (fn [] (load-edn *state "/s/twitter/tw_01.edn" :tweets))]
+                   ["load tw 02" (fn [] (load-edn *state "/s/twitter/tw_02.edn" :tweets))]
+                   ["load tw 03" (fn [] (load-edn *state "/s/twitter/tw_03.edn" :tweets))]
+                   ])
+
+   [:p "processing twittor "]
 
    [:ul
     [:li "text + link"]
@@ -146,8 +239,16 @@
     [:li "tweet with youtube, link with :title and :text = https://youtu.be/..."]
     ]
 
-   (when-let [tweets (:tweets st)]
-     (map <tweet> tweets)
+   (<full-plan> (wdom/el-map (wdom/q "#html") (fn [el] false)))
+
+
+   ;; uncomment this to work with actually scraped data
+
+   #_(when-let [tweets (:tweets st)]
+
+     (<h-plan> (:full-dom-plan (first tweets)))
+
+     ;(map <tweet> tweets)
      )
 
    ]
@@ -155,8 +256,51 @@
 
 
 
-(rum/defcs <scraping-root> < rum/reactive
-                             (rum/local {} ::inline-results?)
+(rum/defc <tw-real> < rum/reactive
+  [st *state]
+
+  [:div
+   (pg-ui/menubar "tw"
+                  [
+                   ;["load tw 1" (fn [] (load-edn *state "/s/twitter/parsed.edn" :tweets))]
+                   ;["load tw 2" (fn [] (load-edn *state "/s/twitter/parsed_real.edn" :tweets))]
+
+                   ["load tw 01" (fn [] (load-edn *state "/s/twitter/tw_01.edn" :tweets))]
+                   ["load tw 02" (fn [] (load-edn *state "/s/twitter/tw_02.edn" :tweets))]
+                   ["load tw 03" (fn [] (load-edn *state "/s/twitter/tw_03.edn" :tweets))]
+                   ])
+
+
+   [:p "processing twittor "]
+
+   [:ul
+    [:li "text + link"]
+    [:li "text + photos - /user/...photo/n"]
+    [:li "retweet of a link - has other @tweet handle"]
+    [:li "tweet with hash tag - /hashtag/...."]
+    [:li "tweet with youtube, link with :title and :text = https://youtu.be/..."]
+    ]
+
+   ;; uncomment this to work with actually scraped data
+   ;; todo: scrape data with proper el-plan structure
+
+   #_(when-let [tweets (:tweets st)]
+
+       ;(<h-plan> (:full-dom-plan (first tweets)))
+
+
+       ;(map <tweet> tweets)
+       )
+
+   ]
+  )
+
+
+
+
+
+(rum/defcs <wf-root> < rum/reactive
+                       (rum/local {} ::inline-results?)
   [local *wf]
 
   (let [wf @*wf]
@@ -164,13 +308,10 @@
      (if (= :not-started (:status wf))
        [:div "wf is not running"]
 
-       ;; for now hadcode actions for ::current
-
        (let [*state (rum/cursor-in *wf [:state])]
-         [:div {:style {:padding "1rem"}}
-
+         [:div.example-tw
           (<tw> (get-in wf [:state]) *state)
-
+          ;(<tw-real> (get-in wf [:state]) *state)
           ]
          )
 
@@ -194,9 +335,7 @@
 
      ;; this state will be added to a wf?
      :state {
-
              :some-state :here
-
              }
 
      :init-fns    [
@@ -212,14 +351,7 @@
      :ctx-fns     [
                    evt-loop/evt-loop-ctx-fn
                    woof-browser/common-ctx ;; re-use common browser step handlers
-                   woof-dom/dom-ctx
-
-                   (fn [params]
-                     {
-                      ;;
-
-                      }
-                     )
+                   wdom/dom-ctx
                    ]
 
      ;;
@@ -240,7 +372,7 @@
                                              (.warn js/console params result)))
                    ]
 
-     :ui-fn       (partial wf-ui/<wf-UI> (partial <scraping-root>))
+     :ui-fn       (partial wf-ui/<wf-UI> (partial <wf-root>))
 
      ;; dev stuff
      :playground/keys-to-update-on-reload [

@@ -305,21 +305,41 @@
 
 
 
+(defn to-selector [$]
+  (str/join " > "
+            (map #(str
+                    (:t %)
+                    (if (> (:child-count %) 1)
+                      (str ":nth-child(" (:i %) ")")
+                      "")
+                    ) $))
+  )
 
 ;; breadth first search of element children and keep the selector and other nice properties, like
 ;; if the node has text. parsing can be skipped via skip-fn, in order to not traverse svgs, or other stuff
 (defn el-map
   [root skip-fn]
+  ;; todo: make skip-fn optional
 
   (loop [ret []
          queue (into cljs.core/PersistentQueue.EMPTY
                      (map-indexed
                        (fn [i el]
-                         {:$   [{:t (.-tagName el)
-                                 :i (inc i)}]
-                          :el  el}
+                         (let [selector-data [{:t (.-tagName el)
+                                               :i (inc i)}]]
+
+                           {
+                            :$         selector-data
+                            :_$        (to-selector selector-data)
+
+                            :el         el
+                            :parent-idx -1
+                            })
                          )
-                       (array-seq (.-children root))))]
+                       (array-seq (.-children root))))
+         idx 0
+         ]
+
     (if (seq queue)
       (let [node (peek queue)
             $ (get node :$)
@@ -338,50 +358,86 @@
                              (fn [a el]
                                (vswap! *i inc)
                                (if-not (skip-fn el $)
-                                 (do
+                                 (let [selector-data (conj $
+                                                           {:t (.-tagName el)
+                                                            :i @*i
+                                                            :child-count child-count
+                                                            })]
+
                                    (if (and has-text? (str/includes? text (.-textContent el)))
                                      (vreset! use-text? false))
+
                                    (conj a
-                                         {:$   (conj $
-                                                     {:t (.-tagName el)
-                                                      :i @*i
-                                                      :child-count child-count
-                                                      })
-                                          :el  el}))
+                                         {:$   selector-data
+                                          :_$  (to-selector selector-data)
+                                          :el  el
+                                          :parent-idx idx
+                                          }))
                                  a
                                  ))
                              []
                              children)
 
-            new-ret (conj ret
-                          (merge
-                            {
-                             :child-count child-count
-                             ;; if at least one of children has same text - ommit
-                             :text (if @use-text? text "")
-                             }
-                            node
-                            ))
+            new-node (merge
+                       {
+                        :idx idx
+                        }
+                       ;; todo: provide callback for getting custom node stuff
+                       {
+                        ;; if at least one of children has same text - ommit
+                        :child-count child-count
+                        :text (if @use-text? text "")
+                        }
+                       node
+                       )
+
+            new-ret (conj ret new-node)
             new-children (into (pop queue)
                                children-nodes)
             ]
-        (recur new-ret new-children)
-        )
+        (recur new-ret new-children
+               (inc idx)))
       ret
       )
     )
   )
 
 
-(defn to-selector [$]
-  (str/join " > "
-            (map #(str
-                    (:t %)
-                    (if (> (:child-count %) 1)
-                      (str ":nth-child(" (:i %) ")")
-                      "")
-                    ) $))
+(defn el-plan-as-tree
+  "converts el-map plan back to a tree form"
+  [plan]
+  (let [gr (group-by :parent-idx plan)
+        roots (sort (keys gr))
+
+        new-plan (loop [plan plan
+                        parent-keys (reverse roots)]
+                   (if (and (seq parent-keys) (>= (first parent-keys) 0))
+                     (let [parent-k (first parent-keys)
+                           child-keys (reduce (fn [a node] (conj a (get node :idx))) #{} (get gr parent-k))
+
+                           children (filter (fn [item]
+                                              (child-keys (:idx item))) plan)
+
+                           new-plan (update-in plan [parent-k]
+                                               update :children concat children)
+                           ]
+
+                       ;(.groupCollapsed js/console (pr-str parent-k))
+                       ;(.log js/console "updating" parent-k "with" child-keys children)
+                       ;(.log js/console new-plan)
+                       ;(.groupEnd js/console)
+
+                       (recur new-plan (rest parent-keys))
+                       )
+                     plan
+                     )
+                   )
+        ]
+
+    (filter (fn [item] (= -1 (:parent-idx item))) new-plan)
+    )
   )
+
 
 (defn sel-text-el []
   (let [selection (.getSelection js/window)

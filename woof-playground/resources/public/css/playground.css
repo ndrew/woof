@@ -389,6 +389,7 @@ pre {
     align-content: flex-end;
     align-items: baseline;
 
+    flex-wrap: wrap;
 
     margin-right: .5rem;
 }
@@ -594,8 +595,7 @@ pre {
     flex: 1;
 
     margin-right: 1.5rem;
-
-    min-height: 30vh;
+    min-height: unset;
 }
 
 .flex > div > header {
@@ -1239,3 +1239,29 @@ pre {
 .el  .el {
     margin-left: .5rem;
 }
+
+
+/* tw */
+
+
+.example-tw {
+    padding: 1rem 0 0 .5rem;
+}
+
+
+.example-tw .plan-root {
+    padding: .3rem;
+    outline: 1px solid palegoldenrod;
+}
+
+.example-tw .plan {
+    outline: 1px dashed palegoldenrod;
+    background-color: #f8af0f22;
+    margin: .5rem;
+}
+
+.example-tw .plan:hover {
+    outline: 1px solid crimson;
+}
+
+
