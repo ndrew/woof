@@ -1243,6 +1243,9 @@ pre {
 
 /* tw */
 
+#html {
+    visibility: hidden;
+}
 
 .example-tw {
     padding: 1rem 0 0 .5rem;
@@ -1265,3 +1268,15 @@ pre {
 }
 
 
+.plan.selected {
+    outline: 3px solid #cc1605;
+    padding: .1rem;
+}
+
+.plan.leaf.selected {
+    background-color:  #cc160544;
+}
+
+.tree-root .plan.leaf:not(.selected) {
+    color: gray;;
+}

@@ -119,18 +119,29 @@
 
 
 (rum/defc <v> < rum/static
-  [parent plan]
+  [cfg parent plan]
 
   (let [selector (:_$ plan)
         parent-selector (if parent (:_$ parent) "")
+        selected (get cfg :selected #{})
+        selected? (get selected (:idx plan))
+        ch (get plan :children [])
+        has-children? (seq ch)
         ]
-    [:.plan
-     [:header
-      [:div (str/trim (str/replace selector parent-selector ""))]
-      (:text plan)
-      ]
-     (if-let [ch (:children plan)]
-       (map (fn [child] (<v>
+    [:.plan (cond
+              (and (not has-children?) selected?) {:class "selected leaf"}
+              selected? {:class "selected"}
+
+              )
+     (if selected?
+       [:header
+          [:div (str/trim (str/replace selector parent-selector ""))]
+          (:text plan)]
+       [:span (str/trim (str/replace selector parent-selector ""))]
+       )
+
+     (if has-children?
+       (map (fn [child] (<v> cfg
                           plan
                           child))
             ch))
@@ -139,64 +150,147 @@
 
   )
 
-(rum/defc <h-plan> < rum/static
+(rum/defcs <node> < rum/static
+                    (rum/local false ::details?)
+                   {:key-fn (fn [m] (:_$  m))}
+  [st node]
 
-  [plan]
+  (let [curr-tag (:tag node)]
+    [:div.plan
+
+     [:div
+      (pg-ui/menubar
+        (str (:_$ node)
+             " (" (:idx node) ", parent="
+             (:parent-idx node) ")"
+             )
+        [
+         [(str "details " (pg-ui/shorten-bool @(::details? st)))
+          (fn [] (swap! (::details? st) not))
+          ]
+         ]
+        )
+      ]
+
+     (if (= "IMG" curr-tag)
+       [:img.el-img {:src (:img-src node)}]
+       #_(str
+         "<img class='el-img' src='" (wdom/attr (:el n) "src") "'/>"
+         )
+       )
+
+     (if (= "A" curr-tag)
+       [:.el-attr
+        [:a {:href (:href node) :target "_blank"} (:href node)]]
+       )
+
+     (let [t (:text node)]
+       (if (not= "" t)
+         [:.el-value t]
+       ))
+
+
+
+     (if @(::details? st)
+       [:.details
+
+        [:hr]
+        [:code (d/pretty! node)]
+        ]
+       )
+     ]
+    )
+
+  )
+
+(rum/defcs <tree-ui> < rum/static
+  [st plan tree-plan]
+  (let [selected-idxs (reduce (fn [a n] (conj a (:idx n))) #{} plan)
+        ]
+
+    [:div.tree-root
+     [:header "TREE:"]
+
+     (map (fn [item] (<v> {:selected selected-idxs} nil item)) tree-plan)
+
+     ]
+    )
+
+
+  )
+
+(rum/defcs <h-plan> < rum/static
+                      ; (rum/local {} ::inline-results?)
+  [st _plan]
 
   [:.plan-root
 
-   (let [tree-plan (wdom/el-plan-as-tree plan)
+   [:div.filters
+     "I am a filter"
+    ]
 
-         gr (group-by :parent-idx plan)
-         roots (sort (keys gr))
+   (let [
+         _fltr (fn [node]
+                 (let [text? (not= "" (:text node))
+                       ;no-children? (< (:child-count node) 2)
+                       ;div? (= "DIV" (.-tagName (:el node)))
+                       link? (= "A" (:tag node))
+                       img? (= "IMG" (:tag node))
+                       ]
+                   #_(not (and no-text?
+                               ;no-children?
+                               ;div?
+                               ))
+                   ;(.log js/console node)
+                   (or link?
+                       img?
+                       text?)
+                   )
+
+                 )
+
+         fltr _fltr                                         ;;(fn [node] true)
+
+         plan (vec (filter fltr _plan))
+
+         selected-idxs (reduce (fn [a n] (conj a (:idx n))) #{} plan)
+
+         tree-plan (wdom/el-plan-as-tree _plan)
          ]
 
      [:div.flex
 
-      [:div
-       #_[:pre
-          (d/pretty! tree-plan)
-          ]
-       [:header "TREE:"]
-
-       (map (fn [item] (<v> nil item)) tree-plan)]
+      (<tree-ui> plan tree-plan)
 
 
-      [:div
-       [:header "PLAN GROUPED BY PARENT IDX:"]
-       (map
-         (fn [root]
-           [:.plan
-            [:header (pr-str root)]
+      #_(let [gr (group-by :parent-idx plan)
+            roots (sort (keys gr))]
+        [:div
+         [:header "PLAN GROUPED BY PARENT IDX:"]
+         (map
+           (fn [root]
+             [:.plan
+              [:header (pr-str root)]
 
-            (map (fn [ch]
-                   [:.plan
-                    (pr-str (wdom/to-selector (:$ ch)))
-                    ])
-                 (get gr root))
-            ]
+              (map (fn [ch]
+                     [:.plan
+                      (pr-str (wdom/to-selector (:$ ch)))
+                      ])
+                   (get gr root))
+              ]
+             )
+
+           roots
            )
+         ]
+        )
 
-         roots
-         )
-       ]
+
 
 
       [:div
-       [:header "FULL PLAN:"]
-       (let []
-         (map (fn [a]
-                [:div.plan
-                 [:header
-                  (:idx a) " "
-                  (:parent-idx a) " ___ "
-                  (wdom/to-selector (:$ a))]
-
-                 (pr-str a)
-                 ])
-              plan
-              )
-         )
+       [:header "FULL PLAN: " (str (count plan)) ]
+       (map <node> plan)
        ]
       ]
      )
@@ -229,17 +323,21 @@
                    ["load tw 03" (fn [] (load-edn *state "/s/twitter/tw_03.edn" :tweets))]
                    ])
 
-   [:p "processing twittor "]
 
-   [:ul
+   (<full-plan> (wdom/el-map (wdom/q "#html")
+                             :skip-fn (fn [$el $] (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el))))
+                             :node-fn wdom/enrich-node
+                             ))
+
+   #_[:p "processing twittor "]
+
+   #_[:ul
     [:li "text + link"]
     [:li "text + photos - /user/...photo/n"]
     [:li "retweet of a link - has other @tweet handle"]
     [:li "tweet with hash tag - /hashtag/...."]
     [:li "tweet with youtube, link with :title and :text = https://youtu.be/..."]
     ]
-
-   (<full-plan> (wdom/el-map (wdom/q "#html") (fn [el] false)))
 
 
    ;; uncomment this to work with actually scraped data

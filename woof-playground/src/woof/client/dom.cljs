@@ -345,6 +345,7 @@
                              (make-node
                                {
                                 :$          selector-data
+                                :tag       (:t (last selector-data))
                                 :_$         (to-selector selector-data)
 
                                 :el         el
@@ -386,6 +387,7 @@
                                      (conj a
                                            {:$   selector-data
                                             :_$  (to-selector selector-data)
+                                            :tag  (:t (last selector-data))
                                             :el  el
                                             :parent-idx idx
                                             }))
