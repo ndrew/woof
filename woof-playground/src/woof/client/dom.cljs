@@ -350,6 +350,8 @@
 
                                 :el         el
                                 :parent-idx -1
+                                ;; todo: handling root node text
+                                :text  "" ;(.-textContent el)
                                 })
                              )
                            )
@@ -548,7 +550,7 @@
 
     (merge
       {
-       :selector selector
+       ; :selector selector
        :tag      curr-tag
        ;; :tag-full (wdom/tag-only $el)
 

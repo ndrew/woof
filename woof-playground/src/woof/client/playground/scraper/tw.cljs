@@ -221,7 +221,7 @@
 
 (rum/defcs <h-plan> < rum/static
                       ; (rum/local {} ::inline-results?)
-  [st _plan]
+  [st fltr _plan]
 
   [:.plan-root
 
@@ -230,35 +230,13 @@
     ]
 
    (let [
-         _fltr (fn [node]
-                 (let [text? (not= "" (:text node))
-                       ;no-children? (< (:child-count node) 2)
-                       ;div? (= "DIV" (.-tagName (:el node)))
-                       link? (= "A" (:tag node))
-                       img? (= "IMG" (:tag node))
-                       ]
-                   #_(not (and no-text?
-                               ;no-children?
-                               ;div?
-                               ))
-                   ;(.log js/console node)
-                   (or link?
-                       img?
-                       text?)
-                   )
-
-                 )
-
-         fltr _fltr                                         ;;(fn [node] true)
 
          plan (vec (filter fltr _plan))
-
-         selected-idxs (reduce (fn [a n] (conj a (:idx n))) #{} plan)
 
          tree-plan (wdom/el-plan-as-tree _plan)
          ]
 
-     [:div.flex
+     [:.plan-box.flex
 
       (<tree-ui> plan tree-plan)
 
@@ -298,17 +276,6 @@
   )
 
 
-(rum/defc <full-plan> < rum/static
-  [plan]
-
-  [:.plan-box
-   (<h-plan> plan)
-   ;[:hr]
-   ; [:pre (d/pretty! plan)]
-
-   ]
-  )
-
 (rum/defc <tw> < rum/reactive
   [st *state]
 
@@ -324,10 +291,100 @@
                    ])
 
 
-   (<full-plan> (wdom/el-map (wdom/q "#html")
-                             :skip-fn (fn [$el $] (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el))))
-                             :node-fn wdom/enrich-node
-                             ))
+   (let [skip-fn (fn [$el $] (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el))))
+
+         el-map-1 (wdom/el-map (wdom/q "#html")
+                               :skip-fn skip-fn
+                               :node-fn wdom/enrich-node)
+
+         el-map-2 (wdom/el-map (wdom/q "#html1")
+                               :skip-fn skip-fn
+                               :node-fn wdom/enrich-node
+                               )
+         node-filter (fn [node]
+           (let [text? (not= "" (:text node))
+                 ;no-children? (< (:child-count node) 2)
+                 ;div? (= "DIV" (.-tagName (:el node)))
+                 link? (= "A" (:tag node))
+                 img? (= "IMG" (:tag node))
+                 ]
+             #_(not (and no-text?
+                         ;no-children?
+                         ;div?
+                         ))
+             ;(.log js/console node)
+             (or link?
+                 img?
+                 text?)
+             )
+
+           )
+         ]
+     [:div.flex
+      (let [sl1 (into (sorted-set) (map #(get % :_$) el-map-1))
+            sl2 (into (sorted-set) (map #(get % :_$) el-map-2))
+
+            prev (volatile! "")
+            ]
+
+        [:div
+
+
+         [:table.selector-diff
+          [:tr
+           [:th "$" ]
+           [:th "A" ]
+           [:th "B" ]
+           ]
+          (map (fn [k]
+                 (let [in-a (get sl1 k)
+                       in-b (get sl2 k)]
+                   [:tr (if (and in-a in-b)
+                          {:class "match-both"}
+                          (if in-a
+                            {:class "match-a"}
+                            {:class "match-b"}
+                            )
+                          )
+                    [:td
+
+                     (let [short-$ (str/trim (str/replace k @prev ""))]
+                       (vreset! prev k)
+
+                       short-$
+                       )
+
+
+
+                     ]
+                    [:td (pg-ui/shorten-bool in-a) ]
+                    [:td (pg-ui/shorten-bool in-b)]
+                    ]
+
+                   )
+
+                 )
+               (concat sl1 sl2)
+               )
+          ]
+
+
+
+
+         ;[:code (d/pretty! sl1)]
+         ;[:code (d/pretty! sl2)]
+
+         ]
+
+        )
+       (<h-plan> node-filter el-map-1)
+       (<h-plan> node-filter el-map-2)
+      ]
+
+     )
+
+
+
 
    #_[:p "processing twittor "]
 

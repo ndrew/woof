@@ -1243,7 +1243,7 @@ pre {
 
 /* tw */
 
-#html {
+#html, #html1 {
     visibility: hidden;
 }
 
@@ -1279,4 +1279,24 @@ pre {
 
 .tree-root .plan.leaf:not(.selected) {
     color: gray;;
+}
+
+.selector-diff .match-both {
+    background-color: #ddf1f911;
+
+    /*visibility: hidden;*/
+}
+
+.selector-diff .match-a {
+    background-color: #66339922;
+}
+
+.selector-diff .match-b {
+    background-color: #f8af0f22;
+}
+
+
+
+.selector-diff tr:hover {
+    outline: 1px solid olivedrab;
 }
