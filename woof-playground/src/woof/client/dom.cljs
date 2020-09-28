@@ -1,6 +1,6 @@
 (ns woof.client.dom
   (:require
-    [goog.object]
+    [goog.object :as gobj]
     [goog.events]
     [goog.dom :as dom]
     [goog.dom.classes :as classes]
@@ -318,89 +318,110 @@
 ;; breadth first search of element children and keep the selector and other nice properties, like
 ;; if the node has text. parsing can be skipped via skip-fn, in order to not traverse svgs, or other stuff
 (defn el-map
-  [root skip-fn]
+  [root
+   & {:keys [skip-fn node-fn] :or {
+                                   skip-fn (fn [_ _] false)
+                                   node-fn (fn [node]
+                                             {}
+                                             )
+                                   }}
+   ]
+
+
+
   ;; todo: make skip-fn optional
 
-  (loop [ret []
-         queue (into cljs.core/PersistentQueue.EMPTY
-                     (map-indexed
-                       (fn [i el]
-                         (let [selector-data [{:t (.-tagName el)
-                                               :i (inc i)}]]
+  (let [make-node (fn [node]
+                 (merge node
+                        (node-fn node))
+                 )]
+    (loop [ret []
+           queue (into cljs.core/PersistentQueue.EMPTY
+                       (map-indexed
+                         (fn [i el]
+                           (let [selector-data [{:t (.-tagName el)
+                                                 :i (inc i)}]]
 
+                             (make-node
+                               {
+                                :$          selector-data
+                                :_$         (to-selector selector-data)
+
+                                :el         el
+                                :parent-idx -1
+                                })
+                             )
+                           )
+                         (array-seq (.-children root))))
+           idx 0
+           ]
+
+      (if (seq queue)
+        (let [node (peek queue)
+              $ (get node :$)
+              $el (get node :el)
+
+              children (array-seq (.-children $el))
+              child-count (count children)
+              text (.-textContent $el)
+
+              has-text? (not= "" text )
+              use-text? (volatile! true) ;; ugly, but works
+
+              *i (volatile! 0)
+
+              children-nodes (reduce
+                               (fn [a el]
+                                 (vswap! *i inc)
+                                 (if-not (skip-fn el $)
+                                   (let [selector-data (conj $
+                                                             {:t (.-tagName el)
+                                                              :i @*i
+                                                              :child-count child-count
+                                                              })]
+
+                                     (if (and has-text? (str/includes? text (.-textContent el)))
+                                       (vreset! use-text? false))
+
+                                     (conj a
+                                           {:$   selector-data
+                                            :_$  (to-selector selector-data)
+                                            :el  el
+                                            :parent-idx idx
+                                            }))
+                                   a
+                                   ))
+                               []
+                               children)
+
+              new-node (make-node
+                         (merge
                            {
-                            :$         selector-data
-                            :_$        (to-selector selector-data)
-
-                            :el         el
-                            :parent-idx -1
-                            })
+                            :idx idx
+                            }
+                           {
+                            ;; if at least one of children has same text - ommit
+                            :child-count child-count
+                            :text (if @use-text? text "")
+                            }
+                           node
+                           )
                          )
-                       (array-seq (.-children root))))
-         idx 0
-         ]
 
-    (if (seq queue)
-      (let [node (peek queue)
-            $ (get node :$)
-            $el (get node :el)
-
-            children (array-seq (.-children $el))
-            child-count (count children)
-            text (.-textContent $el)
-
-            has-text? (not= "" text )
-            use-text? (volatile! true) ;; ugly, but works
-
-            *i (volatile! 0)
-
-            children-nodes (reduce
-                             (fn [a el]
-                               (vswap! *i inc)
-                               (if-not (skip-fn el $)
-                                 (let [selector-data (conj $
-                                                           {:t (.-tagName el)
-                                                            :i @*i
-                                                            :child-count child-count
-                                                            })]
-
-                                   (if (and has-text? (str/includes? text (.-textContent el)))
-                                     (vreset! use-text? false))
-
-                                   (conj a
-                                         {:$   selector-data
-                                          :_$  (to-selector selector-data)
-                                          :el  el
-                                          :parent-idx idx
-                                          }))
-                                 a
-                                 ))
-                             []
-                             children)
-
-            new-node (merge
-                       {
-                        :idx idx
-                        }
-                       ;; todo: provide callback for getting custom node stuff
-                       {
-                        ;; if at least one of children has same text - ommit
-                        :child-count child-count
-                        :text (if @use-text? text "")
-                        }
-                       node
-                       )
-
-            new-ret (conj ret new-node)
-            new-children (into (pop queue)
-                               children-nodes)
-            ]
-        (recur new-ret new-children
-               (inc idx)))
-      ret
+              new-ret (conj ret new-node)
+              new-children (into (pop queue)
+                                 children-nodes)
+              ]
+          (recur new-ret new-children
+                 (inc idx)))
+        ret
+        )
       )
     )
+
   )
+
+
 
 
 (defn el-plan-as-tree
@@ -515,6 +536,48 @@
            )
   )
 
+
+(defn enrich-node [n]
+  (let [$ (get n :$)
+        curr-tag (:t (last $))
+        selector (get n :_$)
+
+        $el (:el n)]
+
+    (merge
+      {
+       :selector selector
+       :tag      curr-tag
+       ;; :tag-full (wdom/tag-only $el)
+
+       :data    (dataset->clj $el)
+       :text    (:text n)
+       }
+
+      (if (.hasAttributes $el)
+        (let [attrs (.-attributes $el)
+              l (.-length attrs)]
+          {:attrs (reduce (fn [a i]
+                            (let [kv (gobj/get attrs i)]
+                              (assoc a (.-name kv) (.-value kv))
+                              )
+                            ) {} (take l (range)))}
+          )
+        {}
+        )
+
+      (if (= "IMG" curr-tag) {:img-src (attr $el "src")} {})
+
+      (if (= "A" curr-tag)
+        {:href (attr $el "href")} {})
+
+      (if (= "TIME" curr-tag)
+        {:datetime (attr $el "datetime")}
+        {})
+
+      )
+    )
+  )
 
 
 (defn copy-to-clipboard-handler [v]
