@@ -64,7 +64,11 @@
   ;; todo: do parsing some day
   (classes/add el "parsed")
 
-  (set! (-> el .-style .-outline) (str "5px solid "
+
+  (classes/add el (rand-nth ["parsed-red" "parsed-magenta" "parsed-brown"]))
+
+
+  #_(set! (-> el .-style .-outline) (str "5px solid "
                                        (rand-nth ["red" "blue" "yellow" "orange"])
                                        ))
 
@@ -113,6 +117,8 @@
 
 (defn brute-force [[selector process-step]]
 
+  (.log js/console "trying to scrape")
+
   ;; try to find elements to be processed
   (let [_els (array-seq (.querySelectorAll (.-body js/document) selector))
         ;; skip if they were alread processed
@@ -132,16 +138,19 @@
         ;; no more els to scrape - scroll and brute force again
         {
          k_selector   [:v selector]
-         k_step [:v process-step]
+         k_step       [:v process-step]
 
-         k_scroll-amount   [:scroll (rand-nth [1 2 3])]
-         k_scroll-wait-time   [:v (u/timeout 1000)]
+         k_scroll-amount    [:scroll (rand-nth [1 2 3])]
+         k_scroll-wait-time [:v (u/timeout 1000)]
 
-         k_!selector   [:wait-rest [k_selector k_scroll-wait-time]]
+         k_!selector       [:wait-rest [k_selector k_scroll-wait-time]]
 
          (base/rand-sid)   [:brute-force* [k_!selector k_step]]
          }
         )
+
+      ;; marking the element as processed
+
       (do ;; there are elements to process further
         ;; (swap! *brute-force-counter inc)
 
@@ -152,7 +161,10 @@
 
                   (assoc a (base/rand-sid "el-")
                            [process-step el])
+
                   ) {} els)
+
+        ;; maybe add
         )
 
       )
@@ -199,9 +211,6 @@
                watcher/watcher-ctx
 
                (fn [params]
-                 {:scrape-el {:fn scrape-impl}}
-                 )
-               (fn [params]
                  {
                   :tick       {:fn       (fn [[t max-num]]
                                            (let [chan-factory (base/&chan-factory params)
@@ -220,6 +229,8 @@
                   :rnd-scroll {:fn (fn [_]
                                      (rand-nth [1 2 3]))}
 
+                  :scrape-el {:fn scrape-impl}
+
                   }
                  )
                (fn [params]
@@ -228,11 +239,6 @@
                   :load-in-view      {:fn load-in-view-library}
 
                   ;;
-
-                  :brute-force*      {:fn       brute-force
-                                      :expands? true
-                                      :collect? true
-                                      }
                   :in-view*          {:fn       (partial _in-view (evt-loop/&evt-loop params))
                                       :collect? true
                                       }
@@ -260,32 +266,6 @@
 
                     }
 
-
-
-                 ;; brute force version
-                 #_{
-
-                    ;; for now limit the number of tweets to parse by having finite clock cycles
-                    ::clock              [:tick [3000 1]]
-
-                    ;;::scroller [:rnd-scroll ::clock]
-                    ;; :infinite/scroll [:scroll ::scroller]
-
-                    ::selector           [:v ".foo"]
-                    ;; normal version
-                    ;;::op-k [:v :scrape-tweet]
-                    ;; debug version
-                    ::op-k               [:v :scrape-el]
-
-                    ;; making a value recuring
-                    ::_recuring-selector [:wait-rest [::selector
-                                                      ::clock
-                                                      ;;:infinite/scroll
-                                                      ]]
-
-                    ::_parse             [:brute-force* [::_recuring-selector ::op-k]]
-                    }
-
                  )]
      :opts    [
                watcher/watcher-opts
@@ -310,33 +290,6 @@
                                                  {(base/rand-sid) [:in-view* [selector :scrape-el]]})
                                      ))
 
-                "brute force" (fn []
-                                (let [selector (js/prompt "Selector" ".foo")
-                                      params (get @*wf-state :WF/params {})
-                                      evt-loop (evt-loop/&evt-loop params)
-                                      ]
-
-                                  (async/put! evt-loop
-                                              {(base/rand-sid) [:brute-force* [selector :scrape-el]]})
-                                  )
-                                )
-
-                "reg scroll watcher"
-                (fn []
-                  (.log js/console (pr-str @*selectors))
-
-                  (let [selectors @*selectors
-                        params (get @*wf-state :WF/params {})
-                        evt-loop (evt-loop/&evt-loop params)]
-
-                    (async/put! evt-loop
-                                (reduce (fn [a selector]
-                                          (assoc a
-                                            (base/rand-sid) [:in-view* [selector :scrape-el]])
-                                          ) {} selectors))
-                    )
-
-                  )
 
 
                 "scroll" (fn []
@@ -387,39 +340,121 @@
 
     (.clear js/console)
     {
-     :init [
-            wf-clean-up-init
-            ]
-     :steps [
-             {:css/parsed-1 [:css-rule ".item { border: 1px solid red; padding: 1rem; }"]}
-             {:css/parsed-2 [:css-rule ".item + .item { border-top-width: 0; }"]}
-             {:css/parsed-3 [:css-rule ".items2parse { width: 300px; padding: 1rem;  }"]}
+     :init  [wf-clean-up-init]
 
-             {::hello [:prn "hello from wf"]}
+     :ctx   [(fn [params]
+               {
+                :tick         {:fn       (fn [[t max-num]]
+                                           (let [chan-factory (base/&chan-factory params)
+                                                 chan (base/make-chan chan-factory (base/rand-sid))]
+
+                                             (async/go-loop [i 0]
+                                               (async/>! chan (u/now))
+                                               (async/<! (u/timeout t))
+
+                                               (if (< i max-num)
+                                                 (recur (inc i))))
+
+                                             chan))
+                               :infinite true
+                               }
+                :rnd-scroll   {:fn (fn [_]
+                                     (rand-nth [1 2 3]))}
+
+                :scrape-el    {:fn scrape-impl}
+
+                ;;
+                ;; conditional expand
+
+                :brute-force-simple {
+                                     :fn       brute-force
+                                     :expands? true
+                                     :collect? true
+
+                                     }
+
+                :brute-force*      {:fn       brute-force
+                                    :expands? true
+                                    :collect? true
+                                    }
+
+
+                }
+               )
+             ]
+     :steps [
+             {
+              :css/c1 [:css-rule ".item { border: 1px solid red; padding: 1rem; }"]
+              :css/c2 [:css-rule ".item + .item { border-top-width: 0; }"]
+              :css/c3 [:css-rule ".items2parse { width: 300px; padding: 1rem;  }"]
+
+              :css/c4  [:css-rule ".parsed { opacity: .6; }"]
+              :css/c5  [:css-rule ".parsed-red { outline: 5px solid red; }"]
+              :css/c6  [:css-rule ".parsed-magenta { outline: 5px solid magenta; }"]
+              :css/c7  [:css-rule ".parsed-brown { outline: 5px solid brown; }"]
+              }
+
+             {
+              ::hello [:prn "hello from wf"]
+
+              }
+
+             {
+              ::selector           [:v ".item"]
+              ::_op-k              [:v :scrape-el]
+              ::parse              [:brute-force* [::selector ::_op-k]]
+              }
+
+             ;; brute force version
+             #_{
+              ;; for now limit the number of tweets to parse by having finite clock cycles
+              ::clock              [:tick [2500 10]]
+
+              ::selector           [:v ".item"]
+              ::recuring-selector  [:wait-rest [::selector ::clock]]
+
+              ;;::parse             [:brute-force* [::recuring-selector ::_op-k]]
+                  ::_op-k               [:v :scrape-el]
+
+
+              ::log-t              [:log ::clock]
+
+              }
 
              ]
 
-     :opts    [
-               (base/build-opt-on-done (fn [params result]
-                                         (.warn js/console result)
-                                         ))
-               ]
+     :opts  [
+             (base/build-opt-on-done (fn [params result]
+                                       (.warn js/console result)
+                                       ))
+             ]
 
-     :api (array-map
-            ;"HELLO" (fn [] (prn "hello from api"))
-            "emulate loading" (fn []
+     :api   (array-map
+              "trigger scraping" (fn []
+                              (let [selector ".item" ;;(js/prompt "Selector" ".foo")
+                                    params (get @*wf-state :WF/params {})
+                                    evt-loop (evt-loop/&evt-loop params)
+                                    ]
 
-                         (let [container-el (wdom/q ".items2parse")]
+                                (async/put! evt-loop
+                                            {(base/rand-sid) [:brute-force* [selector :scrape-el]]})
+                                )
+                              )
 
-                           (dotimes [n (rand-int 15)]
+              ;"HELLO" (fn [] (prn "hello from api"))
+              "emulate loading" (fn []
 
-                             ;; todo: generating item dynamically
-                             (let [h (rum/render-static-markup (<item> (str n "__" (rand-nth ["A" "B" "C" "D" "E" "F" "G"])) ))]
-                               (.insertAdjacentHTML container-el "beforeend" h))
-                             )
-                           )
-                         )
-            )
+                                  (let [container-el (wdom/q ".items2parse")]
+
+                                    (dotimes [n (rand-int 15)]
+
+                                      ;; todo: generating item dynamically
+                                      (let [h (rum/render-static-markup (<item> (str n "__" (rand-nth ["A" "B" "C" "D" "E" "F" "G"]))))]
+                                        (.insertAdjacentHTML container-el "beforeend" h))
+                                      )
+                                    )
+                                  )
+              )
      }
     )
 
