@@ -26,6 +26,8 @@
     ;; prototype todo: convert this to example
     (clojure.string/starts-with? url "http://localhost:9500/example/scroll-inview.html") ex-scroll-wf/in-view-wf!
 
+    (clojure.string/starts-with? url "http://localhost:9500/example/scroll-brute.html") ex-scroll-wf/brute-wf!
+
 
     )
   )
