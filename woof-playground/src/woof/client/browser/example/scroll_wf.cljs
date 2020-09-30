@@ -309,21 +309,72 @@
 
         ;; brute-force scraping via separate find items step (incl. filtering) and separate expand step generation step
 
-        scrape-expand! (fn [els el]
+
+        _expander! (fn [collection-expand item-expand els]
+                     (reduce (fn [a el]
+                               (merge a (item-expand el)))
+                             (collection-expand els) els))
+
+
+
+        item-expand! (fn [el]
                         (let [_sid (mark-scraped! el)
                               sid (if (qualified-keyword? _sid)
                                     _sid
                                     (base/rand-sid "el-"))]
-                          {sid [:scrape-el el]}
-                          )
-                        )
+                          {sid [:scrape-el el]}))
 
-        _simple-brute-force-1 (fn [scrape-expand els]
-                               (.log js/console "simple scrape: B")
 
-                               (reduce (fn [a el]
-                                         (merge a (scrape-expand els el)))
-                                       (array-map) els))]
+        *brute-force-counter (atom 0)
+
+        ;; re-curring expand steps
+        recurring-scrape-expand! (fn [els]
+
+                                   (let [
+                                         k_items (base/rand-sid)
+
+                                         k_selector (base/rand-sid)
+
+                                         k_log (base/rand-sid)
+                                         k_scroll-amount (base/rand-sid)
+                                         k_scroll-wait-time (base/rand-sid)
+                                         k_!selector (base/rand-sid)
+                                         k4 (base/rand-sid)
+
+                                         wait-time (if (empty? els)
+                                                     (* 1000  (swap! *brute-force-counter inc))
+                                                     (do
+                                                       (reset! *brute-force-counter 0)
+                                                       5000)
+                                                     )
+                                         ]
+
+
+                                     ;; no more els to scrape - scroll and brute force again
+                                     {
+                                      k_selector         [:v ".item"]
+
+                                      k_log [:log (str "recurring scraper scheduled in " wait-time " ms")]
+
+                                      ;; k_scroll-amount    [:scroll (rand-nth [1 2 3])]
+
+                                      k_scroll-wait-time [:v (u/timeout wait-time)]
+
+                                      k_!selector        [:wait-rest [k_selector k_scroll-wait-time]]
+                                      k_items [:find-els k_!selector]
+
+                                      ;;
+                                      (base/rand-sid)    [:brute-recurring k_items]
+                                      }
+
+                                     )
+
+
+
+
+                                   )
+
+        ]
 
     (.clear js/console)
     {
@@ -367,13 +418,21 @@
 
                 ;; brute force approach B
 
-                :find-els {:fn (fn [selector]
-                                 (filter (fn [el] (not (is-scraped? el))) (wdom/q* selector)))
-                           }
+                :find-els           {:fn (fn [selector]
+                                           (filter (fn [el] (not (is-scraped? el))) (wdom/q* selector)))
+                                     }
 
-                :brute-1 {:fn (partial _simple-brute-force-1 scrape-expand!)
-                          :collect? true
-                          :expands? true }
+                :brute-1            {:fn       (partial _expander!
+                                                        (fn [] {})
+                                                        item-expand!)
+                                     :collect? true
+                                     :expands? true}
+
+                :brute-recurring    {:fn       (partial _expander!
+                                                        recurring-scrape-expand!
+                                                        item-expand!)
+                                     :collect? true
+                                     :expands? true}
 
 
 
@@ -491,29 +550,36 @@
              ]
 
      :api   (let [trigger-event (fn [steps]
-                                    (let [params (get @*wf-state :WF/params {})
-                                          evt-loop (evt-loop/&evt-loop params)]
-                                      (async/put! evt-loop steps)
-                                      )
-                                    )]
+                                  (let [params (get @*wf-state :WF/params {})
+                                        evt-loop (evt-loop/&evt-loop params)]
+                                    (async/put! evt-loop steps)
+                                    )
+                                  )]
               (array-map
 
-                "A) trigger scraping: simple" (fn []
-                                                (trigger-event
-                                                       {(base/rand-sid) [:brute-force-simple ".item"]}))
+                "A) trigger scraping: simple" #(trigger-event
+                                                 {(base/rand-sid) [:brute-force-simple ".item"]})
 
-                "B) trigger scraping: " (fn []
-                                          (trigger-event
-                                                 (let [k (base/rand-sid)
-                                                       _log (base/rand-sid)
-                                                       ]
-                                                   {
-                                                    k [:find-els ".item"]
+                "B) trigger scraping: " #(trigger-event
+                                           (let [k (base/rand-sid)]
+                                             {
+                                              k               [:find-els ".item"]
 
-                                                    (base/rand-sid) [:brute-1 k]
-                                                    }
-                                                   )
-                                                 ))
+                                              (base/rand-sid) [:brute-1 k]
+                                              }
+                                             )
+                                           )
+
+
+                "C) recurring scraping: " #(trigger-event
+                                           (let [k (base/rand-sid)]
+                                             {
+                                              k               [:find-els ".item"]
+
+                                              (base/rand-sid) [:brute-recurring k]
+                                              }
+                                             )
+                                           )
 
                 ;"HELLO" (fn [] (prn "hello from api"))
                 "emulate loading" (fn []
