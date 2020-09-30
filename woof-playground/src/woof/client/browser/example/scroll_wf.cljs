@@ -115,63 +115,6 @@
 ;;
 ;; recurring brute force
 
-(defn brute-force [[selector process-step]]
-
-  (.log js/console "trying to scrape")
-
-  ;; try to find elements to be processed
-  (let [_els (array-seq (.querySelectorAll (.-body js/document) selector))
-        ;; skip if they were alread processed
-        els (filter (fn [el] (not (dataset/has el "woof_id"))) _els)]
-
-
-    (if (empty? els) ;; all elements had been processed
-      (let [
-            k_selector (base/rand-sid)
-            k_step (base/rand-sid)
-            k_scroll-amount (base/rand-sid)
-            k_scroll-wait-time (base/rand-sid)
-            k_!selector (base/rand-sid)
-            k4 (base/rand-sid)
-            ]
-
-        ;; no more els to scrape - scroll and brute force again
-        {
-         k_selector   [:v selector]
-         k_step       [:v process-step]
-
-         k_scroll-amount    [:scroll (rand-nth [1 2 3])]
-         k_scroll-wait-time [:v (u/timeout 1000)]
-
-         k_!selector       [:wait-rest [k_selector k_scroll-wait-time]]
-
-         (base/rand-sid)   [:brute-force* [k_!selector k_step]]
-         }
-        )
-
-      ;; marking the element as processed
-
-      (do ;; there are elements to process further
-        ;; (swap! *brute-force-counter inc)
-
-        ;; parse each element
-        (reduce (fn [a el]
-                  ;; mark element as processed
-                  (dataset/set el "woof_id" (base/rand-sid))
-
-                  (assoc a (base/rand-sid "el-")
-                           [process-step el])
-
-                  ) {} els)
-
-        ;; maybe add
-        )
-
-      )
-
-    )
-
-  )
 
 ;; todo: split this wf to multiple
 
@@ -336,7 +279,51 @@
 
 (defn brute-wf! [*wf-state meta-info]
   ;; for now go with local scope, instead of init fn
-  (let [_ 123]
+  (let [is-scraped? #(dataset/has % "woof_id")
+        mark-scraped! (fn [el]
+                        (let [sid (base/rand-sid)]
+                          ;; mark element as processed
+                          (dataset/set el "woof_id" sid)
+                          ))
+
+
+        ;; brute-force scraping, pass all parameters and retrieve, filter els in it
+        _simple-brute-force (fn [is-scraped? mark-scraped! process-step selector]
+                             (.log js/console "simple scrape: A")
+
+                             ;; try to find elements to be processed, but skip already processed
+                             (let [els (filter (fn [el] (not (is-scraped? el)))
+                                               (wdom/q* selector))]
+                               (.log js/console "els" els (wdom/q* selector))
+
+                               (reduce (fn [a el]
+                                         (let [_sid (mark-scraped! el)
+                                               sid (if (qualified-keyword? _sid)
+                                                 _sid
+                                                 (base/rand-sid "el-"))]
+                                           (assoc a sid [process-step el])
+                                           )
+                                         ) {} els)
+
+                               ))
+
+        ;; brute-force scraping via separate find items step (incl. filtering) and separate expand step generation step
+
+        scrape-expand! (fn [els el]
+                        (let [_sid (mark-scraped! el)
+                              sid (if (qualified-keyword? _sid)
+                                    _sid
+                                    (base/rand-sid "el-"))]
+                          {sid [:scrape-el el]}
+                          )
+                        )
+
+        _simple-brute-force-1 (fn [scrape-expand els]
+                               (.log js/console "simple scrape: B")
+
+                               (reduce (fn [a el]
+                                         (merge a (scrape-expand els el)))
+                                       (array-map) els))]
 
     (.clear js/console)
     {
@@ -344,40 +331,112 @@
 
      :ctx   [(fn [params]
                {
-                :tick         {:fn       (fn [[t max-num]]
-                                           (let [chan-factory (base/&chan-factory params)
-                                                 chan (base/make-chan chan-factory (base/rand-sid))]
 
-                                             (async/go-loop [i 0]
-                                               (async/>! chan (u/now))
-                                               (async/<! (u/timeout t))
+                :tick               {:fn       (fn [[t max-num]]
+                                                 (let [chan-factory (base/&chan-factory params)
+                                                       chan (base/make-chan chan-factory (base/rand-sid))]
 
-                                               (if (< i max-num)
-                                                 (recur (inc i))))
+                                                   (async/go-loop [i 0]
+                                                     (async/>! chan (u/now))
+                                                     (async/<! (u/timeout t))
 
-                                             chan))
-                               :infinite true
-                               }
-                :rnd-scroll   {:fn (fn [_]
-                                     (rand-nth [1 2 3]))}
+                                                     (if (< i max-num)
+                                                       (recur (inc i))))
 
-                :scrape-el    {:fn scrape-impl}
+                                                   chan))
+                                     :infinite true
+                                     }
+                :rnd-scroll         {:fn (fn [_]
+                                           (rand-nth [1 2 3]))}
+
+                :scrape-el          {:fn scrape-impl}
 
                 ;;
                 ;; conditional expand
 
+                ;; brute force approach A
+
                 :brute-force-simple {
-                                     :fn       brute-force
+                                     :fn       (partial _simple-brute-force
+                                                        is-scraped?
+                                                        mark-scraped!
+                                                        :scrape-el)
                                      :expands? true
                                      :collect? true
-
                                      }
 
-                :brute-force*      {:fn       brute-force
-                                    :expands? true
-                                    :collect? true
-                                    }
+                ;; brute force approach B
 
+                :find-els {:fn (fn [selector]
+                                 (filter (fn [el] (not (is-scraped? el))) (wdom/q* selector)))
+                           }
+
+                :brute-1 {:fn (partial _simple-brute-force-1 scrape-expand!)
+                          :collect? true
+                          :expands? true }
+
+
+
+                ;; brute force approach C
+
+                :brute-force*       {:fn       (fn [[selector process-step]]
+
+                                                 (.log js/console "trying to scrape")
+
+                                                 ;; try to find elements to be processed
+                                                 (let [_els (array-seq (.querySelectorAll (.-body js/document) selector))
+                                                       ;; skip if they were alread processed
+                                                       els (filter (fn [el] (not (dataset/has el "woof_id"))) _els)]
+
+
+                                                   (if (empty? els) ;; all elements had been processed
+                                                     (let [
+                                                           k_selector (base/rand-sid)
+                                                           k_step (base/rand-sid)
+                                                           k_scroll-amount (base/rand-sid)
+                                                           k_scroll-wait-time (base/rand-sid)
+                                                           k_!selector (base/rand-sid)
+                                                           k4 (base/rand-sid)
+                                                           ]
+
+                                                       ;; no more els to scrape - scroll and brute force again
+                                                       {
+                                                        k_selector         [:v selector]
+                                                        k_step             [:v process-step]
+
+                                                        k_scroll-amount    [:scroll (rand-nth [1 2 3])]
+                                                        k_scroll-wait-time [:v (u/timeout 1000)]
+
+                                                        k_!selector        [:wait-rest [k_selector k_scroll-wait-time]]
+
+                                                        (base/rand-sid)    [:brute-force* [k_!selector k_step]]
+                                                        }
+                                                       )
+
+                                                     ;; marking the element as processed
+
+                                                     (do ;; there are elements to process further
+                                                       ;; (swap! *brute-force-counter inc)
+
+                                                       ;; parse each element
+                                                       (reduce (fn [a el]
+                                                                 ;; mark element as processed
+                                                                 (dataset/set el "woof_id" (base/rand-sid))
+
+                                                                 (assoc a (base/rand-sid "el-")
+                                                                          [process-step el])
+
+                                                                 ) {} els)
+
+                                                       ;; maybe add
+                                                       )
+
+                                                     )
+
+                                                   ))
+                                     :expands? true
+                                     :collect? true
+                                     }
 
                 }
                )
@@ -388,10 +447,10 @@
               :css/c2 [:css-rule ".item + .item { border-top-width: 0; }"]
               :css/c3 [:css-rule ".items2parse { width: 300px; padding: 1rem;  }"]
 
-              :css/c4  [:css-rule ".parsed { opacity: .6; }"]
-              :css/c5  [:css-rule ".parsed-red { outline: 5px solid red; }"]
-              :css/c6  [:css-rule ".parsed-magenta { outline: 5px solid magenta; }"]
-              :css/c7  [:css-rule ".parsed-brown { outline: 5px solid brown; }"]
+              :css/c4 [:css-rule ".parsed { opacity: .6; }"]
+              :css/c5 [:css-rule ".parsed-red { outline: 5px solid red; }"]
+              :css/c6 [:css-rule ".parsed-magenta { outline: 5px solid magenta; }"]
+              :css/c7 [:css-rule ".parsed-brown { outline: 5px solid brown; }"]
               }
 
              {
@@ -400,26 +459,28 @@
               }
 
              {
-              ::selector           [:v ".item"]
-              ::_op-k              [:v :scrape-el]
-              ::parse              [:brute-force* [::selector ::_op-k]]
+              ::selector [:v ".item"]
+              ;; ::_op-k    [:v :scrape-el]
+              ;; recurring parse fn
+              ;;::parse    [:brute-force* [::selector ::_op-k]]
+              ;; ::parse    [:brute-force-simple ::selector]
               }
 
              ;; brute force version
              #_{
-              ;; for now limit the number of tweets to parse by having finite clock cycles
-              ::clock              [:tick [2500 10]]
+                ;; for now limit the number of tweets to parse by having finite clock cycles
+                ::clock             [:tick [2500 10]]
 
-              ::selector           [:v ".item"]
-              ::recuring-selector  [:wait-rest [::selector ::clock]]
+                ::selector          [:v ".item"]
+                ::recuring-selector [:wait-rest [::selector ::clock]]
 
-              ;;::parse             [:brute-force* [::recuring-selector ::_op-k]]
-                  ::_op-k               [:v :scrape-el]
+                ;;::parse             [:brute-force* [::recuring-selector ::_op-k]]
+                ::_op-k             [:v :scrape-el]
 
 
-              ::log-t              [:log ::clock]
+                ::log-t             [:log ::clock]
 
-              }
+                }
 
              ]
 
@@ -429,32 +490,47 @@
                                        ))
              ]
 
-     :api   (array-map
-              "trigger scraping" (fn []
-                              (let [selector ".item" ;;(js/prompt "Selector" ".foo")
-                                    params (get @*wf-state :WF/params {})
-                                    evt-loop (evt-loop/&evt-loop params)
-                                    ]
+     :api   (let [trigger-event (fn [steps]
+                                    (let [params (get @*wf-state :WF/params {})
+                                          evt-loop (evt-loop/&evt-loop params)]
+                                      (async/put! evt-loop steps)
+                                      )
+                                    )]
+              (array-map
 
-                                (async/put! evt-loop
-                                            {(base/rand-sid) [:brute-force* [selector :scrape-el]]})
-                                )
-                              )
+                "A) trigger scraping: simple" (fn []
+                                                (trigger-event
+                                                       {(base/rand-sid) [:brute-force-simple ".item"]}))
 
-              ;"HELLO" (fn [] (prn "hello from api"))
-              "emulate loading" (fn []
+                "B) trigger scraping: " (fn []
+                                          (trigger-event
+                                                 (let [k (base/rand-sid)
+                                                       _log (base/rand-sid)
+                                                       ]
+                                                   {
+                                                    k [:find-els ".item"]
 
-                                  (let [container-el (wdom/q ".items2parse")]
+                                                    (base/rand-sid) [:brute-1 k]
+                                                    }
+                                                   )
+                                                 ))
 
-                                    (dotimes [n (rand-int 15)]
+                ;"HELLO" (fn [] (prn "hello from api"))
+                "emulate loading" (fn []
 
-                                      ;; todo: generating item dynamically
-                                      (let [h (rum/render-static-markup (<item> (str n "__" (rand-nth ["A" "B" "C" "D" "E" "F" "G"]))))]
-                                        (.insertAdjacentHTML container-el "beforeend" h))
+                                    (let [container-el (wdom/q ".items2parse")]
+
+                                      (dotimes [n (rand-int 15)]
+
+                                        ;; todo: generating item dynamically
+                                        (let [h (rum/render-static-markup (<item> (str n "__" (rand-nth ["A" "B" "C" "D" "E" "F" "G"]))))]
+                                          (.insertAdjacentHTML container-el "beforeend" h))
+                                        )
                                       )
                                     )
-                                  )
+                )
               )
+
      }
     )
 
