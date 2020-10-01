@@ -219,6 +219,7 @@
 
   )
 
+
 (rum/defcs <h-plan> < rum/static
                       ; (rum/local {} ::inline-results?)
   [st fltr _plan]
@@ -229,9 +230,7 @@
      "I am a filter"
     ]
 
-   (let [
-
-         plan (vec (filter fltr _plan))
+   (let [plan (vec (filter fltr _plan))
 
          tree-plan (wdom/el-plan-as-tree _plan)
          ]
@@ -291,7 +290,9 @@
                    ])
 
 
-   (let [skip-fn (fn [$el $] (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el))))
+   (let [skip-fn (fn [$el $]
+                   (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el)))
+                   )
 
          el-map-1 (wdom/el-map (wdom/q "#html")
                                :skip-fn skip-fn
@@ -328,14 +329,14 @@
             ]
 
         [:div
-
-
+         ;; migrate to a stateful component where visibility hidden can be toggled
          [:table.selector-diff
           [:tr
            [:th "$" ]
            [:th "A" ]
            [:th "B" ]
            ]
+
           (map (fn [k]
                  (let [in-a (get sl1 k)
                        in-b (get sl2 k)]
@@ -347,16 +348,11 @@
                             )
                           )
                     [:td
-
                      (let [short-$ (str/trim (str/replace k @prev ""))]
                        (vreset! prev k)
 
                        short-$
-                       )
-
-
-
-                     ]
+                       )]
                     [:td (pg-ui/shorten-bool in-a) ]
                     [:td (pg-ui/shorten-bool in-b)]
                     ]
@@ -450,8 +446,237 @@
    ]
   )
 
+;;;;;;;;;;;;;;;;;;;
+;; yt
 
 
+(rum/defc <comparison-row> < rum/reactive
+                             {:key-fn (fn [k s _ _ _ _]
+                                        ;; (.log js/console (str k "_" s))
+                                        (str k "_" s))}
+  [k short-k in-a in-b el-1 el-2]
+  [:tr  (if (and in-a in-b)
+         {:class "match-both"}
+         (if in-a
+           {:class "match-a"}
+           {:class "match-b"}
+           )
+         )
+   [:td
+    short-k
+    ]
+   [:td (pg-ui/shorten-bool in-a) ]
+   [:td
+    (if-let [node (get el-1 k)]
+      (<node> node))
+    ]
+   [:td (pg-ui/shorten-bool in-b)]
+   [:td
+    (if-let [node (get el-2 k)]
+      (<node> node))
+    ]
+   ]
+  )
+
+
+(rum/defcs <comparison> < rum/reactive
+                          (rum/local ::all ::show)
+  [st el-1 el-2 sl1 sl2]
+
+  (let [*prev (volatile! "")
+        show @(::show st)]
+    [:div
+
+     (pg-ui/menubar
+       ""
+       [
+        [(str @(::show st))
+         (fn []
+           (swap! (::show st)
+                  {::all ::different
+                   ::different ::all}
+                  )
+           )
+         ]
+        ]
+       )
+
+
+     (if (= show ::different)
+       [:div ;; different tag in order to be properly rendered
+        (let [items (reduce (fn [a k]
+                              (let [in-a (get sl1 k)
+                                    in-b (get sl2 k)
+                                    short-$ (let [short-$ (str/trim (str/replace k @*prev ""))]
+                                              (vreset! *prev k)
+                                              short-$)
+                                    ]
+                                (if (or (nil? in-a) (nil? in-b))
+                                  (conj a (<comparison-row> k short-$ in-a in-b el-1 el-2))
+                                  a)
+                                )
+                              )
+                            []
+                            (concat sl1 sl2)
+                            )
+              table (into [:table.selector-diff
+                           [:tr
+                            [:th "$" (str (count items)) ]
+                            [:th "A" ]
+                            [:th "A v"]
+                            [:th "B" ]
+                            [:th "B v"]
+                            ]]
+                          items
+                          )
+              ]
+
+          table
+          )
+        ]
+       ;; else
+
+       (let [items (reduce (fn [a k]
+                             (let [in-a (get sl1 k)
+                                   in-b (get sl2 k)
+                                   short-$ (let [short-$ (str/trim (str/replace k @*prev ""))]
+                                             (vreset! *prev k)
+                                             short-$)
+                                   ]
+                               (if (and (= show ::different))
+                                 (do
+                                   (if (or (nil? in-a) (nil? in-b))
+                                     (conj a (<comparison-row> k short-$ in-a in-b el-1 el-2))
+                                     a)
+                                   )
+
+                                 (conj a (<comparison-row> k short-$ in-a in-b el-1 el-2))
+                                 )
+                               )
+                             )
+                           []
+                           (concat sl1 sl2)
+                           )
+             table (into [:table.selector-diff
+                          [:tr
+                           [:th "$" (str (count items)) ]
+                           [:th "A" ]
+                           [:th "A v"]
+                           [:th "B" ]
+                           [:th "B v"]
+                           ]]
+                         items
+                         )
+             ]
+
+         table
+         )
+       )
+
+
+
+     ]
+
+    )
+
+  )
+
+(rum/defc <yt> < rum/reactive
+  [st *state]
+
+  [:div
+   (let [skip-fn (fn [$el $]
+                   (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el)))
+                   )
+
+         els (wdom/q* "#contents #content")
+
+         ;; for now just take random items
+         el-map-1 (wdom/el-map (rand-nth els)
+                               :skip-fn skip-fn
+                               :node-fn wdom/enrich-node)
+
+         el-map-2 (wdom/el-map (rand-nth els)
+                               :skip-fn skip-fn
+                               :node-fn wdom/enrich-node
+                               )
+
+         el-1 (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-1)
+         el-2 (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-2)
+
+         node-filter (fn [node]
+                       (let [text? (not= "" (:text node))
+                             ;no-children? (< (:child-count node) 2)
+                             ;div? (= "DIV" (.-tagName (:el node)))
+                             link? (= "A" (:tag node))
+                             img? (= "IMG" (:tag node))
+                             ]
+                         #_(not (and no-text?
+                                     ;no-children?
+                                     ;div?
+                                     ))
+                         ;(.log js/console node)
+                         (or link?
+                             img?
+                             text?)
+                         )
+
+                       )
+         ]
+
+     ;; use this as data component
+     ;; migrate this to be a separate component with different styling options
+     [:div.flex {:style {:overflow-x "auto"}}
+
+
+      (let [sl1 (into (sorted-set) (map #(get % :_$) el-map-1))
+            sl2 (into (sorted-set) (map #(get % :_$) el-map-2))
+            ]
+
+        [:div
+         (<comparison> el-1 el-2 sl1 sl2)
+
+         ;[:code (d/pretty! sl1)]
+         ;[:code (d/pretty! sl2)]
+         ]
+
+        )
+
+      (<h-plan> node-filter el-map-1)
+      (<h-plan> node-filter el-map-2)
+      ]
+
+     )
+
+
+
+
+   #_[:p "processing twittor "]
+
+   #_[:ul
+      [:li "text + link"]
+      [:li "text + photos - /user/...photo/n"]
+      [:li "retweet of a link - has other @tweet handle"]
+      [:li "tweet with hash tag - /hashtag/...."]
+      [:li "tweet with youtube, link with :title and :text = https://youtu.be/..."]
+      ]
+
+
+   ;; uncomment this to work with actually scraped data
+
+   #_(when-let [tweets (:tweets st)]
+
+       (<h-plan> (:full-dom-plan (first tweets)))
+
+       ;(map <tweet> tweets)
+       )
+
+   ]
+  )
+
+
+;;;;;;;;;;;;
+;;
 
 
 (rum/defcs <wf-root> < rum/reactive
@@ -465,6 +690,9 @@
 
        (let [*state (rum/cursor-in *wf [:state])]
          [:div.example-tw
+          (<yt> (get-in wf [:state]) *state)
+          ]
+         #_[:div.example-tw
           (<tw> (get-in wf [:state]) *state)
           ;(<tw-real> (get-in wf [:state]) *state)
           ]
