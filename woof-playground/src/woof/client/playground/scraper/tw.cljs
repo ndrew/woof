@@ -152,7 +152,13 @@
 
 (rum/defcs <node> < rum/static
                     (rum/local false ::details?)
-                   {:key-fn (fn [m] (:_$  m))}
+                   {:key-fn (fn [m]
+                              (str
+                                (:_$  m)
+                                "_"
+                                (str/join (sort (keys m))))
+
+                              )}
   [st node]
 
   (let [curr-tag (:tag node)]
@@ -174,6 +180,7 @@
 
      (if (= "IMG" curr-tag)
        [:img.el-img {:src (:img-src node)}]
+
        #_(str
          "<img class='el-img' src='" (wdom/attr (:el n) "src") "'/>"
          )
@@ -203,10 +210,14 @@
 
   )
 
-(rum/defcs <tree-ui> < rum/static
-  [st plan tree-plan]
-  (let [selected-idxs (reduce (fn [a n] (conj a (:idx n))) #{} plan)
-        ]
+(defn def-key-fn [cfg] (str/join "|" (::ids cfg)))
+
+
+(rum/defc <tree-ui> < rum/static
+                      {:key-fn def-key-fn}
+  [cfg plan tree-plan]
+
+  (let [selected-idxs (reduce (fn [a n] (conj a (:idx n))) #{} plan)]
 
     [:div.tree-root
      [:header "TREE:"]
@@ -220,58 +231,70 @@
   )
 
 
-(rum/defcs <h-plan> < rum/static
-                      ; (rum/local {} ::inline-results?)
-  [st fltr _plan]
-
-  [:.plan-root
-
-   [:div.filters
-     "I am a filter"
-    ]
-
-   (let [plan (vec (filter fltr _plan))
-
-         tree-plan (wdom/el-plan-as-tree _plan)
-         ]
-
-     [:.plan-box.flex
-
-      (<tree-ui> plan tree-plan)
+(defn cfg+id [cfg id]
+  (update-in cfg [::ids] conj id)
+  )
 
 
-      #_(let [gr (group-by :parent-idx plan)
-            roots (sort (keys gr))]
-        [:div
-         [:header "PLAN GROUPED BY PARENT IDX:"]
-         (map
-           (fn [root]
-             [:.plan
-              [:header (pr-str root)]
+(rum/defc <grouped-plan> < rum/static
+                           {:key-fn def-key-fn}
+  [cfg filtered-plan]
+  (let [gr (group-by :parent-idx filtered-plan)
+        roots (sort (keys gr))]
+    [:div
+     [:header "PLAN GROUPED BY PARENT IDX:"]
+     (map
+       (fn [root]
+         [:.plan
+          [:header (pr-str root)]
 
-              (map (fn [ch]
-                     [:.plan
-                      (pr-str (wdom/to-selector (:$ ch)))
-                      ])
-                   (get gr root))
-              ]
-             )
+          (map (fn [ch]
+                 [:.plan
+                  (pr-str (wdom/to-selector (:$ ch)))
+                  ])
+               (get gr root))
+          ]
+         )
 
-           roots
-           )
-         ]
-        )
+       roots
+       )
+     ]
+    )
+  )
 
 
+(rum/defc <full-plan> < rum/static
+                           {:key-fn def-key-fn}
+  [cfg filtered-plan]
 
-
-      [:div
-       [:header "FULL PLAN: " (str (count plan)) ]
-       (map <node> plan)
-       ]
-      ]
-     )
+  [:div
+   [:header "FULL PLAN: " (str (count filtered-plan)) ]
+   (map <node> filtered-plan)
    ]
+  )
+
+
+(rum/defc <h-plan> < rum/static
+                     {:key-fn def-key-fn}
+  [cfg node]
+
+  (let [_plan (:el-map node)
+        filter-fn (:node/filter-fn cfg)
+        ]
+    [:.plan-root
+
+     (let [filtered-plan (vec (filter filter-fn _plan))
+           full-tree-plan (wdom/el-plan-as-tree _plan)
+           ]
+
+       [:.plan-box.flex
+        (<tree-ui>      cfg filtered-plan full-tree-plan)
+        (<grouped-plan> cfg filtered-plan)
+        (<full-plan>    cfg filtered-plan)
+        ]
+       )
+     ]
+    )
   )
 
 
@@ -288,97 +311,6 @@
                    ["load tw 02" (fn [] (load-edn *state "/s/twitter/tw_02.edn" :tweets))]
                    ["load tw 03" (fn [] (load-edn *state "/s/twitter/tw_03.edn" :tweets))]
                    ])
-
-
-   (let [skip-fn (fn [$el $]
-                   (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el)))
-                   )
-
-         el-map-1 (wdom/el-map (wdom/q "#html")
-                               :skip-fn skip-fn
-                               :node-fn wdom/enrich-node)
-
-         el-map-2 (wdom/el-map (wdom/q "#html1")
-                               :skip-fn skip-fn
-                               :node-fn wdom/enrich-node
-                               )
-         node-filter (fn [node]
-           (let [text? (not= "" (:text node))
-                 ;no-children? (< (:child-count node) 2)
-                 ;div? (= "DIV" (.-tagName (:el node)))
-                 link? (= "A" (:tag node))
-                 img? (= "IMG" (:tag node))
-                 ]
-             #_(not (and no-text?
-                         ;no-children?
-                         ;div?
-                         ))
-             ;(.log js/console node)
-             (or link?
-                 img?
-                 text?)
-             )
-
-           )
-         ]
-     [:div.flex
-      (let [sl1 (into (sorted-set) (map #(get % :_$) el-map-1))
-            sl2 (into (sorted-set) (map #(get % :_$) el-map-2))
-
-            prev (volatile! "")
-            ]
-
-        [:div
-         ;; migrate to a stateful component where visibility hidden can be toggled
-         [:table.selector-diff
-          [:tr
-           [:th "$" ]
-           [:th "A" ]
-           [:th "B" ]
-           ]
-
-          (map (fn [k]
-                 (let [in-a (get sl1 k)
-                       in-b (get sl2 k)]
-                   [:tr (if (and in-a in-b)
-                          {:class "match-both"}
-                          (if in-a
-                            {:class "match-a"}
-                            {:class "match-b"}
-                            )
-                          )
-                    [:td
-                     (let [short-$ (str/trim (str/replace k @prev ""))]
-                       (vreset! prev k)
-
-                       short-$
-                       )]
-                    [:td (pg-ui/shorten-bool in-a) ]
-                    [:td (pg-ui/shorten-bool in-b)]
-                    ]
-
-                   )
-
-                 )
-               (concat sl1 sl2)
-               )
-          ]
-
-
-
-
-         ;[:code (d/pretty! sl1)]
-         ;[:code (d/pretty! sl2)]
-
-         ]
-
-        )
-       (<h-plan> node-filter el-map-1)
-       (<h-plan> node-filter el-map-2)
-      ]
-
-     )
-
 
 
 
@@ -573,12 +505,88 @@
          )
        )
 
-
-
      ]
-
     )
+  )
 
+(rum/defcs <dashboard> < rum/static
+                         (rum/local {
+                                     ::ids []
+
+                                     :root-UI/show ::all
+                                     :root-UI/overflow? true
+
+                                     :node/filter-fn (fn [node]
+                                                       (let [text? (not= "" (:text node))
+                                                             ;no-children? (< (:child-count node) 2)
+                                                             ;div? (= "DIV" (.-tagName (:el node)))
+                                                             link? (= "A" (:tag node))
+                                                             img? (= "IMG" (:tag node))
+                                                             ]
+                                                         #_(not (and no-text?
+                                                                     ;no-children?
+                                                                     ;div?
+                                                                     ))
+                                                         ;(.log js/console node)
+                                                         (or link?
+                                                             img?
+                                                             text?)
+                                                         )
+                                                       )
+                                     ;; todo filter
+                                     } ::cfg)
+  [st nodes]
+
+  (let [
+
+        *cfg (::cfg st)
+        cfg  @(::cfg st)
+
+        show (get cfg :root-UI/show)
+
+        show-UI [(str (name show))
+         (fn []
+           (swap! *cfg update-in [:root-UI/show] {::all        ::comparison
+                                                  ::comparison ::nodes
+                                                  ::nodes      ::all}))
+         ]
+
+        overflow? (get cfg :root-UI/overflow?)
+        overflow-UI [(str "overflow " (pg-ui/shorten-bool overflow?)) (fn [] (swap! *cfg update-in [:root-UI/overflow?] not))]
+        ]
+
+    [:div.scrape-ide
+
+     (pg-ui/menubar "" [show-UI overflow-UI])
+
+     [:div.flex {:class (if overflow? "overflow-x" "")}
+
+      (if-not (= ::nodes show)
+        (let [{el-map-1 :el-map
+               el-1     :nodes
+               } (first nodes)
+              {
+               el-map-2 :el-map
+               el-2     :nodes
+               } (second nodes)
+
+              sl1 (into (sorted-set) (map #(get % :_$) el-map-1))
+              sl2 (into (sorted-set) (map #(get % :_$) el-map-2))
+              ]
+
+          (<comparison> el-1 el-2 sl1 sl2)
+
+          ))
+
+      (if-not (= ::comparison show)
+        (map #(<h-plan>
+                (update-in cfg [::ids] conj (:id %))
+                %)
+             nodes)
+        )
+      ]
+     ]
+    )
   )
 
 (rum/defc <yt> < rum/reactive
@@ -586,65 +594,42 @@
 
   [:div
    (let [skip-fn (fn [$el $]
-                   (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el)))
-                   )
+                   (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el))))
 
          els (wdom/q* "#contents #content")
 
+         id-1 (rand-int (count els)) ;
+         id-2 (rand-int (count els)) ;(nth coll )
+
          ;; for now just take random items
-         el-map-1 (wdom/el-map (rand-nth els)
+         el-map-1 (wdom/el-map (nth els id-1)
                                :skip-fn skip-fn
                                :node-fn wdom/enrich-node)
 
-         el-map-2 (wdom/el-map (rand-nth els)
+         el-map-2 (wdom/el-map (nth els id-2)
                                :skip-fn skip-fn
-                               :node-fn wdom/enrich-node
-                               )
+                               :node-fn wdom/enrich-node)
 
          el-1 (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-1)
          el-2 (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-2)
 
-         node-filter (fn [node]
-                       (let [text? (not= "" (:text node))
-                             ;no-children? (< (:child-count node) 2)
-                             ;div? (= "DIV" (.-tagName (:el node)))
-                             link? (= "A" (:tag node))
-                             img? (= "IMG" (:tag node))
-                             ]
-                         #_(not (and no-text?
-                                     ;no-children?
-                                     ;div?
-                                     ))
-                         ;(.log js/console node)
-                         (or link?
-                             img?
-                             text?)
-                         )
-
-                       )
          ]
 
-     ;; use this as data component
-     ;; migrate this to be a separate component with different styling options
-     [:div.flex {:style {:overflow-x "auto"}}
+     (<dashboard>
+       [
+        {:id id-1
 
+         :el-map el-map-1
+         :nodes el-1
+         }
+        {
+         :id id-2
 
-      (let [sl1 (into (sorted-set) (map #(get % :_$) el-map-1))
-            sl2 (into (sorted-set) (map #(get % :_$) el-map-2))
-            ]
-
-        [:div
-         (<comparison> el-1 el-2 sl1 sl2)
-
-         ;[:code (d/pretty! sl1)]
-         ;[:code (d/pretty! sl2)]
-         ]
-
-        )
-
-      (<h-plan> node-filter el-map-1)
-      (<h-plan> node-filter el-map-2)
-      ]
+         :el-map el-map-2
+         :nodes el-2
+         }
+        ]
+       )
 
      )
 
@@ -705,9 +690,20 @@
 
 
 
+
+
+(defonce *history-swipe-preventor (volatile! false))
 ;;
 ;; WF definition
 (defn wf! [*SWF]
+
+  (when-not @*history-swipe-preventor
+    (.addEventListener js/document "touchmove" (fn [event]
+                                                 (.preventDefault event)))
+    (vreset! *history-swipe-preventor true)
+    )
+
+
   (let [CHAN-FACTORY (base/chan-factory (atom {}))
         *state (rum/cursor-in *SWF [:state])]
     {
@@ -722,6 +718,7 @@
              }
 
      :init-fns    [
+
 
                    { ;; pass modifiable zipper
                     ::*state *state
