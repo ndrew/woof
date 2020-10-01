@@ -328,98 +328,109 @@
    ]
 
 
-
-  ;; todo: make skip-fn optional
-
   (let [make-node (fn [node]
-                 (merge node
-                        (node-fn node))
-                 )]
-    (loop [ret []
-           queue (into cljs.core/PersistentQueue.EMPTY
-                       (map-indexed
-                         (fn [i el]
-                           (let [selector-data [{:t (.-tagName el)
-                                                 :i (inc i)}]]
+                    (merge node
+                           (node-fn node)))]
 
-                             (make-node
-                               {
-                                :$          selector-data
-                                :tag       (:t (last selector-data))
-                                :_$         (to-selector selector-data)
+    (.groupCollapsed js/console "LMAP: root" root)
+    (let [result
+          (loop [ret []
+                 queue (into cljs.core/PersistentQueue.EMPTY
+                             (map-indexed
+                               (fn [i el]
+                                 (let [selector-data [{:t (.-tagName el)
+                                                       :i (inc i)}]]
 
-                                :el         el
-                                :parent-idx -1
-                                ;; todo: handling root node text
-                                :text  "" ;(.-textContent el)
-                                })
-                             )
-                           )
-                         (array-seq (.-children root))))
-           idx 0
-           ]
+                                   (make-node
+                                     {
+                                      :$          selector-data
+                                      :tag        (:t (last selector-data))
+                                      :_$         (to-selector selector-data)
 
-      (if (seq queue)
-        (let [node (peek queue)
-              $ (get node :$)
-              $el (get node :el)
+                                      :el         el
+                                      :parent-idx 0
+                                      :idx (inc i)
+                                      ;; todo: handling root node text
+                                      :text       ""        ;(.-textContent el)
+                                      })
+                                   )
+                                 )
+                               (array-seq (.-children root))))
 
-              children (array-seq (.-children $el))
-              child-count (count children)
-              text (.-textContent $el)
+                 counter (count (array-seq (.-children root)))
+                 ]
 
-              has-text? (not= "" text )
-              use-text? (volatile! true) ;; ugly, but works
+            (if (seq queue)
+              (let [node (peek queue)
+                    $ (get node :$)
+                    $el (get node :el)
 
-              *i (volatile! 0)
+                    children (array-seq (.-children $el))
+                    child-count (count children)
+                    text (.-textContent $el)
 
-              children-nodes (reduce
-                               (fn [a el]
-                                 (vswap! *i inc)
-                                 (if-not (skip-fn el $)
-                                   (let [selector-data (conj $
-                                                             {:t (.-tagName el)
-                                                              :i @*i
-                                                              :child-count child-count
-                                                              })]
+                    has-text? (not= "" text)
+                    use-text? (volatile! true)              ;; ugly, but works
 
-                                     (if (and has-text? (str/includes? text (.-textContent el)))
-                                       (vreset! use-text? false))
+                    *i (volatile! 0)
 
-                                     (conj a
-                                           {:$   selector-data
-                                            :_$  (to-selector selector-data)
-                                            :tag  (:t (last selector-data))
-                                            :el  el
-                                            :parent-idx idx
-                                            }))
-                                   a
-                                   ))
-                               []
-                               children)
+                    idx (:idx node)
 
-              new-node (make-node
-                         (merge
-                           {
-                            :idx idx
-                            }
-                           {
-                            ;; if at least one of children has same text - ommit
-                            :child-count child-count
-                            :text (if @use-text? text "")
-                            }
-                           node
-                           )
-                         )
+                    children-nodes (reduce
+                                     (fn [a el]
+                                       (vswap! *i inc)
+                                       (if (not (skip-fn el $))
+                                         (let [selector-data (conj $
+                                                                   {:t           (.-tagName el)
+                                                                    :i           @*i
+                                                                    :child-count child-count
+                                                                    })]
 
-              new-ret (conj ret new-node)
-              new-children (into (pop queue)
-                                 children-nodes)
-              ]
-          (recur new-ret new-children
-                 (inc idx)))
-        ret
-        )
+                                           (if (and has-text? (str/includes? text (.-textContent el)))
+                                             (vreset! use-text? false))
+
+                                           (conj a
+                                                 {:$          selector-data
+                                                  :_$         (to-selector selector-data)
+                                                  :tag        (:t (last selector-data))
+                                                  :el         el
+                                                  :idx (+ counter @*i)
+                                                  :parent-idx idx
+                                                  }))
+                                         a
+                                         ))
+                                     []
+                                     children)
+
+                    new-node (make-node
+                               (merge
+                                 {
+                                  ;; if at least one of children has same text - ommit
+                                  :child-count child-count
+                                  :text        (if @use-text? text "")
+                                  }
+                                 node
+                                 )
+                               )
+
+                    new-ret (conj ret new-node )
+                    new-children (into (pop queue)
+                                       children-nodes)
+
+
+                    ]
+
+                (.log js/console
+                       idx (:parent-idx (last new-ret)) (last new-ret))
+
+                (recur new-ret new-children
+                       (+ counter (count children-nodes))
+                       ))
+              ret
+              )
+            )]
+      (.groupEnd js/console)
+      result
       )
     )
 
@@ -428,20 +439,33 @@
 
 
 
+;; [{}]
+
 (defn el-plan-as-tree
   "converts el-map plan back to a tree form"
   [plan]
-  (let [gr (group-by :parent-idx plan)
+  ;; (.warn js/console "PLAN=" plan)
+
+  (let [gr (group-by (fn [node] (dec (:parent-idx node))) plan)
         roots (sort (keys gr))
+
+        ;;_ (do (.warn js/console gr))
 
         new-plan (loop [plan plan
                         parent-keys (reverse roots)]
+
+                   ;; (.warn js/console "parent keys=" parent-keys)
+
                    (if (and (seq parent-keys) (>= (first parent-keys) 0))
                      (let [parent-k (first parent-keys)
-                           child-keys (reduce (fn [a node] (conj a (get node :idx))) #{} (get gr parent-k))
+
+                           child-keys (reduce (fn [a node] (conj a (get node :idx))) #{}
+                                              (get gr parent-k))
 
                            children (filter (fn [item]
                                               (child-keys (:idx item))) plan)
+
+                           ;;_ (do (.warn js/console "UPD:" parent-k (get plan parent-k) ))
 
                            new-plan (update-in plan [parent-k]
                                                update :children concat children)
@@ -452,14 +476,17 @@
                        ;(.log js/console new-plan)
                        ;(.groupEnd js/console)
 
+                       ;;(.warn js/console parent-k "new plan=" new-plan)
+
                        (recur new-plan (rest parent-keys))
+
                        )
                      plan
                      )
                    )
         ]
 
-    (filter (fn [item] (= -1 (:parent-idx item))) new-plan)
+    (filter (fn [item] (= 0 (:parent-idx item))) new-plan)
     )
   )
 

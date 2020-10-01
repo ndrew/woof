@@ -30,9 +30,6 @@
 ;;
 ;; UI
 
-
-
-
 (defn- load-edn [*dict url k]
   (ws/GET url
           (fn [response]
@@ -41,10 +38,6 @@
               )))
 
   )
-
-
-
-
 
 (rum/defc <link> < rum/static
                     {:key-fn (fn [m] (pr-str m))}
@@ -56,7 +49,6 @@
                 ))
    ]
   )
-
 
 (rum/defc <tweet> < rum/static
                     {:key-fn (fn [m] (:tw-id  m))}
@@ -115,9 +107,6 @@
 
 
 
-
-
-
 (rum/defc <v> < rum/static
   [cfg parent plan]
 
@@ -150,15 +139,38 @@
 
   )
 
+
+(defn def-key-fn [cfg] (str/join "|" (::ids cfg)))
+
+
+(rum/defc <tree-ui> < rum/static
+                      {:key-fn def-key-fn}
+  [cfg plan tree-plan]
+
+  (let [selected-idxs (reduce (fn [a n] (conj a (:idx n))) #{} plan)]
+
+    [:div.tree-root
+     [:header "TREE:"]
+
+     [:pre (d/pretty! selected-idxs)]
+
+     (map (fn [item] (<v> {:selected selected-idxs} nil item)) tree-plan)
+
+     ]
+    )
+
+
+  )
+
 (rum/defcs <node> < rum/static
                     (rum/local false ::details?)
-                   {:key-fn (fn [m]
-                              (str
-                                (:_$  m)
-                                "_"
-                                (str/join (sort (keys m))))
+                    {:key-fn (fn [m]
+                               (str
+                                 (:_$  m)
+                                 "_"
+                                 (str/join (sort (keys m))))
 
-                              )}
+                               )}
   [st node]
 
   (let [curr-tag (:tag node)]
@@ -182,8 +194,8 @@
        [:img.el-img {:src (:img-src node)}]
 
        #_(str
-         "<img class='el-img' src='" (wdom/attr (:el n) "src") "'/>"
-         )
+           "<img class='el-img' src='" (wdom/attr (:el n) "src") "'/>"
+           )
        )
 
      (if (= "A" curr-tag)
@@ -194,7 +206,7 @@
      (let [t (:text node)]
        (if (not= "" t)
          [:.el-value t]
-       ))
+         ))
 
 
 
@@ -210,26 +222,6 @@
 
   )
 
-(defn def-key-fn [cfg] (str/join "|" (::ids cfg)))
-
-
-(rum/defc <tree-ui> < rum/static
-                      {:key-fn def-key-fn}
-  [cfg plan tree-plan]
-
-  (let [selected-idxs (reduce (fn [a n] (conj a (:idx n))) #{} plan)]
-
-    [:div.tree-root
-     [:header "TREE:"]
-
-     (map (fn [item] (<v> {:selected selected-idxs} nil item)) tree-plan)
-
-     ]
-    )
-
-
-  )
-
 
 (defn cfg+id [cfg id]
   (update-in cfg [::ids] conj id)
@@ -239,7 +231,7 @@
 (rum/defc <grouped-plan> < rum/static
                            {:key-fn def-key-fn}
   [cfg filtered-plan]
-  (let [gr (group-by :parent-idx filtered-plan)
+  (let [gr (group-by (fn [node] (dec (:parent-idx node))) filtered-plan)
         roots (sort (keys gr))]
     [:div
      [:header "PLAN GROUPED BY PARENT IDX:"]
@@ -288,94 +280,16 @@
            ]
 
        [:.plan-box.flex
+
         (<tree-ui>      cfg filtered-plan full-tree-plan)
+
         (<grouped-plan> cfg filtered-plan)
+
         (<full-plan>    cfg filtered-plan)
         ]
        )
      ]
     )
-  )
-
-
-(rum/defc <tw> < rum/reactive
-  [st *state]
-
-  [:div
-   (pg-ui/menubar "tw"
-                  [
-                   ;["load tw 1" (fn [] (load-edn *state "/s/twitter/parsed.edn" :tweets))]
-                   ;["load tw 2" (fn [] (load-edn *state "/s/twitter/parsed_real.edn" :tweets))]
-
-                   ["load tw 01" (fn [] (load-edn *state "/s/twitter/tw_01.edn" :tweets))]
-                   ["load tw 02" (fn [] (load-edn *state "/s/twitter/tw_02.edn" :tweets))]
-                   ["load tw 03" (fn [] (load-edn *state "/s/twitter/tw_03.edn" :tweets))]
-                   ])
-
-
-
-   #_[:p "processing twittor "]
-
-   #_[:ul
-    [:li "text + link"]
-    [:li "text + photos - /user/...photo/n"]
-    [:li "retweet of a link - has other @tweet handle"]
-    [:li "tweet with hash tag - /hashtag/...."]
-    [:li "tweet with youtube, link with :title and :text = https://youtu.be/..."]
-    ]
-
-
-   ;; uncomment this to work with actually scraped data
-
-   #_(when-let [tweets (:tweets st)]
-
-     (<h-plan> (:full-dom-plan (first tweets)))
-
-     ;(map <tweet> tweets)
-     )
-
-   ]
-  )
-
-
-
-(rum/defc <tw-real> < rum/reactive
-  [st *state]
-
-  [:div
-   (pg-ui/menubar "tw"
-                  [
-                   ;["load tw 1" (fn [] (load-edn *state "/s/twitter/parsed.edn" :tweets))]
-                   ;["load tw 2" (fn [] (load-edn *state "/s/twitter/parsed_real.edn" :tweets))]
-
-                   ["load tw 01" (fn [] (load-edn *state "/s/twitter/tw_01.edn" :tweets))]
-                   ["load tw 02" (fn [] (load-edn *state "/s/twitter/tw_02.edn" :tweets))]
-                   ["load tw 03" (fn [] (load-edn *state "/s/twitter/tw_03.edn" :tweets))]
-                   ])
-
-
-   [:p "processing twittor "]
-
-   [:ul
-    [:li "text + link"]
-    [:li "text + photos - /user/...photo/n"]
-    [:li "retweet of a link - has other @tweet handle"]
-    [:li "tweet with hash tag - /hashtag/...."]
-    [:li "tweet with youtube, link with :title and :text = https://youtu.be/..."]
-    ]
-
-   ;; uncomment this to work with actually scraped data
-   ;; todo: scrape data with proper el-plan structure
-
-   #_(when-let [tweets (:tweets st)]
-
-       ;(<h-plan> (:full-dom-plan (first tweets)))
-
-
-       ;(map <tweet> tweets)
-       )
-
-   ]
   )
 
 ;;;;;;;;;;;;;;;;;;;
@@ -412,16 +326,36 @@
 
 
 (rum/defcs <comparison> < rum/reactive
+                          {:key-fn def-key-fn}
                           (rum/local ::all ::show)
-  [st el-1 el-2 sl1 sl2]
+  [st cfg nodes]
 
-  (let [*prev (volatile! "")
+  (let [
+        ;; el-1 el-2 sl1 sl2
+
+        {el-map-1 :el-map
+         el-1     :nodes
+         } (first nodes)
+        {
+         el-map-2 :el-map
+         el-2     :nodes
+         } (second nodes)
+
+        sls (map
+              (fn [node]
+                (into (sorted-set)
+                      (map #(get % :_$) (:el-map node)))
+                )
+              nodes
+              )
+
+        [sl1 sl2] sls
+
+        *prev (volatile! "")
         show @(::show st)]
     [:div
 
-     (pg-ui/menubar
-       ""
-       [
+     (pg-ui/menubar "" [
         [(str @(::show st))
          (fn []
            (swap! (::show st)
@@ -436,7 +370,7 @@
 
      (if (= show ::different)
        [:div ;; different tag in order to be properly rendered
-        (let [items (reduce (fn [a k]
+        #_(let [items (reduce (fn [a k]
                               (let [in-a (get sl1 k)
                                     in-b (get sl2 k)
                                     short-$ (let [short-$ (str/trim (str/replace k @*prev ""))]
@@ -468,41 +402,78 @@
         ]
        ;; else
 
-       (let [items (reduce (fn [a k]
-                             (let [in-a (get sl1 k)
-                                   in-b (get sl2 k)
-                                   short-$ (let [short-$ (str/trim (str/replace k @*prev ""))]
-                                             (vreset! *prev k)
-                                             short-$)
-                                   ]
-                               (if (and (= show ::different))
-                                 (do
-                                   (if (or (nil? in-a) (nil? in-b))
-                                     (conj a (<comparison-row> k short-$ in-a in-b el-1 el-2))
-                                     a)
-                                   )
+       [:table.selector-diff
 
-                                 (conj a (<comparison-row> k short-$ in-a in-b el-1 el-2))
-                                 )
-                               )
+        [:tbody
+         [:tr [:th "$"]
+          (map (fn [node]
+                 [:th {:col-span 2} (str (:id node))]) nodes)]
+
+         ;; items
+
+
+
+         (loop [res []
+                ks (apply concat sls)
+                prev-k ""
+                parent-k (first (first sls))
+                prev-margin 0
+                ]
+           (let [
+                 k (first ks)
+                 nu-ks (rest ks)
+
+                 short-k (str/trim (str/replace k prev-k ""))
+                 nu-margin (if (= k short-k)
+                             0
+                             (+ prev-margin 1)
                              )
-                           []
-                           (concat sl1 sl2)
-                           )
-             table (into [:table.selector-diff
-                          [:tr
-                           [:th "$" (str (count items)) ]
-                           [:th "A" ]
-                           [:th "A v"]
-                           [:th "B" ]
-                           [:th "B v"]
-                           ]]
-                         items
-                         )
-             ]
 
-         table
-         )
+                 ]
+
+             (if (seq nu-ks)
+               (recur (conj res
+                            [:tr
+                             {
+                              :class (if (= short-k k)
+                                       "not-child-row"
+                                       "child-row")
+                              }
+                             [:td
+                              {
+                               :class (str "lpad-" nu-margin)
+                               }
+                              short-k]
+                             [:td
+
+                              (if (= k short-k)
+                                (pr-str [parent-k k ])
+
+                                )
+
+
+                              ]
+                             [:td "A"]
+                             [:td "2"]
+                             [:td "B"]
+                             ])
+                      nu-ks
+                      k
+                      parent-k
+                      nu-margin
+
+                      )
+               res
+               )
+             )
+
+           )
+
+         ]
+
+
+        ]
+
        )
 
      ]
@@ -517,7 +488,7 @@
                                      :root-UI/overflow? true
 
                                      :node/filter-fn (fn [node]
-                                                       (let [text? (not= "" (:text node))
+                                                       #_(let [text? (not= "" (:text node))
                                                              ;no-children? (< (:child-count node) 2)
                                                              ;div? (= "DIV" (.-tagName (:el node)))
                                                              link? (= "A" (:tag node))
@@ -532,6 +503,7 @@
                                                              img?
                                                              text?)
                                                          )
+                                                       true
                                                        )
                                      ;; todo filter
                                      } ::cfg)
@@ -559,24 +531,23 @@
 
      (pg-ui/menubar "" [show-UI overflow-UI])
 
+     [:hr]
+
+     [:ul
+      (map (fn [n]
+             [:li
+              [:header (pr-str (:id n))]
+              [:div (.-outerHTML (.-parentElement (get-in (:el-map n) [0 :el])))]
+              ;[:pre (d/pretty! n)]
+              ]
+             ) nodes)
+      ]
+
      [:div.flex {:class (if overflow? "overflow-x" "")}
 
-      (if-not (= ::nodes show)
-        (let [{el-map-1 :el-map
-               el-1     :nodes
-               } (first nodes)
-              {
-               el-map-2 :el-map
-               el-2     :nodes
-               } (second nodes)
-
-              sl1 (into (sorted-set) (map #(get % :_$) el-map-1))
-              sl2 (into (sorted-set) (map #(get % :_$) el-map-2))
-              ]
-
-          (<comparison> el-1 el-2 sl1 sl2)
-
-          ))
+      #_(if-not (= ::nodes show)
+        (<comparison> cfg nodes)
+        )
 
       (if-not (= ::comparison show)
         (map #(<h-plan>
@@ -598,8 +569,8 @@
 
          els (wdom/q* "#contents #content")
 
-         id-1 (rand-int (count els)) ;
-         id-2 (rand-int (count els)) ;(nth coll )
+         id-1 0 ;(rand-int (count els)) ;
+         id-2 1 ;(rand-int (count els)) ;(nth coll )
 
          ;; for now just take random items
          el-map-1 (wdom/el-map (nth els id-1)
@@ -654,9 +625,8 @@
        (<h-plan> (:full-dom-plan (first tweets)))
 
        ;(map <tweet> tweets)
-       )
+       )]
 
-   ]
   )
 
 
@@ -689,9 +659,6 @@
   )
 
 
-
-
-
 (defonce *history-swipe-preventor (volatile! false))
 ;;
 ;; WF definition
@@ -703,6 +670,7 @@
     (vreset! *history-swipe-preventor true)
     )
 
+  (.clear js/console)
 
   (let [CHAN-FACTORY (base/chan-factory (atom {}))
         *state (rum/cursor-in *SWF [:state])]
@@ -771,4 +739,88 @@
                                            ;:state
                                            ]
      })
+  )
+
+
+
+;; old
+
+(rum/defc <tw> < rum/reactive
+  [st *state]
+
+  [:div
+   (pg-ui/menubar "tw"
+                  [
+                   ;["load tw 1" (fn [] (load-edn *state "/s/twitter/parsed.edn" :tweets))]
+                   ;["load tw 2" (fn [] (load-edn *state "/s/twitter/parsed_real.edn" :tweets))]
+
+                   ["load tw 01" (fn [] (load-edn *state "/s/twitter/tw_01.edn" :tweets))]
+                   ["load tw 02" (fn [] (load-edn *state "/s/twitter/tw_02.edn" :tweets))]
+                   ["load tw 03" (fn [] (load-edn *state "/s/twitter/tw_03.edn" :tweets))]
+                   ])
+
+
+
+   #_[:p "processing twittor "]
+
+   #_[:ul
+      [:li "text + link"]
+      [:li "text + photos - /user/...photo/n"]
+      [:li "retweet of a link - has other @tweet handle"]
+      [:li "tweet with hash tag - /hashtag/...."]
+      [:li "tweet with youtube, link with :title and :text = https://youtu.be/..."]
+      ]
+
+
+   ;; uncomment this to work with actually scraped data
+
+   #_(when-let [tweets (:tweets st)]
+
+       (<h-plan> (:full-dom-plan (first tweets)))
+
+       ;(map <tweet> tweets)
+       )
+
+   ]
+  )
+
+
+
+(rum/defc <tw-real> < rum/reactive
+  [st *state]
+
+  [:div
+   (pg-ui/menubar "tw"
+                  [
+                   ;["load tw 1" (fn [] (load-edn *state "/s/twitter/parsed.edn" :tweets))]
+                   ;["load tw 2" (fn [] (load-edn *state "/s/twitter/parsed_real.edn" :tweets))]
+
+                   ["load tw 01" (fn [] (load-edn *state "/s/twitter/tw_01.edn" :tweets))]
+                   ["load tw 02" (fn [] (load-edn *state "/s/twitter/tw_02.edn" :tweets))]
+                   ["load tw 03" (fn [] (load-edn *state "/s/twitter/tw_03.edn" :tweets))]
+                   ])
+
+
+   [:p "processing twittor "]
+
+   [:ul
+    [:li "text + link"]
+    [:li "text + photos - /user/...photo/n"]
+    [:li "retweet of a link - has other @tweet handle"]
+    [:li "tweet with hash tag - /hashtag/...."]
+    [:li "tweet with youtube, link with :title and :text = https://youtu.be/..."]
+    ]
+
+   ;; uncomment this to work with actually scraped data
+   ;; todo: scrape data with proper el-plan structure
+
+   #_(when-let [tweets (:tweets st)]
+
+       ;(<h-plan> (:full-dom-plan (first tweets)))
+
+
+       ;(map <tweet> tweets)
+       )
+
+   ]
   )
