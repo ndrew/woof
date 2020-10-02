@@ -209,10 +209,8 @@
 
         linear-children (loop [ch direct-children
                                r [_node]]
-                          ;; todo check also filters
                           (if (and (= 1 (count ch))
-                                   (empty? (:applied-filters (first ch)))
-                                   )
+                                   (empty? (:applied-filters (first ch))))
                             (do
                               (recur
                                 (get (first ch) :children [])
@@ -260,7 +258,23 @@
          [:.selector short-selector]
          [:.tags (map #(pg-ui/<tag> "filter-tag" (str %)) filter-info)]]
         ;; todo: what to show here
-        (:text node)
+        (let [curr-tag (:tag node)]
+          [:.content
+
+           (if (= "IMG" curr-tag)
+             [:img.el-img {:src (:img-src node)}])
+
+           (if (= "A" curr-tag)
+             [:.el-attr [:a {:href (:href node) :target "_blank"} (:href node)]])
+
+           (let [t (:text node)]
+             (if (not= "" t)
+               [:.el-value t]))
+
+           ]
+          )
+
+
         ]
        [:.short
         [:.selector
@@ -356,35 +370,33 @@
   (let [_plan (:el-map node)
         filter-fn (:filter/fn cfg)
         mode (:root-UI/mode cfg)
-        ]
-    (let [filtered-plan (vec
-                          (reduce
-                            (fn [a n]
-                              (if-let [filter-result (filter-fn n)]
-                                (conj a (assoc
-                                          n :applied-filters (into #{} filter-result)))
-                                a
-                                )
+        filtered-plan (vec
+                        (reduce
+                          (fn [a n]
+                            (if-let [filter-result (filter-fn n)]
+                              (conj a (assoc
+                                        n :applied-filters (into #{} filter-result)))
+                              a
                               )
-                            []
-                            _plan )
-                          )
-          full-tree-plan (wdom/el-plan-as-tree _plan)]
+                            )
+                          []
+                          _plan )
+                        )
+        full-tree-plan (wdom/el-plan-as-tree _plan)
+        ]
+    [:.plan-root.flex
 
-      [:.plan-root.flex
+     ;(if (::debugger? cfg) [:div.html (d/pretty! (::usage cfg))])
 
-       ;; (if (::debugger? cfg) [:div.html (d/pretty! filtered-plan)])
+     (if (#{::all ::tree} mode)
+       (<tree-ui>    cfg filtered-plan full-tree-plan))
 
-       (if (#{::all ::tree} mode)
-         (<tree-ui>    cfg filtered-plan full-tree-plan))
+     (if (#{::all ::grouped-plan} mode)
+       (<grouped-plan> cfg filtered-plan))
 
-       (if (#{::all ::grouped-plan} mode)
-        (<grouped-plan> cfg filtered-plan))
-
-       (if (#{::all ::full-plan} mode)
-         (<full-plan>    cfg filtered-plan))
-       ]
-      )
+     (if (#{::all ::full-plan} mode)
+       (<full-plan>    cfg filtered-plan))
+     ]
     )
   )
 
@@ -453,7 +465,7 @@
 
                                      :node-list-UI/show? false
 
-                                     :tree-UI/horizontal? true
+                                     :tree-UI/horizontal? false
                                      :tree-UI/collapse? true
 
                                      :filter/selected-ids (into #{} (keys filters-map))

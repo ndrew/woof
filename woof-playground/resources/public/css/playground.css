@@ -1280,7 +1280,6 @@ pre {
 
 
 
-
 .tree-node {
     background-color: #f8af0f11;
     margin: 2px;
@@ -1306,13 +1305,16 @@ pre {
     margin-right: 0;
 }
 .tree-node > .detailed .selector {
+    font-weight: normal;
+}
 
+.tree-node > .detailed .content {
+    font-weight: bolder;
 }
 
 .tree-node > .detailed .tags {
     margin-left: auto;
     text-align: right;
-
 }
 
 
@@ -1357,6 +1359,24 @@ pre {
 
 }
 
+
+.tree-root .tree-node {
+    border-left: 3px solid #ff000011;
+}
+
+.tree-root .tree-node:hover {
+    border-left: 3px solid #ff0000;
+}
+
+.tree-root.horizontal .tree-node {
+    border-left: unset;
+    border-top: 3px solid #ff000011;
+}
+
+.tree-root.horizontal .tree-node:hover {
+    border-left: unset;
+    border-top: 3px solid #ff0000;
+}
 
 .filter-tag {
     background-color: #f8b7e8;
