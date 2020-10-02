@@ -1238,9 +1238,6 @@ pre {
 }
 
 
-.plans {
-    margin-top: 1rem;
-}
 
 .plans .plan-root {
     padding-left: .5rem;
@@ -1273,12 +1270,11 @@ pre {
 
 
 .plan.selected {
-    outline: 3px solid #cc1605;
     padding: .1rem;
 }
 
 .plan.leaf.selected {
-    background-color:  #cc160544;
+    background-color:  #cc160533;
 }
 
 .tree-root .plan.leaf:not(.selected) {
@@ -1340,7 +1336,16 @@ td.lpad-4  { padding-left: 2.5rem; }
     font-size: 7pt;
 }
 
+.scrape-ide > .menubar {
+    margin-bottom: .5rem;
+}
+
+.plans {
+    margin-top: .5rem;
+}
+
 .scrape-ide .el-list {
+
     list-style: none;
 
     -webkit-margin-before:0em;
@@ -1354,5 +1359,20 @@ td.lpad-4  { padding-left: 2.5rem; }
 
 .scrape-ide .el-list > li:hover {
     background-color: #f8af0f12;
+}
+
+.scrape-ide .filters {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.scrape-ide .filters > .menubar > header {
+    padding-right: .5rem;
+}
+
+.filter-tag {
+    background-color: #6b8e2355;
+    font-size: 7pt;
 }
 
