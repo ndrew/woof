@@ -201,43 +201,79 @@
 
 (rum/defc <tree-node> < rum/static
                         {:key-fn (fn [cfg _ node] (str (first (::ids cfg)) "_" (:idx node)))}
-  [cfg parent node]
+  [cfg parent _node]
 
-  (let [selector (:_$ node)
+  (let [
+
+        direct-children (get _node :children [])
+
+        linear-children (loop [ch direct-children
+                               r [_node]]
+                          ;; todo check also filters
+                          (if (and (= 1 (count ch))
+                                   (empty? (:applied-filters (first ch)))
+                                   )
+                            (do
+                              (recur
+                                (get (first ch) :children [])
+                                (conj r (first ch)))
+                              )
+                            (drop-last r)))
+
+
+
+        node (if (:tree-UI/collapse? cfg)
+          (if (seq linear-children) (last linear-children) _node)
+          _node
+          )
+
+        selector (:_$ node)
         parent-selector (if parent (:_$ parent) "")
 
         filter-info (get-in cfg [:filter-info (:idx node) :applied-filters] #{})
         selected? (not (empty? filter-info))
 
-        ch (get node :children [])
-        has-children? (seq ch)
+
+        has-children? (seq direct-children)
 
         short-selector (str/trim (str/replace selector parent-selector ""))
+        node-class (str/join " " (concat (if selected? #{"selected"} )
+                                         (if (not has-children?) #{"leaf"})))
+
+
+
         ]
 
-    [:.plan (cond
-              (and (not has-children?) selected?) {:class "selected leaf"}
-              selected? {:class "selected"})
+    [:.tree-node {:class node-class}
+
+
+     #_(map (fn [item]
+              [:.html (d/pretty! (:tag item))]
+              ) linear-children)
+
+
+     ;; todo: collapsing not single child nodes
 
      (if selected?
-
-        [:div
-         [:.flex
-          [:div {:style {:flex-grow 1}} short-selector]
-          [:div {:style {:margin-left "auto"
-                         :text-align "right"}}
-           (map #(pg-ui/<tag> "filter-tag" (str %)) filter-info)]]
-         (:text node)
-
-         ]
-       [:span short-selector])
+       [:.detailed
+        [:header.flex
+         [:.selector short-selector]
+         [:.tags (map #(pg-ui/<tag> "filter-tag" (str %)) filter-info)]]
+        ;; todo: what to show here
+        (:text node)
+        ]
+       [:.short
+        [:.selector
+         short-selector
+         ]])
 
      (if has-children?
        (map (fn [child] (<tree-node> cfg
                                      node
                                      child))
-            ch))])
+            direct-children))]
 
+    )
   )
 
 
@@ -259,19 +295,21 @@
         ]
 
     [:div.tree-root
+     (if (:tree-UI/horizontal? cfg ) {:class "horizontal"})
 
      (if (::debugger? cfg)
        (<full-plan> cfg plan))
 
      [:header "TREE:" (pr-str (::ids cfg))]
-     (map (fn [item] (<tree-node> (assoc cfg
-                                    :selected selected-idxs
-                                    :filter-info filter-info
-                                    ) nil item)) tree-plan)
+
+     [:.tree-nodes
+      (map (fn [item] (<tree-node> (assoc cfg
+                                     :selected selected-idxs
+                                     :filter-info filter-info
+                                     ) nil item)) tree-plan)
+      ]
      ]
     )
-
-
   )
 
 
@@ -415,6 +453,9 @@
 
                                      :node-list-UI/show? false
 
+                                     :tree-UI/horizontal? true
+                                     :tree-UI/collapse? true
+
                                      :filter/selected-ids (into #{} (keys filters-map))
                                      ;; todo filter
                                      } ::cfg)
@@ -439,6 +480,9 @@
         node-list-UI (<menu-btn> st :node-list-UI/show? #(str "show nodes:" (pg-ui/shorten-bool %)) not)
         debugger-UI  (<menu-btn> st ::debugger? #(str "debug " (pg-ui/shorten-bool %)) not)
 
+        tree-UI-horizontal  (<menu-btn> st :tree-UI/horizontal? #(str "tree: horizontal " (pg-ui/shorten-bool %)) not)
+        tree-UI-collapse  (<menu-btn> st :tree-UI/collapse? #(str "collapse intermediary nodes " (pg-ui/shorten-bool %)) not)
+
         ;; { k #{a b c d e f}}, where a b c - are node ids
         selector-usage (reduce
                          (fn [a node]
@@ -451,7 +495,8 @@
         ]
 
     [:div.scrape-ide
-     (pg-ui/menubar "" [node-list-UI [] overflow-UI debugger-UI [] show-UI])
+     (pg-ui/menubar "" [node-list-UI [] overflow-UI debugger-UI [] show-UI []
+                        tree-UI-horizontal tree-UI-collapse ])
 
      (if (cfg-v st :node-list-UI/show?)
        (<node-list> cfg nodes))
