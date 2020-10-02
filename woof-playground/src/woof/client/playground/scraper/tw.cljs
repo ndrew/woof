@@ -487,6 +487,8 @@
                                      :root-UI/show ::all
                                      :root-UI/overflow? true
 
+                                     :node-list-UI/show? true
+
                                      :node/filter-fn (fn [node]
                                                        #_(let [text? (not= "" (:text node))
                                                              ;no-children? (< (:child-count node) 2)
@@ -525,36 +527,59 @@
 
         overflow? (get cfg :root-UI/overflow?)
         overflow-UI [(str "overflow " (pg-ui/shorten-bool overflow?)) (fn [] (swap! *cfg update-in [:root-UI/overflow?] not))]
+
+        show-nodes? (get cfg :node-list-UI/show?)
+        node-list-UI [(str "nodes " (pg-ui/shorten-bool show-nodes?)) (fn [] (swap! *cfg update-in [:node-list-UI/show?] not))]
+
+        ;; { k #{a b c d e f}}, where a b c - are node ids
+        selector-usage (reduce
+                         (fn [a node]
+                           (reduce (fn [b sl]
+                                     (update-in b [sl] (fnil conj #{}) (:id node))
+                                     ) a
+                                   (map #(get % :_$) (:el-map node))))
+                         (sorted-map) nodes)
         ]
 
     [:div.scrape-ide
 
-     (pg-ui/menubar "" [show-UI overflow-UI])
+     (pg-ui/menubar "" [show-UI
+                        []
+                        overflow-UI
+                        []
+                        node-list-UI
+                        ])
+
 
      [:hr]
 
-     [:ul
-      (map (fn [n]
-             [:li
-              [:header (pr-str (:id n))]
-              [:div (.-outerHTML (.-parentElement (get-in (:el-map n) [0 :el])))]
-              ;[:pre (d/pretty! n)]
-              ]
-             ) nodes)
-      ]
+     (if show-nodes?
+       [:ul.el-list
+        (map (fn [n]
+               [:li
+                [:header "scrape id=" (pr-str (:id n))]
+                [:div.html (.-outerHTML (.-parentElement (get-in (:el-map n) [0 :el])))]
+                ;[:pre (d/pretty! n)]
+                ]
+               ) nodes)
+        ]
+       )
+
 
      [:div.flex {:class (if overflow? "overflow-x" "")}
+
+
 
       #_(if-not (= ::nodes show)
         (<comparison> cfg nodes)
         )
 
       (if-not (= ::comparison show)
-        (map #(<h-plan>
-                (update-in cfg [::ids] conj (:id %))
-                %)
-             nodes)
-        )
+        (let [nu-cfg (assoc cfg ::usage selector-usage) ]
+          (map #(<h-plan>
+                  (update-in nu-cfg [::ids] conj (:id %))
+                  %)
+               nodes)))
       ]
      ]
     )
