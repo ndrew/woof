@@ -178,14 +178,14 @@
 
 (rum/defcs <node> < rum/static
                     (rum/local false ::details?)
-                    {:key-fn (fn [m]
+                    {:key-fn (fn [cfg m]
                                (str
                                  (:_$  m)
                                  "_"
                                  (str/join (sort (keys m))))
 
                                )}
-  [st node]
+  [st cfg node]
 
   (let [curr-tag (:tag node)]
     [:div.plan
@@ -228,7 +228,7 @@
        [:.details
 
         [:hr]
-        [:code (d/pretty! node)]
+        [:.html (d/pretty! node)]
         ]
        )
      ]
@@ -251,7 +251,7 @@
      [:div.html (d/pretty! cfg) ])
 
    [:header (pr-str parent-idx)]
-   (map <node>
+   (map (partial <node> cfg)
         (get gr parent-idx))
    ]
   )
@@ -262,7 +262,7 @@
   (let [gr (wdom/parent-group filtered-plan)
 
         roots (sort (keys gr))]
-    [:div
+    [:div.grouped-plan-root
      [:header "PLAN GROUPED BY PARENT IDX:"]
      (map (partial <group> cfg gr) roots)
      ]
@@ -274,12 +274,13 @@
                            {:key-fn (partial _def-key-fn "<full-plan>" )}
   [cfg filtered-plan]
 
-  [:div
-   (if (::debugger? cfg)
+  [:div.full-plan-root
+
+   #_(if (::debugger? cfg)
      [:div.html (d/pretty! cfg) ])
 
    [:header "FULL PLAN: " (str (count filtered-plan)) ]
-   (map <node> filtered-plan)
+   (map (partial <node> cfg) filtered-plan)
    ]
   )
 
@@ -290,212 +291,29 @@
 
   (let [_plan (:el-map node)
         filter-fn (:node/filter-fn cfg)
+        mode (:root-UI/mode cfg)
         ]
-    [:.plan-root
+    (let [filtered-plan (vec (filter filter-fn _plan))
+          full-tree-plan (wdom/el-plan-as-tree _plan)]
 
-     (let [filtered-plan (vec (filter filter-fn _plan))
-           full-tree-plan (wdom/el-plan-as-tree _plan)]
+      [:.plan-root.flex
 
-       [:.plan-box.flex
+       (if (#{::all ::tree} mode)
+         (<tree-ui>      cfg filtered-plan full-tree-plan))
 
-        (<tree-ui>      cfg filtered-plan full-tree-plan)
+       (if (#{::all ::grouped-plan} mode)
+        (<grouped-plan> cfg filtered-plan))
 
-        (<grouped-plan> cfg filtered-plan)
-
-        (<full-plan>    cfg filtered-plan)
-        ]
-       )
-     ]
+       (if (#{::all ::full-plan} mode)
+         (<full-plan>    cfg filtered-plan))
+       ]
+      )
     )
   )
 
-;;;;;;;;;;;;;;;;;;;
-;; yt
 
+;;
 
-(rum/defc <comparison-row> < rum/reactive
-                             {:key-fn (fn [k s _ _ _ _]
-                                        ;; (.log js/console (str k "_" s))
-                                        (str k "_" s))}
-  [k short-k in-a in-b el-1 el-2]
-  [:tr  (if (and in-a in-b)
-         {:class "match-both"}
-         (if in-a
-           {:class "match-a"}
-           {:class "match-b"}
-           )
-         )
-   [:td
-    short-k
-    ]
-   [:td (pg-ui/shorten-bool in-a) ]
-   [:td
-    (if-let [node (get el-1 k)]
-      (<node> node))
-    ]
-   [:td (pg-ui/shorten-bool in-b)]
-   [:td
-    (if-let [node (get el-2 k)]
-      (<node> node))
-    ]
-   ]
-  )
-
-
-(rum/defcs <comparison> < rum/reactive
-                          {:key-fn (partial _def-key-fn "<comparison>")}
-                          (rum/local ::all ::show)
-  [st cfg nodes]
-
-  (let [
-        ;; el-1 el-2 sl1 sl2
-
-        {el-map-1 :el-map
-         el-1     :nodes
-         } (first nodes)
-        {
-         el-map-2 :el-map
-         el-2     :nodes
-         } (second nodes)
-
-        sls (map
-              (fn [node]
-                (into (sorted-set)
-                      (map #(get % :_$) (:el-map node)))
-                )
-              nodes
-              )
-
-        [sl1 sl2] sls
-
-        *prev (volatile! "")
-        show @(::show st)]
-    [:div
-
-     (pg-ui/menubar "" [
-        [(str @(::show st))
-         (fn []
-           (swap! (::show st)
-                  {::all ::different
-                   ::different ::all}
-                  )
-           )
-         ]
-        ]
-       )
-
-
-     (if (= show ::different)
-       [:div ;; different tag in order to be properly rendered
-        #_(let [items (reduce (fn [a k]
-                              (let [in-a (get sl1 k)
-                                    in-b (get sl2 k)
-                                    short-$ (let [short-$ (str/trim (str/replace k @*prev ""))]
-                                              (vreset! *prev k)
-                                              short-$)
-                                    ]
-                                (if (or (nil? in-a) (nil? in-b))
-                                  (conj a (<comparison-row> k short-$ in-a in-b el-1 el-2))
-                                  a)
-                                )
-                              )
-                            []
-                            (concat sl1 sl2)
-                            )
-              table (into [:table.selector-diff
-                           [:tr
-                            [:th "$" (str (count items)) ]
-                            [:th "A" ]
-                            [:th "A v"]
-                            [:th "B" ]
-                            [:th "B v"]
-                            ]]
-                          items
-                          )
-              ]
-
-          table
-          )
-        ]
-       ;; else
-
-       [:table.selector-diff
-
-        [:tbody
-         [:tr [:th "$"]
-          (map (fn [node]
-                 [:th {:col-span 2} (str (:id node))]) nodes)]
-
-         ;; items
-
-
-
-         (loop [res []
-                ks (apply concat sls)
-                prev-k ""
-                parent-k (first (first sls))
-                prev-margin 0
-                ]
-           (let [
-                 k (first ks)
-                 nu-ks (rest ks)
-
-                 short-k (str/trim (str/replace k prev-k ""))
-                 nu-margin (if (= k short-k)
-                             0
-                             (+ prev-margin 1)
-                             )
-
-                 ]
-
-             (if (seq nu-ks)
-               (recur (conj res
-                            [:tr
-                             {
-                              :class (if (= short-k k)
-                                       "not-child-row"
-                                       "child-row")
-                              }
-                             [:td
-                              {
-                               :class (str "lpad-" nu-margin)
-                               }
-                              short-k]
-                             [:td
-
-                              (if (= k short-k)
-                                (pr-str [parent-k k ])
-
-                                )
-
-
-                              ]
-                             [:td "A"]
-                             [:td "2"]
-                             [:td "B"]
-                             ])
-                      nu-ks
-                      k
-                      parent-k
-                      nu-margin
-
-                      )
-               res
-               )
-             )
-
-           )
-
-         ]
-
-
-        ]
-
-       )
-
-     ]
-    )
-  )
 
 
 (rum/defcs <html-node> < rum/static
@@ -531,18 +349,16 @@
 
 (rum/defcs <dashboard> < rum/static
                          (rum/local {
-                                     ::ids []
+                                     ::ids               []
 
-                                     ::debugger? false
+                                     ::debugger?         false
 
-                                     :root-UI/show ::all
-                                     :root-UI/overflow? true
+                                     :root-UI/mode       ::all
+                                     :root-UI/overflow?  true
 
-                                     :node-list-UI/show? true
+                                     :node-list-UI/show? false
 
-
-
-                                     :node/filter-fn (fn [node]
+                                     :node/filter-fn     (fn [node]
                                                        #_(let [text? (not= "" (:text node))
                                                              ;no-children? (< (:child-count node) 2)
                                                              ;div? (= "DIV" (.-tagName (:el node)))
@@ -569,15 +385,15 @@
         *cfg (::cfg st)
         cfg  @(::cfg st)
 
-        show (get cfg :root-UI/show)
+        show (get cfg :root-UI/mode)
 
-        show-UI [(str (name show))
+        show-UI [(str "show: " (name show))
          (fn []
-           (swap! *cfg update-in [:root-UI/show] {::all        ::comparison
-                                                  ::comparison ::nodes
-                                                  ::nodes      ::all}))
+           (swap! *cfg update-in [:root-UI/mode] {::all          ::tree
+                                                  ::tree         ::grouped-plan
+                                                  ::grouped-plan ::full-plan
+                                                  ::full-plan    ::all}))
          ]
-
 
         overflow-UI (<menu-btn> st :root-UI/overflow? #(str "overflow " (pg-ui/shorten-bool %)) not)
 
@@ -597,37 +413,31 @@
 
     [:div.scrape-ide
 
-     (pg-ui/menubar "" [show-UI
+     (pg-ui/menubar "" [node-list-UI
                         []
                         overflow-UI
                         debugger-UI
                         []
-                        node-list-UI
+                        show-UI
                         ])
 
-
-     [:hr]
 
      (if (cfg-v st :node-list-UI/show?)
        (<node-list> cfg nodes))
 
-     [:div.flex {:class (if (cfg-v st :root-UI/overflow?) "overflow-x" "")}
+     [:div.flex.plans {:class (if (cfg-v st :root-UI/overflow?) "overflow-x" "")}
 
-      #_(if-not (= ::nodes show)
-        (<comparison> cfg nodes)
-        )
-
-      (if-not (= ::comparison show)
-        (let [nu-cfg (assoc cfg ::usage selector-usage) ]
-          (map #(<h-plan>
-                  (update-in nu-cfg [::ids] conj (:id %))
-                  %)
-               nodes)))
+      (let [nu-cfg (assoc cfg ::usage selector-usage) ]
+        (map #(<h-plan>
+                (update-in nu-cfg [::ids] conj (:id %))
+                %)
+             nodes))
       ]
      ]
     )
   )
 
+;; yt parsing dashboard
 (rum/defc <yt> < rum/reactive
   [st *state]
 
@@ -667,33 +477,7 @@
          :el-map el-map-2
          :nodes el-2
          }
-        ]
-       )
-
-     )
-
-
-
-
-   #_[:p "processing twittor "]
-
-   #_[:ul
-      [:li "text + link"]
-      [:li "text + photos - /user/...photo/n"]
-      [:li "retweet of a link - has other @tweet handle"]
-      [:li "tweet with hash tag - /hashtag/...."]
-      [:li "tweet with youtube, link with :title and :text = https://youtu.be/..."]
-      ]
-
-
-   ;; uncomment this to work with actually scraped data
-
-   #_(when-let [tweets (:tweets st)]
-
-       (<h-plan> (:full-dom-plan (first tweets)))
-
-       ;(map <tweet> tweets)
-       )]
+        ]))]
 
   )
 
