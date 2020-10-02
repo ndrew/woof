@@ -1304,6 +1304,11 @@ pre {
 .tree-node > .detailed .tag:last-child {
     margin-right: 0;
 }
+
+.tree-node .selector {
+    font-size: 6pt;
+}
+
 .tree-node > .detailed .selector {
     font-weight: normal;
 }
@@ -1329,8 +1334,12 @@ pre {
             #ff000010,
             #ff000020 5px
     );
-
 }
+
+.tree-node.leaf.unique {
+    outline: 2px solid blue;
+}
+
 
 /*.tree-node.leaf:not(.tree-node.selected) {*/
 /*    color: gray;*/
@@ -1361,21 +1370,21 @@ pre {
 
 
 .tree-root .tree-node {
-    border-left: 3px solid #ff000011;
+    border-left: 3px solid #46444422;
 }
 
 .tree-root .tree-node:hover {
-    border-left: 3px solid #ff0000;
+    border-left: 3px solid #46444455;
 }
 
 .tree-root.horizontal .tree-node {
     border-left: unset;
-    border-top: 3px solid #ff000011;
+    border-top: 3px solid #46444422;
 }
 
 .tree-root.horizontal .tree-node:hover {
     border-left: unset;
-    border-top: 3px solid #ff0000;
+    border-top: 3px solid #46444455;
 }
 
 .filter-tag {

@@ -201,7 +201,7 @@
 
 (rum/defc <tree-node> < rum/static
                         {:key-fn (fn [cfg _ node] (str (first (::ids cfg)) "_" (:idx node)))}
-  [cfg parent _node]
+  [cfg _parent _node]
 
   (let [
 
@@ -218,25 +218,49 @@
                               )
                             (drop-last r)))
 
+        collapse? (:tree-UI/collapse? cfg)
+
+        _parent-selector (if _parent
+                           (:_$ _parent) "")
 
 
-        node (if (:tree-UI/collapse? cfg)
+
+        parent-selector _parent-selector #_(if collapse?
+                          (if (seq linear-children)
+                            (:_$ (second (reverse linear-children)))
+                            ""
+                            )
+                          _parent-selector
+                          )
+
+
+
+        node (if collapse?
           (if (seq linear-children) (last linear-children) _node)
           _node
           )
 
         selector (:_$ node)
-        parent-selector (if parent (:_$ parent) "")
 
         filter-info (get-in cfg [:filter-info (:idx node) :applied-filters] #{})
         selected? (not (empty? filter-info))
 
-
         has-children? (seq direct-children)
 
-        short-selector (str/trim (str/replace selector (re-pattern (str "^" parent-selector)) ""))
+        short-selector (if (= 0 (.indexOf selector parent-selector))
+                         (str/trim (subs selector (count parent-selector)))
+                         selector)
+
+        used-by (get (::usage cfg) selector #{})
+        node-id (first (::ids cfg))
+
+        used-by-others (disj used-by node-id)
+
+
         node-class (str/join " " (concat (if selected? #{"selected"} )
-                                         (if (not has-children?) #{"leaf"})))
+                                         (if (not has-children?) #{"leaf"})
+                                         (if (empty? used-by-others) #{"unique"})
+                                         ))
 
 
 
@@ -245,7 +269,11 @@
     [:.tree-node {:class node-class}
 
      (if (::debugger? cfg)
-       (<node> cfg node)
+       [:.debug
+        (<node> cfg node)
+        ]
+
+
        (if selected?
          [:.detailed
           [:header.flex
@@ -462,7 +490,9 @@
                                      :tree-UI/horizontal? false
                                      :tree-UI/collapse? true
 
-                                     :filter/selected-ids (into #{} (keys filters-map))
+                                     :filter/selected-ids (disj (into #{} (keys filters-map))
+                                                                :leaf?
+                                                                )
                                      ;; todo filter
                                      } ::cfg)
   [st nodes]
@@ -549,8 +579,10 @@
 
          els (wdom/q* "#contents #content")
 
-         id-1 0 ;(rand-int (count els)) ;
-         id-2 1 ;(rand-int (count els)) ;(nth coll )
+         ;id-1 0 ;(rand-int (count els)) ;
+         id-1 (rand-int (count els)) ;
+         ;id-2 1
+         id-2 (rand-int (count els)) ;(nth coll )
 
          ;; for now just take random items
          el-map-1 (wdom/el-map (nth els id-1)
