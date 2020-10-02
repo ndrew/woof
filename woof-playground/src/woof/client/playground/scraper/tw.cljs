@@ -234,7 +234,7 @@
 
         has-children? (seq direct-children)
 
-        short-selector (str/trim (str/replace selector parent-selector ""))
+        short-selector (str/trim (str/replace selector (re-pattern (str "^" parent-selector)) ""))
         node-class (str/join " " (concat (if selected? #{"selected"} )
                                          (if (not has-children?) #{"leaf"})))
 
@@ -244,42 +244,35 @@
 
     [:.tree-node {:class node-class}
 
+     (if (::debugger? cfg)
+       (<node> cfg node)
+       (if selected?
+         [:.detailed
+          [:header.flex
+           [:.selector short-selector]
+           [:.tags (map #(pg-ui/<tag> "filter-tag" (str %)) filter-info)]]
+          ;; todo: what to show here
+          (let [curr-tag (:tag node)]
+            [:.content
 
-     #_(map (fn [item]
-              [:.html (d/pretty! (:tag item))]
-              ) linear-children)
+             (if (= "IMG" curr-tag)
+               [:img.el-img {:src (:img-src node)}])
 
+             (if (= "A" curr-tag)
+               [:.el-attr [:a {:href (:href node) :target "_blank"} (:href node)]])
 
-     ;; todo: collapsing not single child nodes
-
-     (if selected?
-       [:.detailed
-        [:header.flex
-         [:.selector short-selector]
-         [:.tags (map #(pg-ui/<tag> "filter-tag" (str %)) filter-info)]]
-        ;; todo: what to show here
-        (let [curr-tag (:tag node)]
-          [:.content
-
-           (if (= "IMG" curr-tag)
-             [:img.el-img {:src (:img-src node)}])
-
-           (if (= "A" curr-tag)
-             [:.el-attr [:a {:href (:href node) :target "_blank"} (:href node)]])
-
-           (let [t (:text node)]
-             (if (not= "" t)
-               [:.el-value t]))
-
-           ]
-          )
+             (let [t (:text node)]
+               (if (not= "" t)
+                 [:.el-value t]))
+             ]
+            )
+          ]
+         [:.short
+          [:.selector short-selector]
+          ])
+       )
 
 
-        ]
-       [:.short
-        [:.selector
-         short-selector
-         ]])
 
      (if has-children?
        (map (fn [child] (<tree-node> cfg
@@ -311,9 +304,10 @@
     [:div.tree-root
      (if (:tree-UI/horizontal? cfg ) {:class "horizontal"})
 
-     (if (::debugger? cfg)
+     #_(if (::debugger? cfg)
        (<full-plan> cfg plan))
 
+     ;; migrate to defcs in order to add flex grow
      [:header "TREE:" (pr-str (::ids cfg))]
 
      [:.tree-nodes
