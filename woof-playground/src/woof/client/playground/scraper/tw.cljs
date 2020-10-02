@@ -480,6 +480,49 @@
     )
   )
 
+(defn cfg-v [st k]
+  (get @(::cfg st) k))
+
+(defn <menu-btn> [st k label-fn upd-fn]
+  (let [*cfg (::cfg st)
+        v (cfg-v st k)
+        ui [(label-fn v) (fn [] (swap! *cfg update-in [k] upd-fn))]
+        ]
+    ui
+    )
+  )
+
+(rum/defcs <html-node> < rum/static
+                         {:key-fn (fn [n] (:id n))}
+                         (rum/local {
+                                     ::html? false
+                                     } ::cfg)
+  [st n]
+  (let [
+        html-UI (<menu-btn> st ::html?
+                            #(str "html " (pg-ui/shorten-bool %)) not)
+        html (.-outerHTML (.-parentElement (get-in (:el-map n) [0 :el])))
+        ]
+    [:li
+     (pg-ui/menubar (str "scrape id=" (pr-str (:id n))) [html-UI])
+
+     (if (cfg-v st ::html?)
+       [:div.html-preview
+        {:dangerouslySetInnerHTML {:__html html}}]
+       [:div.html html]
+       )
+     ]
+    )
+  )
+
+(rum/defc <node-list> < rum/static
+  [cfg nodes]
+
+  [:ul.el-list.flex
+   {:class (if (get cfg :root-UI/overflow?) "overflow-x" "")}
+   (map <html-node> nodes)])
+
+
 (rum/defcs <dashboard> < rum/static
                          (rum/local {
                                      ::ids []
@@ -525,11 +568,10 @@
                                                   ::nodes      ::all}))
          ]
 
-        overflow? (get cfg :root-UI/overflow?)
-        overflow-UI [(str "overflow " (pg-ui/shorten-bool overflow?)) (fn [] (swap! *cfg update-in [:root-UI/overflow?] not))]
 
-        show-nodes? (get cfg :node-list-UI/show?)
-        node-list-UI [(str "nodes " (pg-ui/shorten-bool show-nodes?)) (fn [] (swap! *cfg update-in [:node-list-UI/show?] not))]
+        overflow-UI (<menu-btn> st :root-UI/overflow? #(str "overflow " (pg-ui/shorten-bool %)) not)
+
+        node-list-UI (<menu-btn> st :node-list-UI/show? #(str "nodes " (pg-ui/shorten-bool %)) not)
 
         ;; { k #{a b c d e f}}, where a b c - are node ids
         selector-usage (reduce
@@ -553,22 +595,10 @@
 
      [:hr]
 
-     (if show-nodes?
-       [:ul.el-list
-        (map (fn [n]
-               [:li
-                [:header "scrape id=" (pr-str (:id n))]
-                [:div.html (.-outerHTML (.-parentElement (get-in (:el-map n) [0 :el])))]
-                ;[:pre (d/pretty! n)]
-                ]
-               ) nodes)
-        ]
-       )
+     (if (cfg-v st :node-list-UI/show?)
+       (<node-list> cfg nodes))
 
-
-     [:div.flex {:class (if overflow? "overflow-x" "")}
-
-
+     [:div.flex {:class (if (cfg-v st :root-UI/overflow?) "overflow-x" "")}
 
       #_(if-not (= ::nodes show)
         (<comparison> cfg nodes)
