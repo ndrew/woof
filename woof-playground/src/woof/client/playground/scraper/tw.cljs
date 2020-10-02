@@ -107,44 +107,60 @@
 
 
 
-(rum/defc <v> < rum/static
-  [cfg parent plan]
+(defn cfg-v [st k]
+  (get @(::cfg st) k))
 
-  (let [selector (:_$ plan)
+(defn <menu-btn> [st k label-fn upd-fn]
+  (let [*cfg (::cfg st)
+        v (cfg-v st k)
+        ui [(label-fn v) (fn [] (swap! *cfg update-in [k] upd-fn))]
+        ]
+    ui
+    )
+  )
+
+
+(rum/defc <tree-node> < rum/static
+                        {:key-fn (fn [cfg _ node]
+                                   (str (first (::ids cfg)) "_" (:idx node))
+                                   )}
+  [cfg parent node]
+
+  (let [selector (:_$ node)
         parent-selector (if parent (:_$ parent) "")
         selected (get cfg :selected #{})
-        selected? (get selected (:idx plan))
-        ch (get plan :children [])
+        selected? (get selected (:idx node))
+        ch (get node :children [])
         has-children? (seq ch)
+
+        short-selector (str/trim (str/replace selector parent-selector ""))
         ]
+
     [:.plan (cond
               (and (not has-children?) selected?) {:class "selected leaf"}
-              selected? {:class "selected"}
+              selected? {:class "selected"})
 
-              )
+     (if (::debugger? cfg)
+       [:div.html (d/pretty! cfg) ])
+
      (if selected?
-       [:header
-          [:div (str/trim (str/replace selector parent-selector ""))]
-          (:text plan)]
-       [:span (str/trim (str/replace selector parent-selector ""))]
-       )
+       [:header [:div short-selector] (:text node)]
+       [:span short-selector])
 
      (if has-children?
-       (map (fn [child] (<v> cfg
-                          plan
-                          child))
-            ch))
-     ]
-    )
+       (map (fn [child] (<tree-node> cfg
+                                     node
+                                     child))
+            ch))])
 
   )
 
 
-(defn def-key-fn [cfg] (str/join "|" (::ids cfg)))
+(defn _def-key-fn [prefix cfg] (str prefix (str/join "|" (::ids cfg))))
 
 
 (rum/defc <tree-ui> < rum/static
-                      {:key-fn def-key-fn}
+                      {:key-fn (partial _def-key-fn "<tree-ui>")}
   [cfg plan tree-plan]
 
   (let [selected-idxs (reduce (fn [a n] (conj a (:idx n))) #{} plan)]
@@ -152,9 +168,7 @@
     [:div.tree-root
      [:header "TREE:"]
 
-     [:pre (d/pretty! selected-idxs)]
-
-     (map (fn [item] (<v> {:selected selected-idxs} nil item)) tree-plan)
+     (map (fn [item] (<tree-node> (assoc cfg :selected selected-idxs) nil item)) tree-plan)
 
      ]
     )
@@ -228,38 +242,42 @@
   )
 
 
+(rum/defc <group> < rum/static
+                    {:key-fn (fn [cfg _ parent-idx]
+                               (str (first (::ids cfg)) "_" parent-idx))}
+  [cfg gr parent-idx]
+  [:.node-group
+   #_(if (::debugger? cfg)
+     [:div.html (d/pretty! cfg) ])
+
+   [:header (pr-str parent-idx)]
+   (map <node>
+        (get gr parent-idx))
+   ]
+  )
+
 (rum/defc <grouped-plan> < rum/static
-                           {:key-fn def-key-fn}
+                           {:key-fn (partial _def-key-fn "<grouped-plan>")}
   [cfg filtered-plan]
-  (let [gr (group-by (fn [node] (dec (:parent-idx node))) filtered-plan)
+  (let [gr (wdom/parent-group filtered-plan)
+
         roots (sort (keys gr))]
     [:div
      [:header "PLAN GROUPED BY PARENT IDX:"]
-     (map
-       (fn [root]
-         [:.plan
-          [:header (pr-str root)]
-
-          (map (fn [ch]
-                 [:.plan
-                  (pr-str (wdom/to-selector (:$ ch)))
-                  ])
-               (get gr root))
-          ]
-         )
-
-       roots
-       )
+     (map (partial <group> cfg gr) roots)
      ]
     )
   )
 
 
 (rum/defc <full-plan> < rum/static
-                           {:key-fn def-key-fn}
+                           {:key-fn (partial _def-key-fn "<full-plan>" )}
   [cfg filtered-plan]
 
   [:div
+   (if (::debugger? cfg)
+     [:div.html (d/pretty! cfg) ])
+
    [:header "FULL PLAN: " (str (count filtered-plan)) ]
    (map <node> filtered-plan)
    ]
@@ -267,7 +285,7 @@
 
 
 (rum/defc <h-plan> < rum/static
-                     {:key-fn def-key-fn}
+                     {:key-fn (partial _def-key-fn "<h-plan>")}
   [cfg node]
 
   (let [_plan (:el-map node)
@@ -276,8 +294,7 @@
     [:.plan-root
 
      (let [filtered-plan (vec (filter filter-fn _plan))
-           full-tree-plan (wdom/el-plan-as-tree _plan)
-           ]
+           full-tree-plan (wdom/el-plan-as-tree _plan)]
 
        [:.plan-box.flex
 
@@ -326,7 +343,7 @@
 
 
 (rum/defcs <comparison> < rum/reactive
-                          {:key-fn def-key-fn}
+                          {:key-fn (partial _def-key-fn "<comparison>")}
                           (rum/local ::all ::show)
   [st cfg nodes]
 
@@ -480,17 +497,6 @@
     )
   )
 
-(defn cfg-v [st k]
-  (get @(::cfg st) k))
-
-(defn <menu-btn> [st k label-fn upd-fn]
-  (let [*cfg (::cfg st)
-        v (cfg-v st k)
-        ui [(label-fn v) (fn [] (swap! *cfg update-in [k] upd-fn))]
-        ]
-    ui
-    )
-  )
 
 (rum/defcs <html-node> < rum/static
                          {:key-fn (fn [n] (:id n))}
@@ -527,10 +533,14 @@
                          (rum/local {
                                      ::ids []
 
+                                     ::debugger? false
+
                                      :root-UI/show ::all
                                      :root-UI/overflow? true
 
                                      :node-list-UI/show? true
+
+
 
                                      :node/filter-fn (fn [node]
                                                        #_(let [text? (not= "" (:text node))
@@ -573,6 +583,8 @@
 
         node-list-UI (<menu-btn> st :node-list-UI/show? #(str "nodes " (pg-ui/shorten-bool %)) not)
 
+        debugger-UI (<menu-btn> st ::debugger? #(str "debug " (pg-ui/shorten-bool %)) not)
+
         ;; { k #{a b c d e f}}, where a b c - are node ids
         selector-usage (reduce
                          (fn [a node]
@@ -588,6 +600,7 @@
      (pg-ui/menubar "" [show-UI
                         []
                         overflow-UI
+                        debugger-UI
                         []
                         node-list-UI
                         ])
