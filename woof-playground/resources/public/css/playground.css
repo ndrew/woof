@@ -1279,22 +1279,15 @@ pre {
 }
 
 
+.tree-node .short {
+    padding-left: 1px;
+    padding-top: 1px;
+}
+
 
 .tree-node {
-    background-color: #f8af0f11;
-    margin: 2px;
-
-    padding: 2px;
-
-    /*margin: .5rem 0 .5rem 0;*/
-}
-
-.tree-node:hover {
-    outline: 1px solid #dc143c55;
-}
-
-.tree-node.selected:hover  {
-    outline: 2px solid #dc143c;
+    margin: 0 0 0 1px;
+    padding: 1px 0 0 0;
 }
 
 .tree-node > .detailed .tag:first-child {
@@ -1322,11 +1315,11 @@ pre {
     text-align: right;
 }
 
-
 .tree-node > .short > header {
     font-weight: unset;
     font-size: 6pt;
 }
+
 
 .tree-node.leaf.selected {
     background: repeating-linear-gradient(
@@ -1336,9 +1329,37 @@ pre {
     );
 }
 
-.tree-node.leaf.unique {
-    outline: 2px solid blue;
+
+.tree-root .tree-node.selected:hover  {
+    border-color: #ff000050;
 }
+
+
+.tree-root .tree-node {
+    border-left: 4px solid #44444411;
+
+    /*border-image: linear-gradient(right, red 10px, yellow 10px, blue 10px, orange 10px) ;*/
+}
+
+.tree-root .tree-node:hover {
+    border-color: #0000ff66;
+}
+
+
+.tree-root .tree-node.leaf.unique {
+    border-width: 10px;
+    border-color: #0000ff66;
+
+    border-top: 1px solid #0000ff66;
+    border-bottom: 1px solid #0000ff66;
+
+}
+
+.tree-root .tree-node.leaf.unique:hover {
+    border-color: blue;
+}
+
+
 
 
 /*.tree-node.leaf:not(.tree-node.selected) {*/
@@ -1369,22 +1390,15 @@ pre {
 }
 
 
-.tree-root .tree-node {
-    border-left: 3px solid #46444422;
-}
-
-.tree-root .tree-node:hover {
-    border-left: 3px solid #46444455;
-}
 
 .tree-root.horizontal .tree-node {
     border-left: unset;
-    border-top: 3px solid #46444422;
+    border-top: 4px solid #46444422;
 }
 
 .tree-root.horizontal .tree-node:hover {
     border-left: unset;
-    border-top: 3px solid #46444455;
+    border-top: 4px solid #46444455;
 }
 
 .filter-tag {
