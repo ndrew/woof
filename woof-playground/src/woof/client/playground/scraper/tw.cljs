@@ -198,19 +198,54 @@
   )
 
 
+(defn filter-class [filter-k]
+  (str "filter__" (str/replace (name filter-k)
+                                "?" "\\?")))
+
+(defn tree-key-fn [cfg k]
+  (str (first (::ids cfg)) "_" k)
+  )
+
+(rum/defcs <selector> < rum/static
+                        {:key-fn (fn [cfg s]
+                                            (tree-key-fn cfg s))}
+  [st cfg short-selector node]
+  (let [filter-info (get-in cfg [:filter-info (:idx node)])
+        applied-filters (:applied-filters filter-info)
+        selected? (not (empty? applied-filters))
+        existing-classes (get-in node [:attrs "class"] "")
+        $tags [:.tags (map #(pg-ui/<tag> (str "filter-tag "
+                                              (if (applied-filters %) "applied-tag" "")
+                                              )
+                                         (str %)) (:matching-filters filter-info))]
+        ]
+    (if selected?
+      [:header.flex
+       [:.selector short-selector
+        " ___(" existing-classes ")"
+        ]
+       $tags]
+      [:.short.flex
+       [:.selector short-selector]
+       $tags
+       ]
+      )
+
+    )
+
+  )
 
 (rum/defc <tree-node> < rum/static
                         {:key-fn (fn [cfg _ node] (str (first (::ids cfg)) "_" (:idx node)))}
   [cfg _parent _node]
 
   (let [
-
         direct-children (get _node :children [])
 
         linear-children (loop [ch direct-children
                                r [_node]]
                           (if (and (= 1 (count ch))
-                                   (empty? (:applied-filters (first ch))))
+                                   (empty? (:matching-filters (first ch))))
                             (do
                               (recur
                                 (get (first ch) :children [])
@@ -242,10 +277,12 @@
 
         selector (:_$ node)
 
-        filter-info (get-in cfg [:filter-info (:idx node) :applied-filters] #{})
-        selected? (not (empty? filter-info))
+        filter-info (get-in cfg [:filter-info (:idx node)] )
+        applied-filters (:applied-filters filter-info)
+        selected? (not (empty? applied-filters))
 
         has-children? (seq direct-children)
+        has-children?-1 (seq (get node :children []))
 
         short-selector (if (= 0 (.indexOf selector parent-selector))
                          (str/trim (subs selector (count parent-selector)))
@@ -259,26 +296,33 @@
 
         node-class (str/join " " (concat (if selected? #{"selected"} )
                                          (if (not has-children?) #{"leaf"})
+                                         (if (= 1 (count (get node :children []))) #{"single-child"})
                                          (if (empty? used-by-others) #{"unique"})
+
+                                         (map filter-class applied-filters)
                                          ))
-
-
-
         ]
 
     [:.tree-node {:class node-class}
 
      (if (::debugger? cfg)
        [:.debug
+
+        #_[:.html
+         (pr-str
+           (count direct-children)
+           "vs"
+           (count (get node :children []))
+           ;[has-children? has-children?-1]
+           )
+         ]
         (<node> cfg node)
         ]
 
 
        (if selected?
          [:.detailed
-          [:header.flex
-           [:.selector short-selector]
-           [:.tags (map #(pg-ui/<tag> "filter-tag" (str %)) filter-info)]]
+          (<selector> cfg short-selector node)
           ;; todo: what to show here
           (let [curr-tag (:tag node)]
             [:.content
@@ -295,11 +339,8 @@
              ]
             )
           ]
-         [:.short
-          [:.selector short-selector]
-          ])
+         (<selector> cfg short-selector node))
        )
-
 
 
      (if has-children?
@@ -315,15 +356,17 @@
 
 
 
-(rum/defc <tree-ui> < rum/static
-                      {:key-fn (partial _def-key-fn "<tree-ui>")}
+(rum/defc <tree-plan> < rum/static
+                        {:key-fn (partial _def-key-fn "<tree-ui>")}
   [cfg plan tree-plan]
 
   (let [selected-idxs (reduce (fn [a n] (conj a (:idx n))) #{} plan)
 
-        filter-info (reduce (fn [a n] (assoc a (:idx n)
-                                       {:selected? true
-                                        :applied-filters (:applied-filters n)
+        filter-info (reduce (fn [a n]
+                              (assoc a (:idx n)
+                                       {:selected?        true
+                                        :matching-filters (:matching-filters n)
+                                        :applied-filters  (:applied-filters n)
                                         }
                                        )) {} plan)
         ;; get filter mapping per node idx
@@ -385,33 +428,40 @@
 
 
 
-(rum/defc <h-plan> < rum/static
-                     {:key-fn (partial _def-key-fn "<h-plan>")}
+(rum/defc <plan> < rum/static
+                   {:key-fn (partial _def-key-fn "<h-plan>")}
   [cfg node]
 
-  (let [_plan (:el-map node)
-        filter-fn (:filter/fn cfg)
-        mode (:root-UI/mode cfg)
-        filtered-plan (vec
-                        (reduce
-                          (fn [a n]
-                            (if-let [filter-result (filter-fn n)]
-                              (conj a (assoc
-                                        n :applied-filters (into #{} filter-result)))
-                              a
-                              )
+  (let [filter-fn (:filter/fn cfg)
+        ;; apply filter
+        _plan (vec (map (fn [n]
+                          (let [filters-matched (into #{} (filter-fn n))]
+                            (assoc n :matching-filters filters-matched)
                             )
-                          []
+
+
+                          ) (:el-map node)))
+
+        mode (:root-UI/mode cfg)
+
+        selected-filters-ids (get cfg :filter/selected-ids)
+        filtered-plan (vec
+                        (map
+                          (fn [n]
+                            (let [filter-result (clojure.set/intersection (:matching-filters n) selected-filters-ids)]
+                              (assoc n :applied-filters filter-result)))
                           _plan )
                         )
         full-tree-plan (wdom/el-plan-as-tree _plan)
         ]
+
+
     [:.plan-root.flex
 
      ;(if (::debugger? cfg) [:div.html (d/pretty! (::usage cfg))])
 
      (if (#{::all ::tree} mode)
-       (<tree-ui>    cfg filtered-plan full-tree-plan))
+       (<tree-plan> cfg filtered-plan full-tree-plan))
 
      (if (#{::all ::grouped-plan} mode)
        (<grouped-plan> cfg filtered-plan))
@@ -460,7 +510,7 @@
 
 (def filters-map
   (assoc (sorted-map)
-    :img #(= "IMG" (:tag %))
+    :img? #(= "IMG" (:tag %))
     :link? #(= "A" (:tag %))
     :text? #(not= "" (:text %))
     :leaf? #(= (:child-count %) 0))
@@ -476,30 +526,41 @@
     )
   )
 
-(rum/defcs <dashboard> < rum/static
-                         (rum/local {
-                                     ::ids               []
+(defn selector-usage [nodes]
+  (reduce
+    (fn [a node]
+      (reduce (fn [b sl]
+                (update-in b [sl] (fnil conj #{}) (:id node))
+                ) a
+              (map #(get % :_$) (:el-map node))))
+    (sorted-map) nodes))
 
-                                     ::debugger?         false
 
-                                     :root-UI/mode       ::tree
-                                     :root-UI/overflow?  true
+(rum/defcs <dashboard>
+  < rum/static
+    (rum/local {
+                ;; generic cfg
+                ::ids                []
+                ::debugger?          false
 
-                                     :node-list-UI/show? false
+                ;; root ui
+                :root-UI/mode        ::tree
+                :root-UI/overflow?   true
 
-                                     :tree-UI/horizontal? false
-                                     :tree-UI/collapse? true
+                ;; node ui
+                :node-list-UI/show?  false
 
-                                     :filter/selected-ids (disj (into #{} (keys filters-map))
-                                                                :leaf?
-                                                                )
-                                     ;; todo filter
-                                     } ::cfg)
+                ;; tree ui
+                :tree-UI/horizontal? false
+                :tree-UI/collapse?   true
+
+                ;; filter ui
+                :filter/selected-ids (disj (into #{} (keys filters-map)) :leaf?)
+                :filter/all-ids (keys filters-map)
+                } ::cfg)
   [st nodes]
 
-  (let [
-
-        *cfg (::cfg st)
+  (let [*cfg (::cfg st)
         cfg  @(::cfg st)
 
         show (get cfg :root-UI/mode)
@@ -511,7 +572,6 @@
                                                   ::grouped-plan ::full-plan
                                                   ::full-plan    ::all}))
          ]
-
         overflow-UI  (<menu-btn> st :root-UI/overflow? #(str "overflow " (pg-ui/shorten-bool %)) not)
         node-list-UI (<menu-btn> st :node-list-UI/show? #(str "show nodes:" (pg-ui/shorten-bool %)) not)
         debugger-UI  (<menu-btn> st ::debugger? #(str "debug " (pg-ui/shorten-bool %)) not)
@@ -520,18 +580,12 @@
         tree-UI-collapse  (<menu-btn> st :tree-UI/collapse? #(str "collapse intermediary nodes " (pg-ui/shorten-bool %)) not)
 
         ;; { k #{a b c d e f}}, where a b c - are node ids
-        selector-usage (reduce
-                         (fn [a node]
-                           (reduce (fn [b sl]
-                                     (update-in b [sl] (fnil conj #{}) (:id node))
-                                     ) a
-                                   (map #(get % :_$) (:el-map node))))
-                         (sorted-map) nodes)
+        selector-usage-map (selector-usage nodes)
         selected-filters (cfg-v st :filter/selected-ids)
         ]
 
     [:div.scrape-ide
-     (pg-ui/menubar "" [node-list-UI [] overflow-UI debugger-UI [] show-UI []
+     (pg-ui/menubar "" [debugger-UI [] node-list-UI  [] show-UI [] overflow-UI []
                         tree-UI-horizontal tree-UI-collapse ])
 
      (if (cfg-v st :node-list-UI/show?)
@@ -542,28 +596,33 @@
        [:header "FILTER: any of"]
        (map (fn [filter-id]
               (let [selected? (get selected-filters filter-id )]
-                (pg-ui/menu-item (str (pg-ui/shorten-bool selected?) " " (name filter-id))
-                                 (fn []
-                                   (swap! *cfg update :filter/selected-ids
-                                          (if selected? disj conj)
-                                          filter-id)))
+
+                [:a.menu-item
+                 {:href "#"
+                  :class (filter-class filter-id)
+                  :on-click (fn [e]
+                                        (swap! *cfg update :filter/selected-ids
+                                               (if selected? disj conj)
+                                               filter-id)
+
+                                        (.preventDefault e)
+                                        false)}
+                 (str (pg-ui/shorten-bool selected?) " " (name filter-id))]
+
                 )
               )
             (keys filters-map))
        ]
       ]
 
+     ;[:.html (d/pretty! selected-filters)]
 
      [:div.flex.plans {:class (if (cfg-v st :root-UI/overflow?) "overflow-x" "")}
 
-      (let [filter-fn (make-filter-fn selected-filters)
-
-            nu-cfg (assoc cfg ::usage selector-usage
-                              :filter/fn filter-fn) ]
-        (map #(<h-plan>
-                (update-in nu-cfg [::ids] conj (:id %))
-                %)
-             nodes))
+      (let [filter-fn  (make-filter-fn (cfg-v st :filter/all-ids))
+            nu-cfg (assoc cfg ::usage selector-usage-map
+                              :filter/fn filter-fn)]
+        (map #(<plan> (update-in nu-cfg [::ids] conj (:id %)) %) nodes))
       ]
      ]
     )
@@ -579,10 +638,10 @@
 
          els (wdom/q* "#contents #content")
 
-         ;id-1 0 ;(rand-int (count els)) ;
-         id-1 (rand-int (count els)) ;
-         ;id-2 1
-         id-2 (rand-int (count els)) ;(nth coll )
+         id-1 0 ;(rand-int (count els)) ;
+         ;id-1 (rand-int (count els)) ;
+         id-2 1
+         ;id-2 (rand-int (count els)) ;(nth coll )
 
          ;; for now just take random items
          el-map-1 (wdom/el-map (nth els id-1)
@@ -762,7 +821,7 @@
 
    #_(when-let [tweets (:tweets st)]
 
-       (<h-plan> (:full-dom-plan (first tweets)))
+       (<plan> (:full-dom-plan (first tweets)))
 
        ;(map <tweet> tweets)
        )

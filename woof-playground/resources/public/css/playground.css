@@ -1260,8 +1260,13 @@ pre {
 }
 
 .plans .plan-root {
-    padding-left: .5rem;
-    border-left: 1px solid crimson;
+    padding-left: .25rem;
+    padding-right: .5rem;
+    border-left: 1px solid grey;
+}
+
+.plan:hover {
+    background-color: #cc160511;
 }
 
 .plans .plan-root:first-child {
@@ -1290,6 +1295,10 @@ pre {
     padding: 1px 0 0 0;
 }
 
+.tree-node.leaf:hover {
+    background-color: #ee82ee22;
+}
+
 .tree-node > .detailed .tag:first-child {
     margin-left: 1rem;
 }
@@ -1310,7 +1319,8 @@ pre {
     font-weight: bolder;
 }
 
-.tree-node > .detailed .tags {
+.tree-node > .detailed .tags,
+.tree-node > .short .tags {
     margin-left: auto;
     text-align: right;
 }
@@ -1322,12 +1332,34 @@ pre {
 
 
 .tree-node.leaf.selected {
-    background: repeating-linear-gradient(
-            -45deg,
-            #ff000010,
-            #ff000020 5px
-    );
+    /*background: repeating-linear-gradient(*/
+    /*        -45deg,*/
+    /*        #ff000010,*/
+    /*        #ff000020 5px*/
+    /*);*/
 }
+
+.tree-root .tree-node.single-child {
+    border-width: 0;
+    margin: 0;
+}
+
+.tree-node.leaf.selected.filter__text\\\?,
+.menubar a.filter__text\\\? {
+    background-color: #29a99f22;
+}
+
+
+.tree-node.leaf.selected.filter__link\\\?,
+.menubar a.filter__link\\\? {
+    background-color: #0000ff22;
+}
+
+.tree-node.leaf.selected.filter__img\\\?,
+.menubar a.filter__img\\\? {
+    background-color: #f652d022;
+}
+
 
 
 .tree-root .tree-node.selected:hover  {
@@ -1402,9 +1434,13 @@ pre {
 }
 
 .filter-tag {
-    background-color: #f8b7e8;
+    background-color: #44444411;
     font-size: 7pt;
     padding: 1px 2px;
+}
+
+.applied-tag {
+    background-color: #29a99f55;
 }
 
 
