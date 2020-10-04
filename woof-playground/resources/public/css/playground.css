@@ -1283,6 +1283,10 @@ pre {
     margin-left: .5rem;
 }
 
+.plan-root > * > .menubar {
+    margin-bottom: .5rem;
+}
+
 
 .tree-node .short {
     padding-left: 1px;

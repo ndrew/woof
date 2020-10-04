@@ -183,18 +183,63 @@
   )
 
 
-(rum/defc <full-plan> < rum/static
-                        {:key-fn (partial _def-key-fn "<full-plan>" )}
-  [cfg filtered-plan]
-
-  [:div.full-plan-root
-
+(rum/defc <group> < rum/static
+                    {:key-fn (fn [cfg _ parent-idx]
+                               (str (first (::ids cfg)) "_" parent-idx))}
+  [cfg gr parent-idx]
+  [:.node-group
    #_(if (::debugger? cfg)
        [:div.html (d/pretty! cfg) ])
 
-   [:header "FULL PLAN: " (str (count filtered-plan)) ]
-   (map (partial <node> cfg) filtered-plan)
+   [:header (pr-str parent-idx)]
+   (map (partial <node> cfg)
+        (get gr parent-idx))
    ]
+  )
+
+
+
+(rum/defc <grouped-plan> < rum/static
+                           {:key-fn (partial _def-key-fn "<grouped-plan>")}
+  [cfg filtered-plan]
+  (let [gr (wdom/parent-group filtered-plan)
+
+        roots (sort (keys gr))]
+    [:div.grouped-plan-root
+     [:header "PLAN GROUPED BY PARENT IDX:"]
+     (map (partial <group> cfg gr) roots)
+     ]
+    )
+  )
+
+
+
+(rum/defcs <full-plan> < rum/static
+                         (rum/local false ::grouped?)
+                         {:key-fn (partial _def-key-fn "<full-plan>")}
+  [st cfg filtered-plan]
+
+  (let [grouped? @(::grouped? st)]
+    [:div {:class (if grouped? "grouped-plan-root"
+                               "full-plan-root")}
+
+     (pg-ui/menubar (if grouped?
+                      "PLAN GROUPED BY PARENT IDX:"
+                      (str "FULL PLAN: " (str (count filtered-plan))))
+                    [[(str "group " (pg-ui/shorten-bool grouped?)) (fn [] (swap! (::grouped? st) not))]])
+
+     (if @(::grouped? st)
+       [:.grouped-plan
+        (let [gr (wdom/parent-group filtered-plan)
+              roots (sort (keys gr))]
+          (map (partial <group> cfg gr) roots))]
+       [:.full-plan
+        (map (partial <node> cfg) filtered-plan)
+        ]
+
+       )
+     ]
+    )
   )
 
 
@@ -207,8 +252,7 @@
   )
 
 (rum/defcs <selector> < rum/static
-                        {:key-fn (fn [cfg s]
-                                            (tree-key-fn cfg s))}
+                        {:key-fn (fn [cfg s] (tree-key-fn cfg s))}
   [st cfg short-selector node]
   (let [filter-info (get-in cfg [:filter-info (:idx node)])
         applied-filters (:applied-filters filter-info)
@@ -398,34 +442,6 @@
   )
 
 
-(rum/defc <group> < rum/static
-                    {:key-fn (fn [cfg _ parent-idx]
-                               (str (first (::ids cfg)) "_" parent-idx))}
-  [cfg gr parent-idx]
-  [:.node-group
-   #_(if (::debugger? cfg)
-     [:div.html (d/pretty! cfg) ])
-
-   [:header (pr-str parent-idx)]
-   (map (partial <node> cfg)
-        (get gr parent-idx))
-   ]
-  )
-
-(rum/defc <grouped-plan> < rum/static
-                           {:key-fn (partial _def-key-fn "<grouped-plan>")}
-  [cfg filtered-plan]
-  (let [gr (wdom/parent-group filtered-plan)
-
-        roots (sort (keys gr))]
-    [:div.grouped-plan-root
-     [:header "PLAN GROUPED BY PARENT IDX:"]
-     (map (partial <group> cfg gr) roots)
-     ]
-    )
-  )
-
-
 
 
 (rum/defc <plan> < rum/static
@@ -463,10 +479,7 @@
      (if (#{::all ::tree} mode)
        (<tree-plan> cfg filtered-plan full-tree-plan))
 
-     (if (#{::all ::grouped-plan} mode)
-       (<grouped-plan> cfg filtered-plan))
-
-     (if (#{::all ::full-plan} mode)
+     (if (#{::all ::plan} mode)
        (<full-plan>    cfg filtered-plan))
      ]
     )
@@ -568,9 +581,8 @@
         show-UI [(str "show: " (name show))
          (fn []
            (swap! *cfg update-in [:root-UI/mode] {::all          ::tree
-                                                  ::tree         ::grouped-plan
-                                                  ::grouped-plan ::full-plan
-                                                  ::full-plan    ::all}))
+                                                  ::tree         ::plan
+                                                  ::plan         ::all}))
          ]
         overflow-UI  (<menu-btn> st :root-UI/overflow? #(str "overflow " (pg-ui/shorten-bool %)) not)
         node-list-UI (<menu-btn> st :node-list-UI/show? #(str "show nodes:" (pg-ui/shorten-bool %)) not)
@@ -585,8 +597,8 @@
         ]
 
     [:div.scrape-ide
-     (pg-ui/menubar "" [debugger-UI [] node-list-UI  [] show-UI [] overflow-UI []
-                        tree-UI-horizontal tree-UI-collapse ])
+     (pg-ui/menubar "" [show-UI [] node-list-UI
+                        [] [] [] tree-UI-horizontal tree-UI-collapse [] [] [] overflow-UI debugger-UI])
 
      (if (cfg-v st :node-list-UI/show?)
        (<node-list> cfg nodes))
