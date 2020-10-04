@@ -126,9 +126,10 @@
                     (rum/local false ::details?)
                     {:key-fn (fn [cfg m]
                                (str
-                                 (:_$  m)
-                                 "_"
-                                 (str/join (sort (keys m))))
+                                 (first (::ids cfg)) "_"
+                                 (get cfg :node/prefix "")
+                                 (:idx  m)
+                                 "_" (str/join (sort (keys m))))
 
                                )}
   [st cfg node]
@@ -185,32 +186,18 @@
 
 (rum/defc <group> < rum/static
                     {:key-fn (fn [cfg _ parent-idx]
-                               (str (first (::ids cfg)) "_" parent-idx))}
+                               (str (first (::ids cfg)) "_" "group_"  parent-idx))}
   [cfg gr parent-idx]
   [:.node-group
    #_(if (::debugger? cfg)
        [:div.html (d/pretty! cfg) ])
 
    [:header (pr-str parent-idx)]
-   (map (partial <node> cfg)
+   (map (partial <node> (assoc cfg :node/prefix "group_"))
         (get gr parent-idx))
    ]
   )
 
-
-
-(rum/defc <grouped-plan> < rum/static
-                           {:key-fn (partial _def-key-fn "<grouped-plan>")}
-  [cfg filtered-plan]
-  (let [gr (wdom/parent-group filtered-plan)
-
-        roots (sort (keys gr))]
-    [:div.grouped-plan-root
-     [:header "PLAN GROUPED BY PARENT IDX:"]
-     (map (partial <group> cfg gr) roots)
-     ]
-    )
-  )
 
 
 
@@ -222,20 +209,17 @@
   (let [grouped? @(::grouped? st)]
     [:div {:class (if grouped? "grouped-plan-root"
                                "full-plan-root")}
-
      (pg-ui/menubar (if grouped?
                       "PLAN GROUPED BY PARENT IDX:"
                       (str "FULL PLAN: " (str (count filtered-plan))))
                     [[(str "group " (pg-ui/shorten-bool grouped?)) (fn [] (swap! (::grouped? st) not))]])
 
      (if @(::grouped? st)
-       [:.grouped-plan
-        (let [gr (wdom/parent-group filtered-plan)
-              roots (sort (keys gr))]
-          (map (partial <group> cfg gr) roots))]
-       [:.full-plan
-        (map (partial <node> cfg) filtered-plan)
-        ]
+       (let [gr (wdom/parent-group filtered-plan)
+             roots (sort (keys gr))]
+         (map (partial <group> cfg gr) roots))
+
+       (map (partial <node> (assoc cfg :node/prefix "full_")) filtered-plan)
 
        )
      ]
