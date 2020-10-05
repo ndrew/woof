@@ -1270,15 +1270,40 @@ pre {
     /*margin-left: 1rem;*/
 }
 
+/* a: leave all elements, but make them transparent */
+.hide-not-matched .not-matched {
+    /*visibility: hidden;*/
+}
+
+.hide-not-matched .not-matched {
+   display: none;
+}
+
+
+.plan-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
 .node-group > .plan-header {
     margin-top: .333rem;
 
     border-bottom: 1px solid #444444;
     font-weight: bold;
+
 }
 
 .plan:hover {
     background-color: #cc160511;
+}
+
+.plan .details {
+    margin-left: 2rem;
+}
+
+.plan .details > *:first-child {
+    margin-top: .25rem;
 }
 
 .plans .plan-root:first-child {
@@ -1335,6 +1360,7 @@ pre {
     font-weight: bolder;
 }
 
+.plan-header > .tags,
 .tree-node > .detailed .tags,
 .tree-node > .short .tags {
     margin-left: auto;
@@ -1449,10 +1475,13 @@ pre {
     border-top: 4px solid #46444455;
 }
 
-.filter-tag {
-    background-color: #44444411;
+.small-tag {
     font-size: 7pt;
     padding: 1px 2px;
+}
+
+.filter-tag {
+    background-color: #44444411;
 }
 
 .applied-tag {

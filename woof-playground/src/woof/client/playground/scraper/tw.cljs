@@ -139,67 +139,58 @@
         selector (:_$ node)
         partial-selector (wdom/shorten-selector-string selector parent-selector)
         ]
-    (let [details? @(::details? st)]
+    (let [details? @(::details? st)
+          applied-filters (get node :applied-filters #{})
+          ]
       [:div.plan
+       (if (empty? applied-filters) {:class "not-matched"} {})
 
        ;; todo: migrate to a separate control
        [:div.plan-header
 
         (pg-ui/menubar "" [[(if details? "▿" "▹") (fn [] (swap! (::details? st) not))]])
 
-        [:span.tag.idx (str (:idx node))
+        [:span.small-tag.tag.idx (str (:idx node))
          [:sup (str (:parent-idx node))]]
 
-        [:span.tag.selector partial-selector]
+        [:span.small-tag.tag.selector partial-selector]
 
         (if details?
-          (pg-ui/menubar
-            ""
-            [
-             ["📋full $"
-              (fn []
-                (wdom/copy-to-clipboard selector)
-                ; (swap! (::details? st) not)
-                )
-              ]
-             ["📋partial $"
-              (fn []
-                (wdom/copy-to-clipboard partial-selector))
-              ]
-             ]
-            )
-          )
+          (pg-ui/menubar ""
+                         [["📋full $" (fn [] (wdom/copy-to-clipboard selector))]
+                          ["📋partial $" (fn [] (wdom/copy-to-clipboard partial-selector))]]))
+
+        [:.tags (map #(pg-ui/<tag> (str "small-tag " "filter-tag "
+                                        (if (applied-filters %) "applied-tag" ""))
+                                   (str %)) (:matching-filters node))]
 
 
         ]
 
-       (if (= "IMG" curr-tag)
-         [:img.el-img {:src (:img-src node)}]
 
-         #_(str
-             "<img class='el-img' src='" (wdom/attr (:el n) "src") "'/>"
-             )
-         )
+       [:.details
+        (if (= "IMG" curr-tag)
+          [:img.el-img {:src (:img-src node)}]
+          #_(str
+              "<img class='el-img' src='" (wdom/attr (:el n) "src") "'/>"
+              )
+          )
 
-       (if (= "A" curr-tag)
-         [:.el-attr
-          [:a {:href (:href node) :target "_blank"} (:href node)]]
-         )
+        (if (= "A" curr-tag)
+          [:.el-attr
+           [:a {:href (:href node) :target "_blank"} (:href node)]])
 
-       (let [t (:text node)]
-         (if (not= "" t)
-           [:.el-value t]
-           ))
+        (let [t (:text node)]
+          (if (not= "" t)
+            [:.el-value t]))
 
+        ;; todo: data attributes
 
-
-       (if @(::details? st)
-         [:.details
-
-          [:hr]
+        (if details?
           [:.html (d/pretty! node)]
-          ]
-         )
+          )
+        ]
+
        ]
       )
 
@@ -214,8 +205,15 @@
   [cfg plan gr parent-idx]
   (let [parent-node (get plan parent-idx)
         parent-selector (if parent-node (:_$ parent-node) "")
+        nodes (get gr parent-idx)
+
+        all-applied-filters (reduce (fn [a n]
+                                      (into a (get n :applied-filters #{}))
+                                      ) #{} nodes)
         ]
     [:.node-group
+     (if (empty? all-applied-filters) {:class "not-matched"})
+
      #_(if (::debugger? cfg)
          [:div.html (d/pretty! cfg) ])
 
@@ -224,7 +222,7 @@
      (map (partial <node> (assoc cfg
                             :node/prefix "group_"
                             :node/parent-selector parent-selector))
-          (get gr parent-idx))
+          nodes)
      ]
     )
 
@@ -234,18 +232,17 @@
 
 
 (rum/defcs <full-plan> < rum/static
-                         (rum/local true ::grouped?)
+                         (rum/local true ::hide-not-matched?)
                          {:key-fn (partial _def-key-fn "<full-plan>")}
   [st cfg filtered-plan]
 
-  (let [grouped? @(::grouped? st)]
+  (let [hide? @(::hide-not-matched? st)]
     [:div.grouped-plan-root
+     (if hide? {:class "hide-not-matched"} {})
 
      [:div
       (pg-ui/menubar "" [
-                         ["action" (fn []
-                                     ;;
-                                     )]
+                         [(if hide? "show all" "show only matched") (fn [] (swap! (::hide-not-matched? st) not))]
                          ])
       ]
 
@@ -272,7 +269,7 @@
         applied-filters (:applied-filters filter-info)
         selected? (not (empty? applied-filters))
         existing-classes (get-in node [:attrs "class"] "")
-        $tags [:.tags (map #(pg-ui/<tag> (str "filter-tag "
+        $tags [:.tags (map #(pg-ui/<tag> (str "small-tag filter-tag "
                                               (if (applied-filters %) "applied-tag" "")
                                               )
                                          (str %)) (:matching-filters filter-info))]
