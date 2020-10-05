@@ -1265,13 +1265,16 @@ pre {
     border-left: 1px solid grey;
 }
 
-.grouped-plan-root .node-group > header {
-    border-bottom: 1px solid #444444;
-    font-weight: normal;
-}
 
 .grouped-plan-root .node-group > .plan {
-    margin-left: 1rem;
+    /*margin-left: 1rem;*/
+}
+
+.node-group > .plan-header {
+    margin-top: .333rem;
+
+    border-bottom: 1px solid #444444;
+    font-weight: bold;
 }
 
 .plan:hover {
@@ -1457,8 +1460,6 @@ pre {
 }
 
 
-
-
 .scrape-ide .el-list {
 
     list-style: none;
@@ -1486,4 +1487,12 @@ pre {
     padding-right: .5rem;
 }
 
+.idx {
+    background-color: #29a99f55;
+    font-weight: normal;
+}
 
+.tag.selector {
+    background-color: rgba(205, 246, 86, 0.46);
+    font-weight: normal;
+}

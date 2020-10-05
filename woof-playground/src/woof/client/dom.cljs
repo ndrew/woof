@@ -319,6 +319,12 @@
                     ) $))
   )
 
+
+(defn shorten-selector-string [selector parent-selector]
+  (if (= 0 (.indexOf selector parent-selector))
+    (str/trim (subs selector (count parent-selector)))
+    selector))
+
 ;; breadth first search of element children and keep the selector and other nice properties, like
 ;; if the node has text. parsing can be skipped via skip-fn, in order to not traverse svgs, or other stuff
 (defn el-map
@@ -623,6 +629,15 @@
     )
   )
 
+
+(defn copy-to-clipboard [v]
+  (let [clipboard js/navigator.clipboard
+        copy-value (if (string? v) v (d/pretty! v))
+        ]
+    (-> (.writeText clipboard copy-value)
+        (.then (fn [response] (.log js/console "Copied to clipboard!" copy-value))
+               (fn [err]      (.warn js/console "Failed to copy to clipboard" err))))
+    ))
 
 (defn copy-to-clipboard-handler [v]
   (when js/navigator.clipboard.writeText
