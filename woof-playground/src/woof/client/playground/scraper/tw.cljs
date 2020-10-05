@@ -301,12 +301,43 @@
   )
 
 
+(defn build-scrape-plan [cfg plan]
+  (.groupCollapsed js/console "SCRAPE PLAN")
+  (let [result (reduce (fn [a n]
+                         (let [selector (:_$ n)
+                               applied-filters (:applied-filters n)]
+                           (if
+                             (and
+                               (not (empty? applied-filters))
+                               (not (get-in cfg [:filter/exclusions selector])))
+                             (let []
+                               (conj a
+                                     (merge
+                                       {:_$ selector
+                                        :filters applied-filters}
+                                       (if-let [alias (get-in cfg [:selector/aliases selector])]
+                                         {:alias alias}
+                                         )
+                                       )
+                                     )
+                               )
+                             a
+                             )
+                           )
 
+
+                         ) [] plan)]
+    (.groupEnd js/console)
+
+    result
+    )
+
+  )
 
 (rum/defcs <full-plan> < rum/static
                          (rum/local true ::hide-not-matched?)
                          {:key-fn (partial _def-key-fn "<full-plan>")}
-  [st cfg filtered-plan]
+  [st cfg plan]
 
   (let [hide? @(::hide-not-matched? st)]
     [:div.grouped-plan-root
@@ -315,12 +346,16 @@
      [:div
       (pg-ui/menubar "" [
                          [(if hide? "show all" "show only matched") (fn [] (swap! (::hide-not-matched? st) not))]
+                         [] [] [] ["BUILD PARSE PLAN" (fn []
+                                                        (let [scrape-plan (build-scrape-plan cfg plan)]
+                                                          (.log js/console scrape-plan))
+                                                        )]
                          ])
       ]
 
-     (let [gr (wdom/parent-group filtered-plan)
+     (let [gr (wdom/parent-group plan)
            roots (sort (keys gr))]
-       (map (partial <group> cfg filtered-plan gr) roots))
+       (map (partial <group> cfg plan gr) roots))
      ]
     )
   )
@@ -659,7 +694,15 @@
               (swap! *cfg assoc k v)
               )
 
-        cfg (assoc _cfg :cfg/upd! upd!)
+        ;; { k #{a b c d e f}}, where a b c - are node ids
+        selector-usage-map (selector-usage nodes)
+        selected-filters (cfg-v st :filter/selected-ids)
+
+        filter-fn  (make-filter-fn (cfg-v st :filter/all-ids))
+        cfg     (assoc _cfg
+                     ::usage selector-usage-map
+                     :filter/fn filter-fn
+                     :cfg/upd! upd!)
 
         show (get cfg :root-UI/mode)
 
@@ -673,12 +716,11 @@
         node-list-UI (<menu-btn> st :node-list-UI/show? #(str "show nodes:" (pg-ui/shorten-bool %)) not)
         debugger-UI  (<menu-btn> st ::debugger? #(str "debug " (pg-ui/shorten-bool %)) not)
 
+
+
         tree-UI-horizontal  (<menu-btn> st :tree-UI/horizontal? #(str "tree: horizontal " (pg-ui/shorten-bool %)) not)
         tree-UI-collapse  (<menu-btn> st :tree-UI/collapse? #(str "collapse intermediary nodes " (pg-ui/shorten-bool %)) not)
 
-        ;; { k #{a b c d e f}}, where a b c - are node ids
-        selector-usage-map (selector-usage nodes)
-        selected-filters (cfg-v st :filter/selected-ids)
         ]
 
     [:div.scrape-ide
@@ -722,26 +764,20 @@
      ;[:.html (d/pretty! selected-filters)]
 
      [:div.flex.plans {:class (if (cfg-v st :root-UI/overflow?) "overflow-x" "")}
-
-      (let [filter-fn  (make-filter-fn (cfg-v st :filter/all-ids))
-            nu-cfg     (assoc cfg ::usage selector-usage-map
-                                  :filter/fn filter-fn)
-            ]
-
-        (map #(<plan>
-                (update-in nu-cfg [::ids] conj (:id %))
-                (assoc %
-                  :el-map (vec (map (fn [n]
-                                      (let [selected-filters-ids (get cfg :filter/selected-ids)
-                                            filters-matched (into #{} (filter-fn n))
-                                            filter-result (clojure.set/intersection filters-matched selected-filters-ids)]
-                                        (assoc n
-                                          :matching-filters filters-matched
-                                          :applied-filters filter-result
-                                          ))) (:el-map %)))
-                  )
+      (map #(<plan>
+              (update-in cfg [::ids] conj (:id %))
+              (assoc %
+                :el-map (vec (map (fn [n]
+                                    (let [selected-filters-ids (get cfg :filter/selected-ids)
+                                          filters-matched (into #{} (filter-fn n))
+                                          filter-result (clojure.set/intersection filters-matched selected-filters-ids)]
+                                      (assoc n
+                                        :matching-filters filters-matched
+                                        :applied-filters filter-result
+                                        ))) (:el-map %)))
                 )
-             nodes))
+              )
+           nodes)
       ]
      ]
     )
