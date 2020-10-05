@@ -309,9 +309,13 @@
   (str/join " > "
             (map #(str
                     (:t %)
+                    (if-let [nth-i (:nth-child %)]
+                      (str ":nth-child(" nth-i ")")
+                      "")
                     (if (> (:child-count %) 1)
                       (str ":nth-child(" (:i %) ")")
                       "")
+                    ;;
                     ) $))
   )
 
@@ -319,11 +323,10 @@
 ;; if the node has text. parsing can be skipped via skip-fn, in order to not traverse svgs, or other stuff
 (defn el-map
   [root
-   & {:keys [skip-fn node-fn] :or {
+   & {:keys [skip-fn node-fn top-selector-fn] :or {
                                    skip-fn (fn [_ _] false)
-                                   node-fn (fn [node]
-                                             {}
-                                             )
+                                   node-fn (fn [node] {})
+                                   top-selector-fn (fn [base el] {})
                                    }}
    ]
 
@@ -338,8 +341,10 @@
                  queue (into cljs.core/PersistentQueue.EMPTY
                              (map-indexed
                                (fn [i el]
-                                 (let [selector-data [{:t (.-tagName el)
-                                                       :i (inc i)}]]
+                                 (let [base-selector {:t (.-tagName el)
+                                                      :i (inc i)}
+                                       selector-data [(merge base-selector
+                                                             (top-selector-fn base-selector el))]]
 
                                    (make-node
                                      {
@@ -439,6 +444,10 @@
 
 
 
+(defn parent-group [plan]
+  (group-by (fn [node] (dec (:parent-idx node))) plan)
+  )
+
 ;; [{}]
 
 (defn el-plan-as-tree
@@ -446,7 +455,7 @@
   [plan]
   ;; (.warn js/console "PLAN=" plan)
 
-  (let [gr (group-by (fn [node] (dec (:parent-idx node))) plan)
+  (let [gr (parent-group plan)
         roots (sort (keys gr))
 
         ;;_ (do (.warn js/console gr))
@@ -486,6 +495,7 @@
                    )
         ]
 
+    ;; remove first level elements
     (filter (fn [item] (= 0 (:parent-idx item))) new-plan)
     )
   )
