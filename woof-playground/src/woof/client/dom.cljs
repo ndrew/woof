@@ -338,7 +338,7 @@
 
   (let [make-node (fn [node] (merge node (node-fn node)))]
 
-    (.groupCollapsed js/console "LMAP: root" root)
+    ;(.groupCollapsed js/console "LMAP: root" root)
     (let [result
           (loop [ret []
                  queue (into cljs.core/PersistentQueue.EMPTY
@@ -379,6 +379,7 @@
                     has-text? (not= "" text)
                     use-text? (volatile! true)              ;; ugly, but works
 
+                    ;; migrate to loop some day
                     *i (volatile! 0)
 
                     idx (:idx node)
@@ -436,14 +437,14 @@
 
                     ]
 
-                (.log js/console idx (:parent-idx (last new-ret)) (last new-ret))
+                ; (.log js/console idx (:parent-idx (last new-ret)) (last new-ret))
 
                 (recur new-ret new-children
                        (+ counter (count children-nodes))))
               ret
               )
             )]
-      (.groupEnd js/console)
+      ; (.groupEnd js/console)
       result
       )
     )
