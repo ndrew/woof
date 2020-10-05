@@ -143,11 +143,13 @@
   )
 
 (rum/defc <plan-header> < rum/static
-                 {:key-fn (fn [cfg _ m ]
+                 {:key-fn (fn [cfg *details? m ]
                             (str
                               (first (::ids cfg)) "_"
                               (get cfg :node/prefix "")
-                              (:idx  m)
+                              "_" (str @*details?)
+                              "_" (:idx  m)
+
                               )
                             )}
   [cfg *details? node]
@@ -155,8 +157,27 @@
         selector (:_$ node)
         partial-selector (wdom/shorten-selector-string selector parent-selector)
 
-        applied-filters (get node :applied-filters #{})
         details? @*details?
+        idx (:idx node)
+
+        exclusions (get cfg :filter/exclusions #{})
+        excluded? (exclusions selector)
+
+        aliases (get cfg :selector/aliases {})
+
+        quick-menu [(if excluded?
+                      ["cancel exclusion" (fn []
+                                            ((:cfg/upd! cfg) :filter/exclusions (disj exclusions selector)))]
+                      ["exclude" (fn []
+                                   ((:cfg/upd! cfg) :filter/exclusions (conj exclusions selector)))])
+                    ["alias" (fn []
+                               ((:cfg/upd! cfg) :selector/aliases
+                                (assoc aliases
+                                  selector
+                                  (js/prompt "provide an alias" "")
+                                  ))
+
+                               )]]
         ]
 
     [:div.plan-header
@@ -165,18 +186,27 @@
                     :class "minimal" )
 
 
+     (if-let [alias (get aliases selector)]
+       [:span.tag.alias (pr-str alias)]
+       )
+
      [:span.small-tag.tag.selector partial-selector]
 
      (if details?
        (pg-ui/menubar ""
-                      [["📋full $" (fn [] (wdom/copy-to-clipboard selector))]
-                       ["📋partial $" (fn [] (wdom/copy-to-clipboard partial-selector))]]))
+                      (conj quick-menu
+                            []
+                            ["📋full $" (fn [] (wdom/copy-to-clipboard selector))]
+                            ["📋partial $" (fn [] (wdom/copy-to-clipboard partial-selector))] ))
+       (pg-ui/menubar "" quick-menu)
+
+       )
 
      [:.tags (map #(<tag> (assoc cfg
                             :node/prefix "tag_"
                             ) node %) (:matching-filters node))]
 
-     [:span.small-tag.tag.idx (str (:idx node))
+     [:span.small-tag.tag.idx (str idx)
       [:sup (str (:parent-idx node))]]
      ]
     )
@@ -199,9 +229,13 @@
   (let [curr-tag (:tag node)
         details? @(::details? st)
         applied-filters (get node :applied-filters #{})
+
+        exclusions (get cfg :filter/exclusions #{})
+        excluded? (exclusions (:_$ node))
         ]
     [:div.plan
-     (if (empty? applied-filters) {:class "not-matched"} {})
+     (if (empty? applied-filters) {:class "not-matched"}
+                                  (if excluded? {:class "excluded"} {}))
 
      (<plan-header> (assoc cfg
                       :node/prefix "pl_header_")
@@ -610,11 +644,22 @@
                 ;; filter ui
                 :filter/selected-ids (disj (into #{} (keys filters-map)) :leaf?)
                 :filter/all-ids (keys filters-map)
+
+                :filter/exclusions #{}
+
+                :selector/aliases {}
+
                 } ::cfg)
   [st nodes]
 
   (let [*cfg (::cfg st)
-        cfg  @(::cfg st)
+        _cfg  @(::cfg st)
+
+        upd! (fn [k v]
+              (swap! *cfg assoc k v)
+              )
+
+        cfg (assoc _cfg :cfg/upd! upd!)
 
         show (get cfg :root-UI/mode)
 
@@ -640,11 +685,12 @@
      (pg-ui/menubar "" [show-UI [] node-list-UI
                         [] [] [] tree-UI-horizontal tree-UI-collapse [] [] [] overflow-UI debugger-UI])
 
+
      (if (cfg-v st :node-list-UI/show?)
        (<node-list> cfg nodes))
 
      [:div.filters
-      [:.menubar
+      [:.filter.menubar
        [:header "FILTER: any of"]
        (map (fn [filter-id]
               (let [selected? (get selected-filters filter-id )]
@@ -662,6 +708,15 @@
               )
             (keys filters-map))
        ]
+      [:.exclusions.menubar
+       [:header "exclusions"]
+       (pr-str (get cfg :filter/exclusions))
+       ]
+      [:.aliases.menubar
+       [:header "aliases"]
+       (pr-str (get cfg :selector/aliases))
+       ]
+
       ]
 
      ;[:.html (d/pretty! selected-filters)]

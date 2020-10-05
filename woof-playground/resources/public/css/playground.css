@@ -1519,9 +1519,13 @@ pre {
 }
 
 .scrape-ide .filters {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
+    /*display: flex;*/
+    /*flex-direction: row;*/
+    /*align-items: center;*/
+}
+
+.filter.menubar {
+
 }
 
 .scrape-ide .filters > .menubar > header {
@@ -1534,7 +1538,7 @@ pre {
 }
 
 .tag.parent-selector {
-    background-color: rgba(246, 76, 49, 0.33);
+    /*background-color: rgba(246, 76, 49, 0.33);*/
     border-radius: 0;
 }
 
@@ -1542,4 +1546,13 @@ pre {
     background-color: rgba(205, 246, 86, 0.46);
     font-weight: normal;
     border-radius: 0
+}
+
+.excluded {
+    opacity: .5;
+}
+
+.tag.alias {
+    background-color: crimson;
+    color: #fff;
 }
