@@ -120,7 +120,68 @@
   )
 
 
-(defn _def-key-fn [prefix cfg] (str prefix (str/join "|" (::ids cfg))))
+(defn _def-key-fn [prefix cfg] (str (str/join "|" (::ids cfg)) "_" prefix ))
+
+
+(rum/defc <tag> < rum/static
+                  {:key-fn (fn [cfg node filter-id]
+                             (str
+                               (first (::ids cfg)) "_"
+                               (get cfg :node/prefix "")
+                               "_" (:idx node)
+                               "_" (name filter-id)
+                               )
+                             )}
+  [cfg node filter-id]
+
+  (let [applied-filters (get node :applied-filters #{})]
+    (pg-ui/<tag> (str "small-tag " "filter-tag "
+                      (if (applied-filters filter-id) "applied-tag" ""))
+                 (str filter-id))
+    )
+
+  )
+
+(rum/defc <plan-header> < rum/static
+                 {:key-fn (fn [cfg _ m ]
+                            (str
+                              (first (::ids cfg)) "_"
+                              (get cfg :node/prefix "")
+                              (:idx  m)
+                              )
+                            )}
+  [cfg *details? node]
+  (let [parent-selector (get cfg :node/parent-selector "")
+        selector (:_$ node)
+        partial-selector (wdom/shorten-selector-string selector parent-selector)
+
+        applied-filters (get node :applied-filters #{})
+        details? @*details?
+        ]
+
+    [:div.plan-header
+
+     (pg-ui/menubar "" [[(if details? "▿" "▹") (fn [] (swap! *details? not))]]
+                    :class "minimal" )
+
+
+     [:span.small-tag.tag.selector partial-selector]
+
+     (if details?
+       (pg-ui/menubar ""
+                      [["📋full $" (fn [] (wdom/copy-to-clipboard selector))]
+                       ["📋partial $" (fn [] (wdom/copy-to-clipboard partial-selector))]]))
+
+     [:.tags (map #(<tag> (assoc cfg
+                            :node/prefix "tag_"
+                            ) node %) (:matching-filters node))]
+
+     [:span.small-tag.tag.idx (str (:idx node))
+      [:sup (str (:parent-idx node))]]
+     ]
+    )
+
+  )
 
 (rum/defcs <node> < rum/static
                     (rum/local false ::details?)
@@ -129,71 +190,47 @@
                                  (first (::ids cfg)) "_"
                                  (get cfg :node/prefix "")
                                  (:idx  m)
-                                 "_" (str/join (sort (keys m))))
+                                 ; "_" (str/join (sort (keys m)))
+                                 )
 
                                )}
   [st cfg node]
 
   (let [curr-tag (:tag node)
-        parent-selector (get cfg :node/parent-selector "")
-        selector (:_$ node)
-        partial-selector (wdom/shorten-selector-string selector parent-selector)
+        details? @(::details? st)
+        applied-filters (get node :applied-filters #{})
         ]
-    (let [details? @(::details? st)
-          applied-filters (get node :applied-filters #{})
-          ]
-      [:div.plan
-       (if (empty? applied-filters) {:class "not-matched"} {})
+    [:div.plan
+     (if (empty? applied-filters) {:class "not-matched"} {})
 
-       ;; todo: migrate to a separate control
-       [:div.plan-header
+     (<plan-header> (assoc cfg
+                      :node/prefix "pl_header_")
+                      (::details? st) node)
 
-        (pg-ui/menubar "" [[(if details? "▿" "▹") (fn [] (swap! (::details? st) not))]])
+     [:.details
+      (if (= "IMG" curr-tag)
+        [:img.el-img {:src (:img-src node)}]
+        #_(str
+            "<img class='el-img' src='" (wdom/attr (:el n) "src") "'/>"
+            )
+        )
 
-        [:span.small-tag.tag.idx (str (:idx node))
-         [:sup (str (:parent-idx node))]]
+      (if (= "A" curr-tag)
+        [:.el-attr
+         [:a {:href (:href node) :target "_blank"} (:href node)]])
 
-        [:span.small-tag.tag.selector partial-selector]
+      (let [t (:text node)]
+        (if (not= "" t)
+          [:.el-value t]))
 
-        (if details?
-          (pg-ui/menubar ""
-                         [["📋full $" (fn [] (wdom/copy-to-clipboard selector))]
-                          ["📋partial $" (fn [] (wdom/copy-to-clipboard partial-selector))]]))
+      ;; todo: data attributes
 
-        [:.tags (map #(pg-ui/<tag> (str "small-tag " "filter-tag "
-                                        (if (applied-filters %) "applied-tag" ""))
-                                   (str %)) (:matching-filters node))]
+      (if details?
+        [:.html (d/pretty! node)]
+        )
+      ]
 
-
-        ]
-
-
-       [:.details
-        (if (= "IMG" curr-tag)
-          [:img.el-img {:src (:img-src node)}]
-          #_(str
-              "<img class='el-img' src='" (wdom/attr (:el n) "src") "'/>"
-              )
-          )
-
-        (if (= "A" curr-tag)
-          [:.el-attr
-           [:a {:href (:href node) :target "_blank"} (:href node)]])
-
-        (let [t (:text node)]
-          (if (not= "" t)
-            [:.el-value t]))
-
-        ;; todo: data attributes
-
-        (if details?
-          [:.html (d/pretty! node)]
-          )
-        ]
-
-       ]
-      )
-
+     ]
     )
 
   )
@@ -217,7 +254,8 @@
      #_(if (::debugger? cfg)
          [:div.html (d/pretty! cfg) ])
 
-     [:.plan-header parent-selector "[" (pr-str (inc parent-idx)) "]"]
+     [:.plan-header
+      [:.tag.small-tag.parent-selector parent-selector] "[" (pr-str (inc parent-idx)) "]"]
 
      (map (partial <node> (assoc cfg
                             :node/prefix "group_"

@@ -414,6 +414,10 @@ pre {
     background-color: rgba(255,128,128,.75);
 }
 
+.menubar.minimal .menu-item {
+    border: none;
+}
+
 .menubar > .header {
     font-weight: bolder;
     margin-right: .5rem;
@@ -1286,11 +1290,19 @@ pre {
     align-items: center;
 }
 
+.node-group {
+    border-left: 3px solid transparent;
+}
+.node-group:hover {
+    border-color: #f0808066;
+}
+
 .node-group > .plan-header {
     margin-top: .333rem;
 
-    border-bottom: 1px solid #444444;
-    font-weight: bold;
+    border-bottom: 1px solid #44444433;
+
+    /*font-weight: bold;*/
 
 }
 
@@ -1517,11 +1529,17 @@ pre {
 }
 
 .idx {
-    background-color: #29a99f55;
+    background-color: #dfdfdfdd;
     font-weight: normal;
+}
+
+.tag.parent-selector {
+    background-color: rgba(246, 76, 49, 0.33);
+    border-radius: 0;
 }
 
 .tag.selector {
     background-color: rgba(205, 246, 86, 0.46);
     font-weight: normal;
+    border-radius: 0
 }
