@@ -202,7 +202,7 @@
 
 
 (rum/defcs <full-plan> < rum/static
-                         (rum/local false ::grouped?)
+                         (rum/local true ::grouped?)
                          {:key-fn (partial _def-key-fn "<full-plan>")}
   [st cfg filtered-plan]
 
@@ -267,8 +267,7 @@
                         {:key-fn (fn [cfg _ node] (str (first (::ids cfg)) "_" (:idx node)))}
   [cfg _parent _node]
 
-  (let [
-        direct-children (get _node :children [])
+  (let [direct-children (get _node :children [])
 
         linear-children (loop [ch direct-children
                                r [_node]]
@@ -285,8 +284,6 @@
 
         _parent-selector (if _parent
                            (:_$ _parent) "")
-
-
 
         parent-selector _parent-selector #_(if collapse?
                           (if (seq linear-children)
@@ -333,6 +330,22 @@
 
     [:.tree-node {:class node-class}
 
+     #_(if (nil? _parent)
+       [:.debug
+        selector
+        [:hr]
+        (pr-str (:$ node))
+        [:hr]
+        (pr-str
+          (wdom/to-selector (concat []
+                                    ))
+          )
+        [:hr]
+        short-selector
+        ]
+       )
+
+
      (if (::debugger? cfg)
        [:.debug
 
@@ -346,8 +359,6 @@
          ]
         (<node> cfg node)
         ]
-
-
        (if selected?
          [:.detailed
           (<selector> cfg short-selector node)
@@ -436,11 +447,7 @@
         ;; apply filter
         _plan (vec (map (fn [n]
                           (let [filters-matched (into #{} (filter-fn n))]
-                            (assoc n :matching-filters filters-matched)
-                            )
-
-
-                          ) (:el-map node)))
+                            (assoc n :matching-filters filters-matched))) (:el-map node)))
 
         mode (:root-UI/mode cfg)
 
@@ -640,13 +647,19 @@
          ;id-2 (rand-int (count els)) ;(nth coll )
 
          ;; for now just take random items
-         el-map-1 (wdom/el-map (nth els id-1)
+         _el-map-1 (wdom/el-map (nth els id-1)
                                :skip-fn skip-fn
-                               :node-fn wdom/enrich-node)
+                               :node-fn wdom/enrich-node
+                               :top-selector-fn (fn [base el] { :nth-child (:i base)}))
+
+         ;; _ (do (.log js/console "EL_MAP"  _el-map-1))
+
+         el-map-1 _el-map-1
 
          el-map-2 (wdom/el-map (nth els id-2)
                                :skip-fn skip-fn
-                               :node-fn wdom/enrich-node)
+                               :node-fn wdom/enrich-node
+                               :top-selector-fn (fn [base el] { :nth-child (:i base)}))
 
          el-1 (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-1)
          el-2 (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-2)

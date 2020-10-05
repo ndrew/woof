@@ -312,7 +312,7 @@
                     (if-let [nth-i (:nth-child %)]
                       (str ":nth-child(" nth-i ")")
                       "")
-                    (if (> (:child-count %) 1)
+                    #_(if (> (:child-count %) 1)
                       (str ":nth-child(" (:i %) ")")
                       "")
                     ;;
@@ -330,10 +330,7 @@
                                    }}
    ]
 
-
-  (let [make-node (fn [node]
-                    (merge node
-                           (node-fn node)))]
+  (let [make-node (fn [node] (merge node (node-fn node)))]
 
     (.groupCollapsed js/console "LMAP: root" root)
     (let [result
@@ -343,8 +340,7 @@
                                (fn [i el]
                                  (let [base-selector {:t (.-tagName el)
                                                       :i (inc i)}
-                                       selector-data [(merge base-selector
-                                                             (top-selector-fn base-selector el))]]
+                                       selector-data [(merge base-selector (top-selector-fn base-selector el))]]
 
                                    (make-node
                                      {
@@ -386,10 +382,19 @@
                                        (vswap! *i inc)
                                        (if (not (skip-fn el $))
                                          (let [selector-data (conj $
-                                                                   {:t           (.-tagName el)
-                                                                    :i           @*i
-                                                                    :child-count child-count
-                                                                    })]
+                                                                   (merge
+                                                                     {:t           (.-tagName el)
+                                                                      :i           @*i
+                                                                      :child-count child-count
+                                                                      }
+                                                                     (if (> child-count 1)
+                                                                           {:nth-child @*i}
+                                                                           {})
+                                                                     )
+
+
+
+                                                                   )]
 
                                            (if (and has-text? (str/includes? text (.-textContent el)))
                                              (vreset! use-text? false))
@@ -418,19 +423,17 @@
                                  )
                                )
 
-                    new-ret (conj ret new-node )
+                    new-ret (conj ret new-node)
+
                     new-children (into (pop queue)
                                        children-nodes)
 
-
                     ]
 
-                (.log js/console
-                       idx (:parent-idx (last new-ret)) (last new-ret))
+                (.log js/console idx (:parent-idx (last new-ret)) (last new-ret))
 
                 (recur new-ret new-children
-                       (+ counter (count children-nodes))
-                       ))
+                       (+ counter (count children-nodes))))
               ret
               )
             )]

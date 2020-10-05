@@ -1265,6 +1265,15 @@ pre {
     border-left: 1px solid grey;
 }
 
+.grouped-plan-root .node-group > header {
+    border-bottom: 1px solid #444444;
+    font-weight: normal;
+}
+
+.grouped-plan-root .node-group > .plan {
+    margin-left: 1rem;
+}
+
 .plan:hover {
     background-color: #cc160511;
 }
