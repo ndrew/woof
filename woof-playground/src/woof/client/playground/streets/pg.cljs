@@ -174,6 +174,12 @@
    }
   )
 
+(def short-2-full (assoc (clojure.set/map-invert ua-geonim-2-short)
+                    "тупик" "тупик"
+                    "смт" "смт"
+                    "набережна" "набережна")
+  )
+
 
 (def ru-geonim-2-short
   ;; (clojure.set/map-invert kyiv-abbr-map)
@@ -212,18 +218,39 @@
 
 
 (def vul-regex #"вул\.\s" )
+(def vul-regex-1 #"вулиця\s" )
+
 (def pl-regex #"пл\.\s" )
 (def pl-regex-1 #"площа\s" )
 (def prov-regex #"пров\.\s" )
+(def prosp-regex #"просп\.\s" )
 
+(def bulv-regex #"бульв\.\s" )
 
-(defn noramalize-geonim [geonim]
+(def prosp-regex-1 #"проспект\s" )
+(def shose-regex #"шосе\s" )
+
+;; move get type to be last
+(defn noramalize-geonim [street-name]
+
+  ;; maybe this could be optimized by spliting string to words and checking the substitutions on first/last words
+
   (cond
-    (re-find vul-regex geonim) (str (str/replace geonim vul-regex "") " вулиця")
-    (re-find pl-regex geonim) (str (str/replace geonim pl-regex "") " площа")
-    (re-find pl-regex-1 geonim) (str (str/replace geonim pl-regex-1 "") " площа")
-    (re-find prov-regex geonim) (str (str/replace geonim prov-regex "") " провулок")
-    :else geonim
+    (re-find vul-regex street-name) (str (str/replace street-name vul-regex "") " вулиця")
+    (re-find vul-regex-1 street-name) (str (str/replace street-name vul-regex-1 "") " вулиця")
+
+    (re-find pl-regex street-name) (str (str/replace street-name pl-regex "") " площа")
+    (re-find pl-regex-1 street-name) (str (str/replace street-name pl-regex-1 "") " площа")
+
+    (re-find prov-regex street-name) (str (str/replace street-name prov-regex "") " провулок")
+
+    (re-find prosp-regex street-name) (str (str/replace street-name prosp-regex "") " проспект")
+    (re-find prosp-regex-1 street-name) (str (str/replace street-name prosp-regex-1 "") " проспект")
+
+    (re-find bulv-regex street-name) (str (str/replace street-name bulv-regex "") " бульвар")
+
+    (re-find shose-regex street-name) (str (str/replace street-name shose-regex "") " шосе")
+    :else street-name
     )
   )
 
@@ -239,8 +266,134 @@
   )
 
 
-(rum/defc <street-renaming> < rum/static
-  [dict renamed-streets raw-streets]
+
+(rum/defcs <street-renaming-nu> < rum/static
+  [st renamed-streets cstreet-names]
+
+  (let [canonical-names (into #{} cstreet-names)
+
+
+        *added-streets (atom [])
+        ;{:ua "Садова 54 вулиця",
+        ; :ru "Садовая 54 ул.",
+        ; :en "Sadova 54 vul.",
+        ; :idx "12250",
+        ; :district "Дарницький р-н",
+        ; :districts ["Дарницький р-н" "СТ \"Автомобіліст\"" "\"Восход\"" "\"Дніпро\"" "\"Здоров'я\"" "\"Злагода\"" "\"Медпрепарат\"" "\"Метрополітеновець\"" "\"Мир\"" "\"Райдуга\"" "\"РайФО\"" "\"Рибпроект\"" "\"Ромашка\"" "\"Сонячний\""],
+        ; :other "Пролягає від безіменного проїзду поруч з оз. Підбірна до кінця забудови. Прилучаються: Центральна вул., Садова 74 вул., проїзд до Колекторної вул."}
+        ]
+
+    [:.html
+
+     "true false - old street name is in canonical list, new one not present — rename it\n"
+     "false false - old name is missing, new name is not present — maybe add new street, or normalization error\n"
+     "true true - both names are present — migrate old one to an alias\n"
+
+     ; (pr-str renamed-streets)
+     (map (fn [[distr rename-map]]
+            [:div
+             [:header distr]
+
+             ; canonical-names
+             [:div.rename
+              (map (fn [[k v]]
+                     (let [_c-old-name (noramalize-geonim k)
+
+
+                           words (str/split _c-old-name " ")
+                           last-w (last words)
+
+                           matches (reduce (fn [a s]
+                                             (let [k (str/join " " (conj (vec s) last-w))]
+                                               (if (contains? canonical-names k)
+                                                 (assoc a k true)
+                                                 a
+                                                 )
+                                               )
+
+                                             ) {} (combo/permutations (drop-last words)))
+
+                           alt-k (first (keys matches))
+
+
+                           _has-old-name? (contains? canonical-names _c-old-name)
+
+                           has-old-name? (if _has-old-name?
+                                           true
+                                           (contains? canonical-names alt-k)
+                                           )
+
+
+                           c-old-name (if-not _has-old-name?
+                                        (if alt-k
+                                          alt-k
+                                          _c-old-name
+                                          )
+                                        _c-old-name)
+
+                           c-new-name (noramalize-geonim v)
+                           has-new-name? (contains? canonical-names c-new-name)
+
+
+
+                           ]
+                       [:div (cond
+                               ;(and has-old-name? (not has-new-name?)) {:style {:color "red"}}
+                               (and has-old-name?       has-new-name?) {:style {:color "magenta"}}
+                               (and (not has-old-name?) has-new-name?) {:style {:color "blue"}}
+                               (and (not has-old-name?) (not has-new-name?)) {:style {:color "red"}}
+                               (and has-old-name?       (not has-new-name?)) {:style {:color "black" :opacity ".33"}}
+                               )
+
+
+                        (if
+                          ;(and has-old-name? has-new-name?) ;; both streets are in list, one prev should be removed and become an alias
+                          ;(and (not has-old-name?) (not has-new-name?)) ;; add new street, as it not in the canonical street list
+                          ;(and (not has-old-name?) has-new-name?) ;; only new is present, only update alias
+                          (and has-old-name?       (not has-new-name?))
+                          (do (swap! *added-streets conj
+                                     {:ua c-new-name
+                                      :ru ""
+                                      :en ""
+                                      :idx ""
+                                      :district distr
+                                      :other (str "renamed from '" c-old-name "'" )
+                                      :alias [c-old-name]
+                                      })
+                              nil
+                              )
+                          )
+
+
+                        (if-not has-old-name?
+                          [:.html (d/pretty! matches)])
+
+                        [:span.tag (str has-old-name? " " has-new-name?)]
+                        [:span (pr-str k)] [:span "→"] [:span (pr-str c-old-name)] [:span {:style {:margin "0 3rem"}} "=>"]
+                        [:span (pr-str v) ] [:span "→"] [:span (pr-str c-new-name)]
+                        ]
+                       ))
+                   rename-map
+                   )
+              ]
+
+             ;(<rename> rename-map)
+
+             ]
+            )
+          renamed-streets
+          )
+
+     [:hr]
+     (d/pretty! @*added-streets)
+
+     ]
+    )
+
+  )
+
+(rum/defcs <street-renaming-by-disticts> < rum/static
+  [st renamed-streets raw-streets]
   ; "Подільський р-н"
   ;"Голосіївський р-н"
   ;"Солом’янський р-н"
@@ -314,6 +467,7 @@
 
 (defn full-street-name [geonim-model]
   (str/trim (str (:s geonim-model) " " (:t geonim-model))))
+
 
 (rum/defc <street-name> < rum/static
                           { :key-fn (fn [m] m)}
@@ -476,56 +630,64 @@
 
 
 (rum/defc <street-1> < rum/static
-  [geonims street]
+  [cstreet-map street]
 
   (let [parts (:short street)
         gt (:g street)
         multi-word? (> (count parts) 1)
-        mathcing-perms (:matches street)
-        has-matches? (> (count mathcing-perms) 0)
+        matching-perms (:matches street)
+        has-matches? (> (count matching-perms) 0)
         ]
-    [:div {:style {} #_{:color (if has-matches?
+    [:div.extract-street  {:style {} #_{:color (if has-matches?
                                  "grey"
                                  "red"
                                  )}
-
            }
 
      [:header [:span.tag gt] (:str street) " " (:street street)]
 
-     (if-not has-matches?
+
+     (<rename> (reduce (fn [a s]
+                         (let [canonical (str  (str/join " " s) " " gt)]
+                           (if-let [link (get cstreet-map canonical)]
+                             (assoc a (:str street) link)
+                             (assoc a canonical false)
+                             ))) {} (combo/permutations parts)))
+
+
+     ;; (pr-str street)
+
+     #_(if-not has-matches?
        [:.html {:style {:color "red"}}
         (d/pretty!
           (reduce (fn [a s]
                     (let [canonical (str  (str/join " " s) " " gt)]
-                      (if-let [link (get geonims canonical)]
+                      (if-let [link (get cstreet-map canonical)]
                         (assoc a (:str street) link)
                         (assoc a canonical false)
                         ))) {} (combo/permutations parts))
           )
         ])
 
-     (map (fn [[k v]]
+
+
+     #_(map (fn [[k v]]
             [:div (pr-str k) " -> " (pr-str v)]
             )
-          mathcing-perms
+          matching-perms
           )
      #_(if multi-word?
          )
-     (pr-str street)
+     ; (pr-str street)
 
      ])
   )
 
-(rum/defc <drv-canonalize-streets> < rum/static
-  [street-builings geonims]
+(rum/defcs <drv-extract-streets> < rum/static
+                                   (rum/local :all ::filter)
+  [st drv-builings cstreet-map]
 
-  (let [streets-to-canonize (keys street-builings)
-
-        short-2-full (assoc (clojure.set/map-invert ua-geonim-2-short)
-                       "тупик" "тупик"
-                       "смт" "смт"
-                       "набережна" "набережна")
+  (let [streets-to-canonize (keys drv-builings)
 
         candidates (->>
                      streets-to-canonize
@@ -537,23 +699,22 @@
                                  parts (:short %)
 
                                  multi-word? (> (count parts) 1)
-                                 mathcing-perms (reduce (fn [a s]
+                                 matching-perms (reduce (fn [a s]
                                                           (let [canonical (str  (str/join " " s) " " gt)]
-                                                            (if-let [link (get geonims canonical)]
+                                                            (if-let [link (get cstreet-map canonical)]
                                                               (assoc a (:str %) link)
                                                               a ;(assoc a canonical false) ;; a
                                                               ))) {} (combo/permutations parts))
 
-
                                  ]
                              (merge
                                %
-                               {:matches mathcing-perms}
+                               {:matches matching-perms}
                                (if guess-street
                                  {:f/guess? :guessed}
                                  {:f/guess? :not-guessed})
 
-                               (if (empty? mathcing-perms)
+                               (if (empty? matching-perms)
                                  {:f/canonical :non-canonical}
                                  {:f/canonical :canonical}
                                  )
@@ -562,6 +723,7 @@
 
         guesses-map (group-by :f/guess? candidates )
         ]
+
     [:.flex
 
      (let [{guessed :guessed
@@ -569,11 +731,10 @@
            total-count (count candidates)
            ]
 
-
        [:div
 
         #_[:.html
-           (pr-str (first geonims))
+           (pr-str (first cstreet-map))
            ]
 
         ;; review by eyes there and skip these for now
@@ -601,11 +762,12 @@
                       (pr-str %)]) matching)
 
            #_[:.html
-              (d/pretty! (keys geonims))
+              (d/pretty! (keys cstreet-map))
               ]
 
-           [:header "non matching"]
-           (map (partial <street-1> geonims) (take 100 non-matching))
+
+           [:header "non matching " (str "(" (count non-matching) ")")]
+           (map (partial <street-1> cstreet-map) non-matching)
 
            ;(pr-str (count matching))
            ]
@@ -621,7 +783,7 @@
           (str "not matching: " (count not-matching) " vs all: " (count streets-to-canonize))
 
           #_(map
-              #(if-let [geonim (get geonims %)]
+              #(if-let [geonim (get cstreet-map %)]
                  [:p "[OK] " %  ;(pr-str geonim)
                   ]
                  [:p {:style {:color "red"}} %]
@@ -638,7 +800,7 @@
           (str "matching: " (count matching) " vs all: " (count streets-to-canonize))
 
           #_(map
-              #(if-let [geonim (get geonims %)]
+              #(if-let [geonim (get cstreet-map %)]
                  [:p "[OK] " %  ;(pr-str geonim)
                   ]
                  [:p {:style {:color "red"}} %]
@@ -715,23 +877,22 @@
 
   )
 
-(rum/defc <drv-buildings-list> < rum/static
-  [drv-street-map]
+(rum/defcs <drv-buildings-list> < rum/static
+  [st
+   geonims
+   drv-street-map]
+
+  ;; sorting and filtering
 
   [:div
-
-   (map <drv-street> drv-street-map)
-
-
-
-   ]
+   (map <drv-street> drv-street-map)]
   )
 
 
 (rum/defcs <streets-cc> < rum/reactive
   [st *dict]
   (let [dict @*dict]
-    [:div {:style {:padding-top "1rem"}}
+    [:div  {:style {:padding-top "1rem"}}
      (pg-ui/menubar "Streets: "
                     [
                      ["load pre-parsed streets" (fn [] (load-edn *dict "/s/streets/streets.edn" :raw-streets))]
@@ -743,145 +904,154 @@
                      ["DRV: load renamings" (fn [] (load-edn *dict "/s/drv/street-renamings_n_alternate_names.edn" :drv-renamed-streets))]
                      ])
 
-     [:.html
-      ; "довідник:\n"
-      ; ":raw-streets -> \n"
-      ; ":raw-streets -> \n"
-      ]
 
      ; [:p "scraping list of all streets in the city"]
 
-     (let [drv-street-map (:drv-buildings-per-street dict)
-
-           raw-geonims (:ua-geonims dict)
-           geonims (group-by :id raw-geonims)
-
-           street-aliases (:drv-renamed-streets dict)
 
 
-           short-2-full (assoc (clojure.set/map-invert ua-geonim-2-short)
-                          "тупик" "тупик"
-                          "смт" "смт"
-                          "набережна" "набережна")
+     [:.flex
+
+      ;; process raw-streets
+      (when-let [renamed-streets (:renamed-streets dict)]
+        (let [drv-renamed (:drv-renamed-streets dict)
+              cstreet-list (:ua-geonims dict)
+              cstreet-map (group-by :id cstreet-list)
+              ]
+          [:.html
+
+           ;(d/pretty! drv-renamed)
+
+           ;;
+           (<street-renaming-nu> renamed-streets (keys cstreet-map))
+           ;(<street-renaming-by-disticts> renamed-streets (:raw-streets dict))
 
            ]
 
-       [:div
-        [:h3 "DRV"]
 
-        [:header "List of all buildings per street"]
-        (<drv-buildings-list> (take 100 drv-street-map))
+          )
 
-
-        ;[:header "Convert DRV-street to canonical one"]
-        ;(<drv-canonalize-streets> drv-street-map geonims)
-        ]
+          )
 
 
+      ;; DRV
+      #_(let [drv-street-map (:drv-buildings-per-street dict)
 
-       ;; converting drv street to a cannonical representation
-       #_[:div.html
-          #_(reduce
-              (fn [a s]
+            raw-geonims (:ua-geonims dict)
+            canonical-streets-map (group-by :id raw-geonims)
 
-                a
-                )
-              {} (keys drv-street-map))
+            street-aliases (:drv-renamed-streets dict)
 
-          (map #(do
-                  [:p % " - " (pr-str (drv-guess-geonim %))]
-                  ) (sort (keys drv-street-map)))
-          ]
-
-       #_[:div.html
-          (map #(do [:p %]) (sort (keys geonims)))
-          ]
-       )
-
-
-
-     ;; street to canonical name
-
-     #_(when-let [raw-streets (:raw-streets dict)]
-         (let [
-               as-geonim (fn [street geonim-map]
-                           (let [ks (keys geonim-map)]
-                             (merge
-                               {
-
-                                :id street
-                                }
-                               (if (= (count ks) 0)
-                                 {:t       ""
-                                  :s street
-                                  }
-                                 {:t       (first (keys geonim-map))
-                                  :s (first (vals geonim-map))
-                                  })
-                               )
-
-                             )
-                           )
-
-               extract-geonims (fn [geonim-map street]
-                                 (reduce (fn [a [geonim sh]]
-                                           (if (nil? (str/index-of street (str " " geonim)))
-                                             a
-                                             (assoc a geonim (str/trim (str/replace street geonim "")))))
-                                         {} geonim-map)
-                                 )
-
-               street-geonim (fn [geonim-2-short street]
-                               (let [extracted-geonims (reduce (fn [a [geonim sh]]
-                                                                 (if (nil? (str/index-of street (str " " geonim)))
-                                                                   a
-                                                                   (assoc a geonim (str/trim (str/replace street geonim "")))))
-                                                               {} geonim-2-short)]
-
-                                 ;; todo: how to split
-                                 (if (empty? extracted-geonims)
-                                   (.log js/console street)
-                                   )
-                                 (as-geonim street extracted-geonims)
-                                 )
-
-                               )
-
-               ua-geonims-list (->>
-                                 (group-by :ua raw-streets)
-                                 (map first)
-                                 (sort)
-                                 (map (partial street-geonim ua-geonim-2-short))
-                                 )
-
-
-               ru-geonims-list (->>
-                                 (group-by :ru raw-streets)
-                                 (map first)
-                                 (sort)
-                                 (map (partial street-geonim ru-geonim-2-short))
-                                 )
-               ]
-           [:div.zzz
-            (pg-ui/menubar "extract geonim types" [["copy 📋" (partial copy-geonims ua-geonims-list)]])
-            ; (pr-str geonim-2-short)
-
-            (map <street-name> ru-geonims-list)
             ]
 
-           )
-         ;; [:pre (pr-str (count raw-streets)) " streets"]
+        [:div
+         [:h3 "DRV"]
+
+         [:header "Convert DRV-street to canonical one"]
+         (<drv-extract-streets> drv-street-map canonical-streets-map)
+
+         [:header "List of all buildings per street"]
+         (<drv-buildings-list> canonical-streets-map
+                               (take 100 drv-street-map)
+                               )
+
+         ]
+        )
+
+      #_(when-let [raw-geonims (:ua-geonims dict)]
+        (let [canonical-streets-map (group-by :id raw-geonims)
+              find-str "Василя Стуса вулиця"
+              dist-map (reduce (fn [a n]
+                        (let [d (stat/levenshtein-distance find-str n)]
+                          (if (>= d 80)
+                            (assoc a n d)
+                            a
+                            )
+                          )
+                        ) {} (keys canonical-streets-map))
+              ]
+          [:.html
+
+           (<rename> dist-map)
+
+           ;(count canonical-streets-map)
+           ;(<rename> (take 100 canonical-streets-map))
+
+           ]
+          )
+
+        )
 
 
+      ;; STREETS
+      ;; city streets to canonical form
+      #_(when-let [raw-streets (:raw-streets dict)]
+        (let [
+              as-geonim (fn [street geonim-map]
+                          (let [ks (keys geonim-map)]
+                            (merge
+                              {
 
-         )
+                               :id street
+                               }
+                              (if (= (count ks) 0)
+                                {:t       ""
+                                 :s street
+                                 }
+                                {:t       (first (keys geonim-map))
+                                 :s (first (vals geonim-map))
+                                 })
+                              )
 
-     ;; process raw-streets
-     #_(when-let [renamed-streets (:renamed-streets dict)]
-         (<street-renaming> dict renamed-streets (:raw-streets dict))
+                            )
+                          )
+
+              extract-geonims (fn [geonim-map street]
+                                (reduce (fn [a [geonim sh]]
+                                          (if (nil? (str/index-of street (str " " geonim)))
+                                            a
+                                            (assoc a geonim (str/trim (str/replace street geonim "")))))
+                                        {} geonim-map)
+                                )
+
+              street-geonim (fn [geonim-2-short street]
+                              (let [extracted-geonims (reduce (fn [a [geonim sh]]
+                                                                (if (nil? (str/index-of street (str " " geonim)))
+                                                                  a
+                                                                  (assoc a geonim (str/trim (str/replace street geonim "")))))
+                                                              {} geonim-2-short)]
+
+                                ;; todo: how to split
+                                #_(if (empty? extracted-geonims)
+                                  (.log js/console street)
+                                  )
+                                (as-geonim street extracted-geonims)
+                                )
+                              )
+
+              ua-geonims-list (->>
+                                (group-by :ua raw-streets)
+                                (map first)
+                                (sort)
+                                (map (partial street-geonim ua-geonim-2-short))
+                                )
+
+              ru-geonims-list (->>
+                                (group-by :ru raw-streets)
+                                (map first)
+                                (sort)
+                                (map (partial street-geonim ru-geonim-2-short))
+                                )
+              ]
+          [:div.zzz
+           (pg-ui/menubar "extract geonim types" [["copy 📋" (partial copy-geonims ua-geonims-list)]])
+
+           (map <street-name> ru-geonims-list)
+           ]
+          )
+        )
+      ]
 
 
-         )
 
      #_(when-let [raw-streets (:raw-streets dict)]
          [:div
@@ -957,11 +1127,6 @@
 
 
           #_[:div
-
-
-
-
-
 
              ;; find districts with enters
              #_[:div {:style {:max-width "75%"}}
@@ -1049,292 +1214,6 @@
     )
 
   )
-
-
-#_(rum/defcs <cc> < rum/reactive
-                    (rum/local #{} ::selected-filters)
-                    (rum/local ::no-category ::filter-mode)
-    [st
-     *dict *categorizator]
-    ;(get-in wf [:state ::dict])
-    ;(get-in wf [:state ::categorizator])
-    [:div
-     (pg-ui/menubar "streets"
-                    [
-                     ["load pre-parsed streets" (fn [] (load-edn *dict "/s/streets/streets.edn" :raw-streets))]
-                     ["load renamed streets" (fn [] (load-edn *dict "/s/streets/renamed-streets.edn" :renamed-streets))]
-                     []
-                     ["blago raw" (fn []
-                                    (load-edn *dict "/s/blagovist.ua/parsed.edn" :blago-raw))]
-
-                     ["blago->json" (fn []
-
-                                      (woof-dom/save-json
-
-                                        (map
-                                          (fn [i]
-                                            (dissoc i :region :photos)
-                                            )
-                                          (:blago-raw dict)
-                                          )
-
-                                        )
-                                      ;;(clj->js (:blago-raw dict))
-                                      )]
-
-                     ["raw yt" (fn [] (load-edn *dict "/s/yt/wl.edn" :yt-raw))]
-                     ["yt sorted" (fn [] (load-edn *dict "/s/yt/sorted.edn" :yt-sorted))]
-                     ])
-
-     [:p "processing stuff via visual repl"]
-
-     (when-let [sorted-raw-data (:yt-sorted dict)]
-
-       (let [selected-filters @(::selected-filters st)
-             filter-mode @(::filter-mode st)
-             all-filters #{};(reduce #(into %1 %2) #{} (if-let [categories (vals categorizator)] categories [])  )
-
-             sorted-channel-map (into (sorted-map-by (fn [k1 k2]
-                                                       (let [r (compare (get-in sorted-raw-data [k2 :count]) (get-in sorted-raw-data [k1 :count]))]
-                                                         (if (= 0 r)
-                                                           (compare k2 k1)
-                                                           r))
-                                                       )) sorted-raw-data)
-
-             match-channel? (fn [k]
-                              (let [channel-tags (get categorizator k)
-                                    matching-tags (clojure.set/intersection selected-filters channel-tags)
-                                    no-tags? (empty? channel-tags)]
-                                (or (= ::all filter-mode)
-                                    (and (= ::no-category filter-mode) no-tags?)
-                                    (and (= ::filter filter-mode) (not (empty? matching-tags))))
-                                ))
-             ]
-
-
-         [:div
-
-          [:div.filters
-           [:.filter.menubar
-            [:header ""]
-            (concat
-              [
-               [:a.menu-item
-                {:href     "#"
-                 :on-click (fn [e]
-                             (.log js/console categorizator)
-                             (.preventDefault e)
-                             false)}
-                "categorization"
-                ]
-               [:a.menu-item
-                {:href     "#"
-                 :on-click (fn [e]
-
-                             (let [roam-data (reduce
-                                               (fn [s [k v]]
-                                                 (if (match-channel? k)
-                                                   (str s k
-                                                        " #yt-channel"
-                                                        (apply str (map-indexed #(str " [🔗" %1 "](" %2 ")") (:channel-url v)))
-                                                        (apply str (map #(str " #[[" % "]]") (get categorizator k #{})))
-                                                        "\n"
-                                                        (apply str
-                                                               (map #(str "\t["
-
-                                                                          (->
-                                                                            (:title  %)
-                                                                            (str/replace #"\[" "❬")
-                                                                            (str/replace #"\]" "❭")
-                                                                            )
-                                                                          "]("
-
-                                                                          (let [id (:id %)
-                                                                                full-url (str "https://youtube.com" id)
-                                                                                uri (uri/parse full-url)
-
-                                                                                playlist-idx (.getParameterValue uri "index")
-                                                                                ;playlist-idx (.getParameterValue uri "index")
-                                                                                ]
-                                                                            (->
-                                                                              uri
-                                                                              (.removeParameter "index")
-                                                                              (.removeParameter "list")
-                                                                              (.toString)
-                                                                              )
-                                                                            )
-
-
-                                                                          ")" "\n") (:items v))
-                                                               )
-                                                        )
-                                                   s
-                                                   )
-                                                 )
-                                               ""
-                                               sorted-channel-map
-                                               )]
-                               (.log js/console roam-data)
-                               )
-
-                             (.preventDefault e)
-                             false)}
-                "EXPORT TO ROAM"]
-
-               [:.separator]
-
-               [:a.menu-item
-                {:href     "#"
-                 ;;:class    (filter-class filter-id)
-                 :on-click (fn [e]
-                             (swap! (::filter-mode st) {::all          ::no-category
-                                                        ::no-category  ::filter
-                                                        ::filter       ::all})
-                             (.preventDefault e)
-                             false)}
-                (str (name filter-mode))]
-               [:.separator]
-
-               ]
-
-              (if (= ::filter filter-mode)
-                (map (fn [filter-id]
-                       (let [selected? (get selected-filters filter-id )]
-                         [:a.menu-item
-                          {:href     "#"
-                           ;;:class    (filter-class filter-id)
-                           :on-click (fn [e]
-                                       (swap! (::selected-filters st)
-                                              (if selected? disj conj)
-                                              filter-id)
-                                       (.preventDefault e)
-                                       false)}
-                          (str (pg-ui/shorten-bool selected?) " " (name filter-id))]
-                         )
-                       )
-                     (sort all-filters))
-                [])
-
-              )
-
-            ]
-           ]
-
-          ;[:.html (pr-str (reduce #(into %1 %2) #{} (vals categorizator)))]
-
-          ;; show all videos as list
-          #_(map <video>
-                 (->>
-                   sorted-raw-data
-                   (vals )
-
-                   (map :items )
-                   (apply concat )
-                   (sort-by :i )
-                   (reverse )
-                   )
-                 )
-
-          ;; show videos by channel
-          (map (fn [[k v]]
-                 (if (match-channel? k)
-                   (<channel> categorizator k v)))
-               sorted-channel-map)
-          ]
-         )
-       )
-
-
-
-     (when-let [raw-yt (:yt-raw dict)]
-       (let [gm (group-by :channel-href (take 5000 raw-yt))
-             count-m (reduce-kv (fn [m k v]
-                                  (let [nu-k (first (reduce #(conj %1 (:channel-title %2)) #{} v))]
-
-                                    (if (nil? nu-k)
-                                      (do
-                                        (.log js/console "possibly deleted/private video" v)
-                                        m)
-                                      (assoc m nu-k
-                                               (-> (get m nu-k {:count 0
-                                                                :channel nu-k
-                                                                :channel-url #{}
-                                                                :items []
-                                                                })
-                                                   (update :count + (count v))
-                                                   (update :items concat
-                                                           (map
-                                                             #(let [full-url (str "https://youtube.com" (:id %))
-                                                                    uri (uri/parse full-url)
-
-                                                                    playlist-idx (.getParameterValue uri "index")]
-                                                                (assoc % :i (int playlist-idx))
-                                                                )
-                                                             v)
-
-                                                           )
-                                                   (update :channel-url conj k)
-                                                   )
-                                               )
-                                      )
-
-                                    )
-                                  ) {} gm)
-
-             sorted-m (into (sorted-map-by (fn [k1 k2]
-                                             (let [r (compare (get-in count-m [k2 :count]) (get-in count-m [k1 :count]))]
-                                               (if (= 0 r)
-                                                 (compare k2 k1)
-                                                 r)
-                                               )
-
-                                             )) count-m)
-
-             ]
-
-         [:div
-
-          [:header
-           (pr-str [(count gm) " vs " (count count-m) " vs " (count sorted-m)])
-           ]
-
-          (pg-ui/menubar "" [["save edn" (fn []
-                                           (woof-dom/save-edn sorted-m)
-                                           )]
-                             ["save to ui" (fn []
-                                             (swap! *dict assoc :yt-sorted sorted-m))]
-                             ])
-
-          #_[:.html (d/pretty! (keys sorted-m))]
-          ;()
-
-          (map
-            (fn [[k v]]
-              (<channel> categorizator k v))
-            ;(sort-by-value-then-key count-m)
-            sorted-m
-            )
-
-
-
-          #_[:.html (d/pretty!
-                      (into (sorted-map-by >)
-                            count-m)
-
-                      )]
-
-          ]
-
-         )
-
-
-       )
-
-
-
-
-     ]
-    )
 
 
 
