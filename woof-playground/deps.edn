@@ -1,4 +1,6 @@
-{:deps
+{
+ :mvn/repos {"enonic" {:url "https://repo.enonic.com/public/"}}
+ :deps
  {
 
   woof-core {:local/root "../woof-core"}
@@ -49,6 +51,7 @@
   ;  fipp                       {:mvn/version "0.6.12"},
   ;  hawk                       {:mvn/version "0.2.11"},
 
+
   viz-cljc                   {:mvn/version "0.1.3"},
 
 
@@ -62,10 +65,12 @@
 
   ;  org.clojure/data.json      {:mvn/version "0.2.6"},
 
+  io.xapix/paos {:mvn/version "0.2.4"}
+
+  clj-fuzzy {:mvn/version "0.4.1"}
+  org.clojure/math.combinatorics {:mvn/version "0.1.6"}
+
   }
-
-
-
 
 
  :aliases {

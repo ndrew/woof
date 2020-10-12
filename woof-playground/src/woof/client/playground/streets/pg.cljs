@@ -24,6 +24,8 @@
     [woof.client.ws :as ws]
 
     [woof.wfs.evt-loop :as evt-loop]
+
+    [clj-fuzzy.metrics :as metrics]
     )
 
   (:require-macros
@@ -217,6 +219,8 @@
    }
   ) ;; todo:
 
+
+;; these can be generated automatically from map
 
 (def vul-regex #"вул\.\s" )
 (def vul-regex-1 #"вулиця\s" )
@@ -763,7 +767,7 @@
 
 (rum/defc <street-name> < rum/static
                           { :key-fn (fn [m] (str (:idx m) "_" (:ua m) "_" (:district m) ))}
-  [street]
+  [street & {:keys [check-fn]}]
 
   [:div.street-row
 
@@ -778,12 +782,16 @@
 
      )
 
+   (if check-fn
+     (check-fn street))
+
    (if-let [alias (:alias street)]
      (map
        #(do [:span.tag.idx %]) alias)
       )
 
-   (pr-str street)
+   (:ua street)
+   ;(pr-str street)
 
    ;; check that shortened + geonim is the same as cana
    #_(if (not= (full-street-name street)
@@ -852,9 +860,39 @@
   )
 
 
-(defn extract-ru-renamings []
-  (let [(wdom/q "#") ])
+(defn extract-ru-renamings [*dict]
+  (let [c1 (rest (wdom/q* "#renamings_2015-2017 tr > td:nth-child(2)"))
+        c2 (rest (wdom/q* "#renamings_2015-2017 tr > td:nth-child(3)"))
+
+        t (comp str/trim
+                wdom/txt)
+
+        old (map t c1)
+        nu (map t c2)
+        ]
+
+
+
+    (swap! *dict assoc :renamed-ru
+           (partition-all 2
+                          (interleave
+                            old
+                            nu
+                            ))
+           )
+
+    ;(.log js/console (count (group-by identity nu)))
+    #_(.log js/console (count (map wdom/txt c1)))
+
+
+    #_(.log js/console  (apply assoc {} (interleave (map wdom/txt c1)
+                                                     (map wdom/txt c2))))
+
+    )
   )
+
+
+(def jaro (memoize metrics/jaro))
 
 (rum/defcs <streets-cc> < rum/reactive
   [st *dict]
@@ -873,12 +911,180 @@
                      ["DRV: load buildings" (fn [] (load-edn *dict "/s/drv/buildings.edn" :drv-buildings-per-street))]
                      ["DRV: load renamings" (fn [] (load-edn *dict "/s/drv/street-renamings_n_alternate_names.edn" :drv-renamed-streets))]
 
-                     ["RENAME: get ru names" (fn []
-                                               (extract-ru-renamings)
+                     ["RENAME: get ru names 2015-2017" (fn []
+                                               (extract-ru-renamings *dict)
                                                )]
                      ])
 
      [:.flex
+
+
+      ;; extract renames to edn
+      (when-let [rename-pairs (:renamed-ru dict)]
+        (let [xf (comp
+                   (filter (fn [[old nu]]
+                             (re-find #"\(.+\)$" nu )))
+                   (map (fn [[old nu]]
+                          (re-find #"\(.+\)$" nu)))
+                   )
+
+              ru-ua-mapping {
+                             "б-р." "бульвар"
+                             "пл." "площа"
+                             "пер." "провулок"
+                             "пр-т." "проспект"
+                             "пр." "проспект"
+                             "ул." "вулиця"
+                             }
+              ru-canonized-gt-mapping {
+                          "б-р." "бульвар"
+                          "пл." "пл."
+                          "пер." "пер."
+                          "пр-т." "просп."
+                          "пр." "просп."
+                          "ул." "ул."
+                          }
+
+              ;; todo: do smth with these guesses
+              guesses {
+
+               }
+
+
+              renamings (map (fn [[old nu]]
+                               (let [_distr (re-find #"\(.+\)$" nu)
+                                     distr (if _distr
+                                             ({"(Дарницкий район)"   "Дарницький р-н"
+                                               "(Дарницкий)"         "Дарницький р-н"
+                                               "(Деснянский район)"  "Деснянський р-н"
+                                               "(Деснянский)"        "Деснянський р-н"
+                                               "(Днепровский район)" "Дніпровський р-н"
+                                               "(Печерский)"         "Печерський р-н"
+                                               "(Подол)"             "Подільський р-н"
+                                               "(Соломенский район)" "Солом'янський р-н"
+                                               "(Соломенский)"       "Солом'янський р-н"
+                                               } _distr)
+                                             )
+                                     nu-1 (if _distr
+                                            (str/trim (str/replace nu #"\(.+\)$" ""))
+                                            nu)
+
+                                     parts (str/split old " ")
+                                     raw-gt (last parts)
+
+                                     ]
+                                 ;(last parts)
+
+                                 {
+                                  :distr distr
+                                  :gt (get ru-ua-mapping raw-gt)
+                                  :ru-gt (get ru-canonized-gt-mapping raw-gt)
+                                  :ru nu-1
+                                  ; :ru1 (str nu-1 " " (get ru-canonized-gt-mapping raw-gt))
+                                  ;; :_old old
+
+                                  :guess (get guesses nu-1)
+                                  :old (str/join " " (drop-last parts))
+                                  }
+                                 )
+                               ) rename-pairs)
+
+
+              ]
+          [:.html
+
+
+           (map
+             (fn [z]
+               [:div.html.street-row
+                (.padEnd (pr-str (:guess z) ) 40)
+                " "
+                (pr-str (str (:ru z) " " (:ru-gt z) ) )]
+               )
+             (sort-by :guess (filter #(not (empty? (:guess %))) renamings ))
+             )
+
+           ;(<edn-list> (filter #(not (empty? (:guess %))) renamings ))
+
+
+           #_(pr-str (reduce #(conj %1 (:district %2)) #{} (:raw-streets dict)))
+           #_(<edn-list> (sequence xf rename-pairs))
+           #_#{"Солом'янський р-н" "Подільський р-н" "Голосіївський р-н" "Шевченківський р-н" "Деснянський р-н" "Дарницький р-н" "Печерський р-н" "Оболонський р-н" "Святошинський р-н" "Дніпровський р-н"}
+
+
+           ;(<edn-list> ks)
+
+           ;(pr-str rename-pairs)
+
+           ;[:hr]
+
+
+           ;; guessing street names - very slow
+           #_(let [
+                 ks (into #{} (map :ru renamings))
+
+                 street-xf  (comp
+                              (map (fn [s]
+                                     (assoc s :matches
+                                              (reduce (fn [a n]
+                                                        (let [d (jaro (:ua s) n)]
+                                                          (if (>= d 0.76 )
+                                                            (assoc a n d)
+                                                            a
+                                                            )
+                                                          )
+                                                        ) {} ks)
+                                              )
+
+                                     ))
+                              (filter (fn [s] (not (empty? (:matches s)))))
+                              )
+                 ]
+             (map (fn [s]
+                    [:div (pr-str (first (keys (:matches s)))) " -> " (pr-str (:ua s)) ])
+
+                  (sequence street-xf
+                            (:raw-streets dict)
+                            )
+
+                  )
+
+             )
+
+
+           ;[:hr]
+
+           #_(<rename> (apply assoc {}
+                            (interleave old nu)))
+
+           ;(d/pretty! (count (interleave old nu)))
+           ]
+          )
+
+        )
+
+
+      ;; provide here upd ru street names to be updated
+
+      #_(when-let [raw-streets (:raw-streets dict)]
+
+        (let [
+              ua-ru {
+
+                     }
+
+              xf (map (fn [street]
+                        (if (= "" (:ru street))
+                          (assoc street :ru (get ua-ru (:ua street) ""))
+                          street
+                          )
+                        ))
+              ]
+
+          (<edn-list> (sequence xf raw-streets))
+          )
+
+        )
 
       ;; STREETS
       ;; city streets to canonical form
@@ -902,8 +1108,6 @@
                                          (assoc a k (:cid (first v))))
                                        {} (group-by (juxt :district :old) delta))
 
-
-
               all-streets (into #{} (group-by :ua raw-streets))
 
 
@@ -914,6 +1118,7 @@
 
                        rename (get old->cid [d cstreet])
                        ]
+                   ; (.log js/console rename (get ua-ru rename ""))
                    (cond
                      rename (assoc % :alias (vals (select-keys % [:ua :ru :en]))
                                      :ua rename
@@ -925,6 +1130,7 @@
                      )
                    )
                 raw-streets)
+
               ]
           [:div.html
 
@@ -937,11 +1143,13 @@
            (let [untranslated-streets (filter (fn [sm]
                                                 (= "" (:ru sm))
                                                 ) upd-streets)]
+             [:div
+              [:header "streets with no ru translation: "]
 
-             (map #(do
-                     [:div (:ua %) "\n"]
-                     ) untranslated-streets)
-             )
+              (map #(do
+                      [:div (:district %) " " (:ua %) "\n"]
+                      ) untranslated-streets)
+              ])
 
 
            #_(map <street-name> (filter (fn [sm]
@@ -949,7 +1157,7 @@
                                         ) upd-streets))
 
 
-           ;(<edn-list> upd-streets)
+           ; (<edn-list> upd-streets)
 
            #_(<edn-list>
              (map

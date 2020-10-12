@@ -1638,3 +1638,17 @@ pre {
     outline-color: grey;
     color: grey;
 }
+
+.extract-street,
+.street-row {
+    padding: .5rem;
+}
+
+.extract-street:hover,
+.street-row:hover {
+    background-color: #f8af0f55;
+}
+
+.extract-street .rename {
+    padding-left: .5rem;
+}
