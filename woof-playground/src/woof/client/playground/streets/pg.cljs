@@ -45,6 +45,9 @@
 
   )
 
+;;
+(def jaro (memoize metrics/jaro))
+
 
 ;;
 ;; streets
@@ -892,32 +895,60 @@
   )
 
 
-(def jaro (memoize metrics/jaro))
+
 
 (rum/defcs <streets-cc> < rum/reactive
+                          (rum/local :MASTER-DATA__FULL :UI)
   [st *dict]
-  (let [dict @*dict]
-    [:div  {:style {:padding-top "1rem"}}
-     (pg-ui/menubar "Streets: "
+
+  (let [dict @*dict
+        *ui (:UI st)
+        ui @*ui
+        ]
+
+    [:div.streets-pg
+
+     [:.panel
+      (pg-ui/menubar "Master Data   "
+                     [
+                      ["load :raw-streets"    (fn [] (load-edn *dict "/s/streets/streets.edn" :raw-streets))]
+                      ["load :ua-geonims"     (fn [] (load-edn *dict "/s/streets/ua_geonims.edn" :ua-geonims))]
+                      ])
+      ]
+
+     [:.panel
+      (pg-ui/menubar "Renaming Data "
+                     [
+                      ["load :renamed-streets"       (fn [] (load-edn *dict "/s/streets/renamed-streets.edn" :renamed-streets))]
+                      ["load :renamed-streets-delta" (fn [] (load-edn *dict "/s/streets/streets_delta.edn" :renamed-streets-delta))]
+
+                      ["load :renamed-ru (2015-2017)" (fn [] (extract-ru-renamings *dict))]
+                      ])
+      ]
+
+     [:.panel
+      (pg-ui/menubar "DRV Data      "
+                     [
+                      ["load :drv-buildings-per-street" (fn [] (load-edn *dict "/s/drv/buildings.edn" :drv-buildings-per-street))]
+                      ["load :drv-renamed-streets" (fn [] (load-edn *dict "/s/drv/street-renamings_n_alternate_names.edn" :drv-renamed-streets))]
+                      ])
+      ]
+
+     [:hr]
+
+     (pg-ui/menubar (str (pr-str (into #{} (keys dict))) " UI: ")
                     [
-                     ["MAIN: load streets" (fn [] (load-edn *dict "/s/streets/streets.edn" :raw-streets))]
-                     ["MAIN: load renamed streets" (fn [] (load-edn *dict "/s/streets/renamed-streets.edn" :renamed-streets))]
+                     [(name ui) (fn []
+                                  (swap! *ui {:MASTER-DATA__FULL :RENAME
+                                              :RENAME :DRV
+                                              :DRV :MASTER-DATA__FULL})
+                                  )]
 
-                     ["MAIN: load renamed streets DELTA" (fn [] (load-edn *dict "/s/streets/streets_delta.edn" :renamed-streets-delta))]
-
-
-                     ["MAIN: load parsed geonims" (fn [] (load-edn *dict "/s/streets/ua_geonims.edn" :ua-geonims))]
-
-                     ["DRV: load buildings" (fn [] (load-edn *dict "/s/drv/buildings.edn" :drv-buildings-per-street))]
-                     ["DRV: load renamings" (fn [] (load-edn *dict "/s/drv/street-renamings_n_alternate_names.edn" :drv-renamed-streets))]
-
-                     ["RENAME: get ru names 2015-2017" (fn []
-                                               (extract-ru-renamings *dict)
-                                               )]
                      ])
+     ;;::streets
+
 
      [:.flex
-
 
       ;; extract renames to edn
       (when-let [rename-pairs (:renamed-ru dict)]
@@ -1488,6 +1519,9 @@
   )
 
 
+;;;;;;;;;;;;;;;;;;;;
+
+(defonce *styles-added? (atom false))
 
 ;;
 ;; WF definition
@@ -1497,7 +1531,7 @@
         *dict (rum/cursor-in *SWF [:state ::dict])]
     {
 
-     :title       "Streets command center"
+     :title       "Apartment command center"
      :explanation [:div.explanation
                    ;[:p "Analyze scraped data here"]
                    ]
@@ -1507,24 +1541,11 @@
 
              ;; just data for the ui
              ::dict {
-                     :raw-streets []
-
-                     :streets []
-                     ;:renamed-streets []
-
-                     :drv-buildings-per-street {}
-                     :drv-renamed-streets {}
-
-                     :ua-geonims {}
                      }
-
              }
 
      :init-fns    [
-
-                   {
-                    ::*dict *dict
-                    }
+                   { ::*dict *dict }
 
                    (base/build-init-chan-factory-fn CHAN-FACTORY)
                    (evt-loop/build-evt-loop-init-fn (base/make-chan CHAN-FACTORY (base/rand-sid "evt-")))
@@ -1538,13 +1559,15 @@
                    ]
 
      ;;
-     :steps-fns   [(fn [params]
-                     {
-                      ::#EVT-LOOP# [:evt-loop (evt-loop/&evt-loop params)]
+     :steps-fns   [
+                   (fn [params] { ::#EVT-LOOP# [:evt-loop (evt-loop/&evt-loop params)]})
 
-                      ;; ::hello [:log "Hello"]
-                      ;; :CSS/custom-css-file [:css-file "http://localhost:9500/css/t.css"]
-                      })]
+                   (fn [params]   ;; add css styles only once
+                     (if-not @*styles-added?
+                       (do (reset! *styles-added? true)
+                         { :CSS/custom-css-file [:css-file "http://localhost:9500/css/apt.css"]})
+                       {}))
+                   ]
 
      :opt-fns     [
                    (base/build-opts-chan-factory-fn CHAN-FACTORY)
