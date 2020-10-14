@@ -1076,50 +1076,6 @@
 
 
 
-(defn xf-map-xf
-  ([f *v meta-xf]
-   (let [meta-r (transient [])
-         meta-rf (fn ;; reducer to
-           ;; ([] (.log js/console "[]" ))
-           ([res]
-            ; (.log js/console "[res]\n" [res])
-            (vreset! *v (persistent! res))
-            )
-           ([res item]
-            ;;(.log js/console "[res item]\n" [res item])
-            (if-let [meta-record (meta-xf item)]
-              (conj! res meta-record))
-
-            )
-           )
-         ]
-     (fn [rf]
-       (fn
-         ([]
-          ;(.warn js/console "[]")
-          (rf))
-         ([result]
-          ; (.warn js/console "[result]")
-          (meta-rf meta-r)
-          (rf result))
-         ([result input]
-
-          (let [r (f input)]
-            (meta-rf meta-r r)
-            (rf result r)))
-
-         ([result input & inputs]
-          ;(.warn js/console "[result input & inputs]")
-          (let [r (apply f input inputs)]
-            (meta-rf meta-r r)
-            (rf result r)
-            )
-
-          )))
-     )
-   ))
-
-
 ;; extend filtering with saving meta-data
 
 (defn z-map
@@ -1300,162 +1256,75 @@
                          ;; event { :id ... , :check "zzz" }
                          ])]
     [:div
-     [:p "[street.. ] transformations"]
 
+     [:p "[street.. ] view: visually ensure properties, like uniqueness, correctness, etc."]
 
      (let [
-           ;; -> streets
-
-
-           ;; simplest reduce
-           reduced-districts (reduce
-                    (fn [a x]
-                      (conj a (:district x)))
-                    #{} raw-streets
-                    )
-
-           ;; reduce street names but for certain district
-
            podil? #(= "Подільський р-н" (:district %))
            podil-xf (filter podil?)
 
-           *events (volatile! [])
+           ;; external modifiable asserts list, for storing failed assertion
+           *asserts (volatile! [])
 
-           on-filter (juxt
-                    #_(fn [item]
-                      (if (= "11934" (:idx item)) {:ID (:ID item) :class "foo"}))
+           ;; assert fns, should return an assertion record if some assertion is failing
+           __no-ru-label (fn [item] (if (= "" (:ru item)) {:ID (:ID item) :class "no-label"}))
+           __dummy-assert (fn [item] (if (= "11823" (:idx item)) {:ID (:ID item) :class "dummy-assert"}))
 
-                    #_(fn [item]
-                      (if (= "11823" (:idx item)) {:ID (:ID item) :class "blue"}))
+           ;; map transducer that checks for assertions also. checks can be combined via juxtaposition (not comp)
+           assert-map (partial z-map *asserts (apply juxt
+                                                     [__no-ru-label
+                                                      __dummy-assert]))
 
-                    (fn [item]
-                      (if (= "" (:ru item)) {:ID (:ID item) :class "no-label"}))
-                    )
+           assert-filter (partial z-filter *asserts __no-ru-label)
 
-           logging-filter (partial z-filter *events on-filter)
 
-           logging-map (partial z-map *events (fn [item]
-                                                (if (= "" (:ru item)) {:ID (:ID item) :class "no-label"})))
+           ;; external grouping for duplicates
            *dups (volatile! {})
 
-           pgroup-dupes (partial z-map-group *dups :ID
-                                                  (fn [a x]
-                                                    (if (nil? a)
-                                                        1
-                                                        (+ a 1))
-                                                    ))
+           groupping-rf (fn [a x] (if (nil? a) 1 (+ a 1)))
+           map-group-dupes (partial z-map-group *dups :ID groupping-rf)
 
+           ;; single-pass processing of the street list, that can build some additinal meta data via special transducers
            transduced-streets (into [] ; (sorted-set)
                                     (comp
-                                      ;; generate ids
-                                      (map #(assoc % :ID (str (:idx %) "_" (:ua %))))
+                                      ;; generate unique ID for each street
+                                      (assert-map #(assoc % :ID (str (:idx %) "_" (:ua %)))) ;; at the same time
 
-                                      ;; normal filter
-                                      ; (filter podil?)
-                                      ;; loging fitler
-                                      ;(logging-filter podil?)
+                                      ;; normal filter (filter podil?)
+                                      ;; ;; or special one with logging
+                                      (assert-filter podil?) ;; todo: add useful assertion
 
-
-                                      (logging-map identity)
-
-                                      (pgroup-dupes identity)
-
-                                      ;; output
-                                      ;; (map :ua)
+                                      (map-group-dupes identity)
                                       ) raw-streets)
 
+           ;; after process - find out duplicated streets and convert this to assertions
            dup-markers (reduce (fn [a [k v]]
-                     (if (> v 1)
-                       (conj a {:ID k :class "dup"})
-                       a
-                       )
-                     ) [] @*dups)
+                                 (if (> v 1) (conj a {:ID k :class "dup"})
+                                             a))
+                               [] @*dups)
            ]
        [:div.flex
 
-        ; (<edn-list> transduced-streets "TRANSDUCED: streets names of certain district")
+        ;; example of simplest reduce
+        #_(let [
+              reduced-districts (reduce
+                                  (fn [a x]
+                                    (conj a (:district x)))
+                                  #{} raw-streets
+                                  )
 
+              ;; reduce street names but for certain district
+              ]
+          (<edn-list> reduced-districts "REDUCED DISTRICTS")
+          )
 
         (<transform-list> <street> transduced-streets
-                          (concat dup-markers @*events)
+                          (concat dup-markers @*asserts)
                           :id-fn :ID
-                          :sort-fn :ID
-                          )
-
-        #_(z-group id-fn (fn [a x]
-                         (if (nil? a)
-                           (:class x)
-                           (str a " " (:class x)))
-                         )  logs)
-
-
-        ;(<edn-list> reduced-districts "REDUCED DISTRICTS")
-
-
-
+                          :sort-fn :ID)
         ]
-
        )
 
-     ;; initial xf
-     #_(let [
-
-           xf (comp
-                (take 3)
-
-                ;; normal transducer
-                ;(map :district)
-
-                (xf-map-xf :district
-                           *inv (fn [distr]
-                                  (if (= "Дарницький р-н" distr)
-                                    {:id distr }
-                                    )
-                                  )
-                           )
-
-
-                ;; or
-                #_(print-map-xf :district
-                              *inv
-                              (fn [street]
-                                (.log js/console street)
-                                (if (= "12250" (:idx street))
-                                  {:evt "boo" :id (:ua street)})
-                                )
-                              )
-                )
-           all-districts (transduce xf
-                                    conj (sorted-set)
-                                    raw-streets
-                                    )
-
-           additional-xf (filter (fn [district] (re-matches #".*р-н" district)))
-           ]
-
-       [:div.flex
-        (<edn-list> all-districts "ALL DISTRICTS: [street..] => #{district..}")
-
-
-        [:div {:style {:outline "1px solid red"}}
-         (pr-str
-           @*inv
-           )
-         ]
-
-
-        ;(<edn-list> @*inv "META")
-
-
-        #_(<edn-list> (transduce (comp xf additional-xf)
-                               conj (sorted-set)
-                               raw-streets)
-                    "CHECK FOR DISTRICTS")
-
-        ;;
-        ]
-
-       )
 
      #_[:div.flex
 
