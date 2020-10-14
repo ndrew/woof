@@ -758,6 +758,7 @@
    "cljs.core/PersistentHashSet" "#{"
    "cljs.core/List"              "["
    "cljs.core/LazySeq"           "("
+   "cljs.core/IndexedSeq"        "("
    "cljs.core/PersistentVector"  "["
    })
 
@@ -766,23 +767,34 @@
           "cljs.core/PersistentHashSet" "}"
           "cljs.core/List"              "}"
           "cljs.core/LazySeq"           ")"
+          "cljs.core/IndexedSeq"        ")"
           "cljs.core/PersistentVector"  "]"
           })
+
+
+
 
 
 (rum/defc <edn-list> < rum/static
   [edn h]
 
-  (let [t (pr-str (type edn))]
+  (let [t (pr-str (type edn))
+        EDN-STR (reduce
+                  str
+                  ""
+                  (concat
+                    (get OPENING-BRACKETS t (str "!!!" t)) "\n"
+                    (map
+                      #(str " " (pr-str %) "\n") edn)
+                    (get CLOSING-BRACKETS t (str "!!!" t))
+                    )
+
+                  )
+        ]
     [:.html
+     (pg-ui/menu-item "copy" (partial woof-dom/copy-to-clipboard EDN-STR))
      (if h (str ";; " h "\n") "\n")
-     (get OPENING-BRACKETS t (str "!!!" t))
-     "\n"
-     (map
-       #(str " " (pr-str %) "\n")
-       edn
-       )
-     (get CLOSING-BRACKETS t (str "!!!" t))
+     EDN-STR
      ]
     )
   )
@@ -1061,16 +1073,6 @@
 
 
 
-(defn _copy-handler [data]
-  (let [clipboard js/navigator.clipboard
-        copy-handler (fn []
-                       (-> (.writeText clipboard (d/pretty! data))
-                           (.then (fn [response] (.log js/console "Copied to clipboard - " response))
-                                  (fn [err] (.warn js/console "Failed to copy to clipboard" err))))
-                       )
-        ]
-    (copy-handler)))
-
 
 
 
@@ -1229,37 +1231,44 @@
 
 
 (rum/defcs <transform-list> < rum/static
-                              (rum/local :all ::filter)
-  [st <item> id-fn items logs]
+                              (rum/local nil ::filter)
+  [st <item> items logs & {:keys [id-fn sort-fn] :or {id-fn identity}}]
 
-  (let [*filter (::filter st)
+  (let [style-map (z-group id-fn (fn [a x]
+                                   (if (nil? a)
+                                     (:class x)
+                                     (str a " " (:class x)))
+                                   )  logs)
+
+        &style (memoize (fn [item]
+                          (get style-map (id-fn item))))
+
+
+        available-styles (into (sorted-set) (vals style-map))
+
+        *filter (::filter st)
+
+        _ (if (nil? @*filter) (reset! *filter (first available-styles)))
+
         filter-id @*filter
 
         show-all? (= :all filter-id)
 
-        style-map (z-group id-fn (fn [a x]
-                       (if (nil? a)
-                         (:class x)
-                         (str a " " (:class x)))
-                       )  logs)
 
-        &style (memoize (fn [item]
-                          (get style-map (id-fn item))))
         ]
     [:div.list
 
      (pg-ui/menubar "filters: "
                     (into
                       [["all" (fn [] (reset! *filter :all))][]]
-                      (map #(do [% (fn [] (reset! *filter %)) ]) (into (sorted-set) (vals style-map)))
+                      (map #(do [% (fn [] (reset! *filter %)) ]) available-styles)
                       )
                     )
 
-     [:.html
+     #_[:.html
       (pr-str filter-id)
       "\n===\n"
       (d/pretty! style-map)]
-
 
      (into [:.items]
            (comp
@@ -1273,8 +1282,11 @@
                     )
              ))
 
-           ;(sort-by id-fn items)
-           items
+           (if sort-fn
+             (sort-by sort-fn items)
+             items
+             )
+
            )
      ]
     )
@@ -1313,20 +1325,17 @@
                     #_(fn [item]
                       (if (= "11934" (:idx item)) {:ID (:ID item) :class "foo"}))
 
-                    (fn [item]
+                    #_(fn [item]
                       (if (= "11823" (:idx item)) {:ID (:ID item) :class "blue"}))
 
                     (fn [item]
-                      (if (= "" (:ru item)) {:ID (:ID item) :class "red"}))
+                      (if (= "" (:ru item)) {:ID (:ID item) :class "no-label"}))
                     )
 
            logging-filter (partial z-filter *events on-filter)
 
-           logging-map (partial z-map *events (fn [street]
-                                                (if (= "Цукровий провулок" (:ua street))
-                                                  {:ID (:ID street) :class "zzz"}
-                                                  )
-                                                ))
+           logging-map (partial z-map *events (fn [item]
+                                                (if (= "" (:ru item)) {:ID (:ID item) :class "no-label"})))
            *dups (volatile! {})
 
            pgroup-dupes (partial z-map-group *dups :ID
@@ -1344,10 +1353,10 @@
                                       ;; normal filter
                                       ; (filter podil?)
                                       ;; loging fitler
-                                      (logging-filter podil?)
+                                      ;(logging-filter podil?)
 
 
-                                      ; (logging-map identity)
+                                      (logging-map identity)
 
                                       (pgroup-dupes identity)
 
@@ -1366,17 +1375,12 @@
 
         ; (<edn-list> transduced-streets "TRANSDUCED: streets names of certain district")
 
-        [:.html
-         (d/pretty! (reduce (fn [a [k v]]
-                              (if (> v 1)
-                                (conj a {:ID k :class "dup"})
-                                a
-                                )
-                              ) [] @*dups))
-         ]
 
-        (<transform-list> <street> :ID transduced-streets
-                          (concat dup-markers @*events))
+        (<transform-list> <street> transduced-streets
+                          (concat dup-markers @*events)
+                          :id-fn :ID
+                          :sort-fn :ID
+                          )
 
         #_(z-group id-fn (fn [a x]
                          (if (nil? a)
@@ -1481,7 +1485,7 @@
 
         [:div {:style {:width "75%"}}
          (pg-ui/menubar (str h (count streets))
-                        [["copy 📋" (partial _copy-handler streets)]])
+                        [["copy 📋" (partial woof-dom/copy-to-clipboard streets)]])
 
          (map <street> streets)
 
@@ -1653,7 +1657,8 @@
      (pg-ui/menubar (str (pr-str (into #{} (keys dict))) " UI: ")
                     [
                      [(name ui) (fn []
-                                  (swap! *ui {:MASTER-DATA__FULL :RENAME
+                                  (swap! *ui {:MASTER-DATA__FULL :EXPORT
+                                              :EXPORT :RENAME
                                               :RENAME :DRV
                                               :DRV :MASTER-DATA__FULL})
                                   )]
@@ -1665,8 +1670,21 @@
 
       (cond
 
-        (= ui :RENAME)
-        (let [raw-streets (get dict :raw-streets [])
+        (= ui :EXPORT)
+        (<edn-list>
+          (vec (sort (fn [a b ]
+                       (let [c1 (.localeCompare (:district a) (:district b))]
+                         (if (= 0 c1)
+                           (.localeCompare (:ua a) (:ua b))
+                           c1
+                           )
+                         ))
+                     (get dict :raw-streets [])))
+          " streets EDN, sorted by district and name")
+
+
+        #_(= ui :RENAME)
+        #_(let [raw-streets (get dict :raw-streets [])
 
               ua-ru {}
               xf (map (fn [street]

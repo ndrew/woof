@@ -32,9 +32,9 @@
 
 (rum/defc menubar     <   rum/static     { :key-fn (fn [header items] (str header (count items)))}
                           "generic menubar component. has header and buttons"
-  [menu-header menu-items]
+  [menu-header menu-items & {:keys [class] :or {class ""}}]
 
-  (into [:span.menubar
+  (into [:span.menubar {:class class}
          (if-not (= "" menu-header)
            [:.header menu-header])
          ]

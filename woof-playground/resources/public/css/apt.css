@@ -99,3 +99,24 @@
 .panel .menubar {
     margin-bottom: .333rem;
 }
+
+
+.street-row .langs {
+    display: flex;
+    flex-direction: row;
+
+    font-weight: bold;
+}
+
+.street-row .langs * {
+    padding-right: 3rem;
+}
+
+.no-label {
+    outline: 1px solid red;
+    background-color: rgba(203, 68, 175, 0.18);
+}
+
+.blue {
+    outline: 1px solid darkblue;
+}

@@ -558,13 +558,13 @@
   )
 
 
-(defn save-json [edn]
+(defn save-blob [s]
 
   (let [a (.createElement js/document "a")]
     (.appendChild (.-body js/document) a)
     (set! (.-style a) "display: none")
 
-    (let [s (.stringify js/JSON (clj->js edn))
+    (let [
           blob (js/Blob. (clj->js [s])
                          (js-obj "type" "octet/stream"))
           url (.createObjectURL (.-URL js/window) blob)]
@@ -578,6 +578,16 @@
       )
     )
 
+  )
+
+
+(defn save-edn [edn]
+  (save-blob (d/pretty! edn))
+  )
+
+
+(defn save-json [edn]
+  (save-blob (.stringify js/JSON (clj->js edn)))
   )
 
 
