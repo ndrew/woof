@@ -1356,6 +1356,23 @@
   )
 
 
+(defn locale-comparator [k & ks]
+  (fn [a b]
+
+    (loop [c1 (.localeCompare (k a) (k b))
+           ks ks]
+      (if (not= 0 c1)
+        c1
+        (if-not (seq ks)
+          c1
+          (let [k (first ks)]
+            (recur (.localeCompare (k a) (k b)) (rest ks)))
+          )
+        )
+      )
+  )
+  )
+
 (rum/defcs <streets-cc> < rum/reactive
                           (rum/local :MASTER-DATA__FULL :UI)
   [st *dict]
@@ -1403,7 +1420,6 @@
                                               :RENAME :DRV
                                               :DRV :MASTER-DATA__FULL})
                                   )]
-
                      ])
      [:hr]
 
@@ -1413,39 +1429,17 @@
 
         (= ui :EXPORT)
         (<edn-list>
-          (vec (sort (fn [a b ]
-                       (let [c1 (.localeCompare (:district a) (:district b))]
-                         (if (= 0 c1)
-                           (.localeCompare (:ua a) (:ua b))
-                           c1
-                           )
-                         ))
-                     (get dict :raw-streets [])))
+          (vec (sort
+                 (locale-comparator :district :ua) ;; or by :idx
+                 (get dict :raw-streets [])))
           " streets EDN, sorted by district and name")
 
-
-        #_(= ui :RENAME)
-        #_(let [raw-streets (get dict :raw-streets [])
-
-              ua-ru {}
-              xf (map (fn [street]
-                        (if (= "" (:ru street))
-                          (assoc street :ru (get ua-ru (:ua street) ""))
-                          street)))
-              ]
-
-          [:div
-           [:header "Enriched streets: "]
-           (<edn-list> (sequence xf raw-streets) "Enriched streets: ")
-           ])
 
         (= ui :RENAME_)           (<RENAMING-UI> (get dict :renamed-ru []))
 
         (= ui :MASTER-DATA__FULL) (<MAIN-DATA>   (get dict :raw-streets []))
 
         )
-
-
 
 
 
