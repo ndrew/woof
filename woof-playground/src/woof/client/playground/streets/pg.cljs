@@ -1284,17 +1284,26 @@
            groupping-rf (fn [a x] (if (nil? a) 1 (+ a 1)))
            map-group-dupes (partial z-map-group *dups :ID groupping-rf)
 
+           *multi-idx (volatile! {})
+           i-rf (fn [a x] (if (nil? a) #{(:i x)} (conj a (:i x))))
+
+           gen-street-id #(str (:idx %) "_" (:ua %))
+
            ;; single-pass processing of the street list, that can build some additinal meta data via special transducers
            transduced-streets (into [] ; (sorted-set)
                                     (comp
                                       ;; generate unique ID for each street
-                                      (assert-map #(assoc % :ID (str (:idx %) "_" (:ua %)))) ;; at the same time
+                                      (map-indexed #(assoc %2 :i %1))
+                                      (assert-map #(assoc % :ID (gen-street-id %))) ;; at the same time
 
                                       ;; normal filter (filter podil?)
                                       ;; ;; or special one with logging
-                                      (assert-filter podil?) ;; todo: add useful assertion
+                                      ;; (assert-filter podil?) ;; todo: add useful assertion
 
                                       (map-group-dupes identity)
+
+                                      (z-map-group *multi-idx :ua i-rf identity)
+
                                       ) raw-streets)
 
            ;; after process - find out duplicated streets and convert this to assertions
@@ -1302,6 +1311,14 @@
                                  (if (> v 1) (conj a {:ID k :class "dup"})
                                              a))
                                [] @*dups)
+
+           multi-idx-markers (into []
+                                   (comp
+                                     (filter (fn [[k v]] (> (count v) 1)))
+                                     (mapcat second)
+                                     (map (fn[x] { :ID (gen-street-id (get-in raw-streets [x])) :class "long-street"}))
+                                     )
+                                      @*multi-idx)
            ]
        [:div.flex
 
@@ -1318,95 +1335,26 @@
           (<edn-list> reduced-districts "REDUCED DISTRICTS")
           )
 
+        ;; streets in several districts
+        ;; [:p "find streets that occur more than once in parsed list: streets that span to multiple districts, etc"]
+
+
         (<transform-list> <street> transduced-streets
-                          (concat dup-markers @*asserts)
+                          (concat dup-markers
+                                  multi-idx-markers
+                                  @*asserts)
                           :id-fn :ID
                           :sort-fn :ID)
+
         ]
        )
 
 
-     #_[:div.flex
-
-      (let [district "Дарницький р-н"
-            h (str "Export Streets (district=" district ")")
-
-            d-xf (comp
-                   (filter (fn [street]
-                             (= district (:district street))))
-                   (take 10)
-                   #_(map (fn [street]
-                          #_(if (= "12250" (:idx street))
-                              (assoc street :css "zzz")
-                              street
-                              )
-                          street
-                          ))
-                   )
-            xf d-xf
-
-            ;; composable filters
-            streets (sequence xf raw-streets)
-            ;; custom css
-            ]
-
-        ;; todo: legend
-
-        [:div {:style {:width "75%"}}
-         (pg-ui/menubar (str h (count streets))
-                        [["copy 📋" (partial woof-dom/copy-to-clipboard streets)]])
-
-         (map <street> streets)
-
-         ]
-        )
-
-
-      ;; list all districts
-      (let [all-districts_ (into #{}
-                                 (map :districts)
-                                 raw-streets)
-
-
-            h "get all districts, clean-up if needed"
-            xf (comp
-                 (filter (fn [street]
-                           (= "Дарницький р-н" (:district street))))
-                 (map :districts))
-
-            ;all-districts (transduce xf into #{} raw-streets)
-            all-districts (transduce xf conj '() raw-streets)
-            ;all-districts (sequence xf raw-streets)
-            ]
-
-        [:div {:style {:width "25%"}}
-         [:p h]
-         (str (count all-districts) " total")
-
-         (<edn-list> all-districts "")
-         ]
-        )
+     [:div.flex
 
 
 
-      ;; streets in several districts
-      #_[:div
-         [:p "find streets that occur more than once in parsed list: streets that span to multiple districts, etc"]
 
-         (->> (group-by :ua raw-streets)
-              (filter (fn [[k vs]] (> (count vs) 1)))
-              (map (fn [[k vs]]
-                     [:div
-                      [:header
-                       (pr-str (count vs)) " — "
-                       (pr-str k)]
-
-                      #_(map <street> vs)
-                      ]
-                     ))
-              )
-
-         ]
 
 
 
