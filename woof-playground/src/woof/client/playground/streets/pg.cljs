@@ -1306,6 +1306,7 @@
 
                                       ) raw-streets)
 
+
            ;; after process - find out duplicated streets and convert this to assertions
            dup-markers (reduce (fn [a [k v]]
                                  (if (> v 1) (conj a {:ID k :class "dup"})
@@ -1335,9 +1336,11 @@
           (<edn-list> reduced-districts "REDUCED DISTRICTS")
           )
 
-        ;; streets in several districts
-        ;; [:p "find streets that occur more than once in parsed list: streets that span to multiple districts, etc"]
+        ;; other assertions
+        ;; - streets in several districts - "find streets that occur more than once in parsed list: streets that span to multiple districts, etc"
+        ;; - multilines in district
 
+        ;; todo: pass groupings into transform list, not for filtering, but for visual grouping
 
         (<transform-list> <street> transduced-streets
                           (concat dup-markers
@@ -1348,87 +1351,8 @@
 
         ]
        )
-
-
-     [:div.flex
-
-
-
-
-
-
-
-
-      #_[:div
-
-         ;; find districts with enters
-         #_[:div {:style {:max-width "75%"}}
-            (->> raw-streets
-                 ; (take 100 raw-streets)
-                 (filter (fn [street]
-                           (let [district (:district street)]
-                             (re-find #"\n" district)
-                             )
-                           ))
-                 (map <street>)
-                 )
-            ]
-
-         ;; Подільський р-н
-         #_[:div {:style {:max-width "75%"}}
-            (->> raw-streets
-                 ; (take 100 raw-streets)
-                 (filter (fn [street]
-                           (let [district (:district street)]
-                             (and (= "Подільський р-н" district)
-                                  ;(not= ["Подільський р-н"] (:districts street))
-                                  )
-                             )
-                           ))
-                 (map <street>)
-                 )
-            ]
-
-
-         #_[:div {:style {:max-width "75%"}}
-            (->> (group-by :idx
-                           (filter #(= (:district %) "Подільський р-н") raw-streets)
-                           ; raw-streets
-
-                           )
-                 ;(filter (fn [[k vs]] (> (count vs) 1)))
-                 (sort-by first)
-                 (map (fn [[k vs]]
-                        [:pre
-                         (pr-str k)
-                         "\t"
-                         (pr-str (count vs))
-
-                         (map <street> vs)
-                         ]
-                        ))
-                 )
-            ]
-
-
-         #_(->> (group-by :district (take 10 raw-streets))
-                ;(filter (fn [[k vs]] (> (count vs) 1)))
-                (map (fn [[k vs]]
-                       [:pre
-                        (pr-str k)
-                        "\t"
-                        (pr-str (count vs))
-
-                        #_(map <street> vs)
-                        ]
-                       ))
-                )
-
-         ]
-      ]
      ]
     )
-
   )
 
 
