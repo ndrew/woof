@@ -26,6 +26,8 @@
     [woof.wfs.evt-loop :as evt-loop]
 
     [clj-fuzzy.metrics :as metrics]
+
+    [clojure.core.reducers :as r]
     )
 
   (:require-macros
@@ -67,21 +69,19 @@
          } street]
 
     [:div.street-row
-     {:on-click (fn[e]
-                  (.log js/console street)
-                  )}
-     [:span.idx idx]
-     [:span.districts
-      ;; [:span.district district]
-      (map (fn [d] [:span.district d]) districts)
-      ]
+     {:on-click (fn[e] (.log js/console street))
+      :class (get street :css "")
+      }
      [:div.langs
       [:.ua ua]
       [:.ru ru]
       [:.en en]]
-     [:.other
-      other
-      ]
+     [:.other other]
+
+     [:span.small-tag.idx idx]
+     [:span.districts
+      (map (fn [d] [:span.small-tag.district {:key (pr-str d)} d]) districts)]
+
 
      (if (:test street)
        [:div {:style {:outline "1px solid red"}}
@@ -753,19 +753,38 @@
   )
 
 
+(defonce OPENING-BRACKETS
+  {"cljs.core/PersistentTreeSet" "#{"
+   "cljs.core/PersistentHashSet" "#{"
+   "cljs.core/List"              "["
+   "cljs.core/LazySeq"           "("
+   "cljs.core/PersistentVector"  "["
+   })
+
+(defonce CLOSING-BRACKETS
+         {"cljs.core/PersistentTreeSet" "}"
+          "cljs.core/PersistentHashSet" "}"
+          "cljs.core/List"              "}"
+          "cljs.core/LazySeq"           ")"
+          "cljs.core/PersistentVector"  "]"
+          })
+
+
 (rum/defc <edn-list> < rum/static
-  [edn]
-  [:.html
+  [edn h]
 
-   "[\n"
-   (map
-     #(str " " (pr-str %) "\n")
-     edn
-     )
-   "]"
-
-   ;(pr-str new-renamed)
-   ]
+  (let [t (pr-str (type edn))]
+    [:.html
+     (if h (str ";; " h "\n") "\n")
+     (get OPENING-BRACKETS t (str "!!!" t))
+     "\n"
+     (map
+       #(str " " (pr-str %) "\n")
+       edn
+       )
+     (get CLOSING-BRACKETS t (str "!!!" t))
+     ]
+    )
   )
 
 (rum/defc <street-name> < rum/static
@@ -897,6 +916,701 @@
 
 
 
+
+(rum/defc <RENAMING-UI> < rum/static
+  [rename-pairs]
+
+  (let [xf (comp
+             (filter (fn [[old nu]]
+                       (re-find #"\(.+\)$" nu)))
+             (map (fn [[old nu]]
+                    (re-find #"\(.+\)$" nu)))
+             )
+
+        ru-ua-mapping {
+                       "б-р." "бульвар"
+                       "пл." "площа"
+                       "пер." "провулок"
+                       "пр-т." "проспект"
+                       "пр." "проспект"
+                       "ул." "вулиця"
+                       }
+        ru-canonized-gt-mapping {
+                                 "б-р." "бульвар"
+                                 "пл." "пл."
+                                 "пер." "пер."
+                                 "пр-т." "просп."
+                                 "пр." "просп."
+                                 "ул." "ул."
+                                 }
+
+        ;; todo: do smth with these guesses
+        guesses {
+
+                 }
+
+        renamings (map (fn [[old nu]]
+                         (let [_distr (re-find #"\(.+\)$" nu)
+                               distr (if _distr
+                                       ({"(Дарницкий район)"   "Дарницький р-н"
+                                         "(Дарницкий)"         "Дарницький р-н"
+                                         "(Деснянский район)"  "Деснянський р-н"
+                                         "(Деснянский)"        "Деснянський р-н"
+                                         "(Днепровский район)" "Дніпровський р-н"
+                                         "(Печерский)"         "Печерський р-н"
+                                         "(Подол)"             "Подільський р-н"
+                                         "(Соломенский район)" "Солом'янський р-н"
+                                         "(Соломенский)"       "Солом'янський р-н"
+                                         } _distr)
+                                       )
+                               nu-1 (if _distr
+                                      (str/trim (str/replace nu #"\(.+\)$" ""))
+                                      nu)
+
+                               parts (str/split old " ")
+                               raw-gt (last parts)
+
+                               ]
+                           ;(last parts)
+
+                           {
+                            :distr distr
+                            :gt (get ru-ua-mapping raw-gt)
+                            :ru-gt (get ru-canonized-gt-mapping raw-gt)
+                            :ru nu-1
+                            ; :ru1 (str nu-1 " " (get ru-canonized-gt-mapping raw-gt))
+                            ;; :_old old
+
+                            :guess (get guesses nu-1)
+                            :old (str/join " " (drop-last parts))
+                            }
+                           )
+                         ) rename-pairs)
+
+        ]
+    [:.html
+
+
+     (map
+       (fn [z]
+         [:div.html.street-row
+          (.padEnd (pr-str (:guess z) ) 40)
+          " "
+          (pr-str (str (:ru z) " " (:ru-gt z) ) )]
+         )
+       (sort-by :guess (filter #(not (empty? (:guess %))) renamings ))
+       )
+
+     ;(<edn-list> (filter #(not (empty? (:guess %))) renamings ))
+
+
+     #_(pr-str (reduce #(conj %1 (:district %2)) #{} (:raw-streets dict)))
+     #_(<edn-list> (sequence xf rename-pairs))
+     #_#{"Солом'янський р-н" "Подільський р-н" "Голосіївський р-н" "Шевченківський р-н" "Деснянський р-н" "Дарницький р-н" "Печерський р-н" "Оболонський р-н" "Святошинський р-н" "Дніпровський р-н"}
+
+
+     ;(<edn-list> ks)
+
+     ;(pr-str rename-pairs)
+
+     ;[:hr]
+
+
+     ;; guessing street names - very slow
+     #_(let [
+             ks (into #{} (map :ru renamings))
+
+             street-xf  (comp
+                          (map (fn [s]
+                                 (assoc s :matches
+                                          (reduce (fn [a n]
+                                                    (let [d (jaro (:ua s) n)]
+                                                      (if (>= d 0.76 )
+                                                        (assoc a n d)
+                                                        a
+                                                        )
+                                                      )
+                                                    ) {} ks)
+                                          )
+
+                                 ))
+                          (filter (fn [s] (not (empty? (:matches s)))))
+                          )
+             ]
+         (map (fn [s]
+                [:div (pr-str (first (keys (:matches s)))) " -> " (pr-str (:ua s)) ])
+
+              (sequence street-xf
+                        (:raw-streets dict)
+                        )
+
+              )
+
+         )
+
+     ;[:hr]
+
+     #_(<rename> (apply assoc {}
+                        (interleave old nu)))
+
+     ;(d/pretty! (count (interleave old nu)))
+     ]
+    )
+  )
+
+
+
+
+(defn _copy-handler [data]
+  (let [clipboard js/navigator.clipboard
+        copy-handler (fn []
+                       (-> (.writeText clipboard (d/pretty! data))
+                           (.then (fn [response] (.log js/console "Copied to clipboard - " response))
+                                  (fn [err] (.warn js/console "Failed to copy to clipboard" err))))
+                       )
+        ]
+    (copy-handler)))
+
+
+
+
+(defn xf-map-xf
+  ([f *v meta-xf]
+   (let [meta-r (transient [])
+         meta-rf (fn ;; reducer to
+           ;; ([] (.log js/console "[]" ))
+           ([res]
+            ; (.log js/console "[res]\n" [res])
+            (vreset! *v (persistent! res))
+            )
+           ([res item]
+            ;;(.log js/console "[res item]\n" [res item])
+            (if-let [meta-record (meta-xf item)]
+              (conj! res meta-record))
+
+            )
+           )
+         ]
+     (fn [rf]
+       (fn
+         ([]
+          ;(.warn js/console "[]")
+          (rf))
+         ([result]
+          ; (.warn js/console "[result]")
+          (meta-rf meta-r)
+          (rf result))
+         ([result input]
+
+          (let [r (f input)]
+            (meta-rf meta-r r)
+            (rf result r)))
+
+         ([result input & inputs]
+          ;(.warn js/console "[result input & inputs]")
+          (let [r (apply f input inputs)]
+            (meta-rf meta-r r)
+            (rf result r)
+            )
+
+          )))
+     )
+   ))
+
+
+;; extend filtering with saving meta-data
+
+(defn z-map
+  ([*v v-xf f]
+   (let [_meta-results (transient []) ;; always use vector for meta log
+
+         add-meta! (fn [input]
+           (let [_metas (v-xf input)
+                 metas (if (or (seq? _metas) (vector? _metas)) _metas
+                                                               [_metas])]
+             (apply conj! _meta-results
+                    (filter some? metas))))
+
+         ]
+     (fn [rf]
+       (fn
+         ([] (rf))
+         ([result]
+          (vswap! *v into (persistent! _meta-results))
+          (rf result))
+         ([result input]
+          (let [nu-v (f input)]
+            (add-meta! nu-v)
+            (rf result nu-v)
+            )
+          )
+         ([result input & inputs]
+          (let [nu-v (apply f input inputs)]
+            (add-meta! nu-v)
+            (rf result nu-v))
+          ))))
+   )
+  )
+
+
+(defn z-filter
+  ([*v v-xf pred]
+   (let [_meta-results (transient [])] ;; always use vector for meta log
+     (fn [rf]
+       (fn
+         ([] (rf))
+         ([result]
+          (vswap! *v into (persistent! _meta-results))
+          (rf result))
+         ([result input]
+          (if (pred input)
+            (let [_metas (v-xf input)
+                  metas (if (or (seq? _metas) (vector? _metas)) _metas
+                                                                [_metas])
+                  ]
+              (apply conj! _meta-results
+                     (filter some? metas))
+
+              (rf result input)
+              )
+            result))))
+     )
+   )
+  )
+
+
+(defn z-group
+  [f rf coll]
+  (persistent!
+    (reduce
+      (fn [ret x]
+        (let [k (f x)]
+          (assoc! ret k (rf (get ret k) x))))
+      (transient {}) coll)))
+
+
+(defn z-map-group
+  ([*v-map g-f g-rf f]
+
+   (let [grouppings (volatile! {})
+
+         group! (fn [x]
+           (let [k (g-f x)
+                 v (g-rf (get @grouppings k) x)]
+
+             (vswap! grouppings assoc k v)
+             ))
+         ]
+
+     (fn [rf]
+       (fn
+         ([] (rf))
+
+         ([result]
+          (vreset! *v-map @grouppings)
+          (rf result)
+          )
+         ([result input]
+          (let [nu-v (f input)]
+            (group! nu-v)
+            (rf result nu-v)
+            )
+          )
+         ([result input & inputs]
+          (let [nu-v (apply f input inputs)]
+            (group! nu-v)
+            (rf result nu-v))
+          ))))
+   )
+  )
+
+
+
+
+
+(rum/defcs <transform-list> < rum/static
+                              (rum/local :all ::filter)
+  [st <item> id-fn items logs]
+
+  (let [*filter (::filter st)
+        filter-id @*filter
+
+        show-all? (= :all filter-id)
+
+        style-map (z-group id-fn (fn [a x]
+                       (if (nil? a)
+                         (:class x)
+                         (str a " " (:class x)))
+                       )  logs)
+
+        &style (memoize (fn [item]
+                          (get style-map (id-fn item))))
+        ]
+    [:div.list
+
+     (pg-ui/menubar "filters: "
+                    (into
+                      [["all" (fn [] (reset! *filter :all))][]]
+                      (map #(do [% (fn [] (reset! *filter %)) ]) (into (sorted-set) (vals style-map)))
+                      )
+                    )
+
+     [:.html
+      (pr-str filter-id)
+      "\n===\n"
+      (d/pretty! style-map)]
+
+
+     (into [:.items]
+           (comp
+             (filter (fn [item]
+                       (or show-all? (= filter-id (&style item)))))
+             (map (fn [item]
+                    (if-let [c (&style item)]
+                      [:.item {:class c}
+                       (<item> item)]
+                      (<item> item))
+                    )
+             ))
+
+           ;(sort-by id-fn items)
+           items
+           )
+     ]
+    )
+  )
+
+
+(rum/defc <MAIN-DATA> < rum/static
+  [raw-streets]
+
+  (let [*inv (volatile! [
+                         ;; event { :id ... , :check "zzz" }
+                         ])]
+    [:div
+     [:p "[street.. ] transformations"]
+
+
+     (let [
+           ;; -> streets
+
+
+           ;; simplest reduce
+           reduced-districts (reduce
+                    (fn [a x]
+                      (conj a (:district x)))
+                    #{} raw-streets
+                    )
+
+           ;; reduce street names but for certain district
+
+           podil? #(= "Подільський р-н" (:district %))
+           podil-xf (filter podil?)
+
+           *events (volatile! [])
+
+           on-filter (juxt
+                    #_(fn [item]
+                      (if (= "11934" (:idx item)) {:ID (:ID item) :class "foo"}))
+
+                    (fn [item]
+                      (if (= "11823" (:idx item)) {:ID (:ID item) :class "blue"}))
+
+                    (fn [item]
+                      (if (= "" (:ru item)) {:ID (:ID item) :class "red"}))
+                    )
+
+           logging-filter (partial z-filter *events on-filter)
+
+           logging-map (partial z-map *events (fn [street]
+                                                (if (= "Цукровий провулок" (:ua street))
+                                                  {:ID (:ID street) :class "zzz"}
+                                                  )
+                                                ))
+           *dups (volatile! {})
+
+           pgroup-dupes (partial z-map-group *dups :ID
+                                                  (fn [a x]
+                                                    (if (nil? a)
+                                                        1
+                                                        (+ a 1))
+                                                    ))
+
+           transduced-streets (into [] ; (sorted-set)
+                                    (comp
+                                      ;; generate ids
+                                      (map #(assoc % :ID (str (:idx %) "_" (:ua %))))
+
+                                      ;; normal filter
+                                      ; (filter podil?)
+                                      ;; loging fitler
+                                      (logging-filter podil?)
+
+
+                                      ; (logging-map identity)
+
+                                      (pgroup-dupes identity)
+
+                                      ;; output
+                                      ;; (map :ua)
+                                      ) raw-streets)
+
+           dup-markers (reduce (fn [a [k v]]
+                     (if (> v 1)
+                       (conj a {:ID k :class "dup"})
+                       a
+                       )
+                     ) [] @*dups)
+           ]
+       [:div.flex
+
+        ; (<edn-list> transduced-streets "TRANSDUCED: streets names of certain district")
+
+        [:.html
+         (d/pretty! (reduce (fn [a [k v]]
+                              (if (> v 1)
+                                (conj a {:ID k :class "dup"})
+                                a
+                                )
+                              ) [] @*dups))
+         ]
+
+        (<transform-list> <street> :ID transduced-streets
+                          (concat dup-markers @*events))
+
+        #_(z-group id-fn (fn [a x]
+                         (if (nil? a)
+                           (:class x)
+                           (str a " " (:class x)))
+                         )  logs)
+
+
+        ;(<edn-list> reduced-districts "REDUCED DISTRICTS")
+
+
+
+        ]
+
+       )
+
+     ;; initial xf
+     #_(let [
+
+           xf (comp
+                (take 3)
+
+                ;; normal transducer
+                ;(map :district)
+
+                (xf-map-xf :district
+                           *inv (fn [distr]
+                                  (if (= "Дарницький р-н" distr)
+                                    {:id distr }
+                                    )
+                                  )
+                           )
+
+
+                ;; or
+                #_(print-map-xf :district
+                              *inv
+                              (fn [street]
+                                (.log js/console street)
+                                (if (= "12250" (:idx street))
+                                  {:evt "boo" :id (:ua street)})
+                                )
+                              )
+                )
+           all-districts (transduce xf
+                                    conj (sorted-set)
+                                    raw-streets
+                                    )
+
+           additional-xf (filter (fn [district] (re-matches #".*р-н" district)))
+           ]
+
+       [:div.flex
+        (<edn-list> all-districts "ALL DISTRICTS: [street..] => #{district..}")
+
+
+        [:div {:style {:outline "1px solid red"}}
+         (pr-str
+           @*inv
+           )
+         ]
+
+
+        ;(<edn-list> @*inv "META")
+
+
+        #_(<edn-list> (transduce (comp xf additional-xf)
+                               conj (sorted-set)
+                               raw-streets)
+                    "CHECK FOR DISTRICTS")
+
+        ;;
+        ]
+
+       )
+
+     #_[:div.flex
+
+      (let [district "Дарницький р-н"
+            h (str "Export Streets (district=" district ")")
+
+            d-xf (comp
+                   (filter (fn [street]
+                             (= district (:district street))))
+                   (take 10)
+                   #_(map (fn [street]
+                          #_(if (= "12250" (:idx street))
+                              (assoc street :css "zzz")
+                              street
+                              )
+                          street
+                          ))
+                   )
+            xf d-xf
+
+            ;; composable filters
+            streets (sequence xf raw-streets)
+            ;; custom css
+            ]
+
+        ;; todo: legend
+
+        [:div {:style {:width "75%"}}
+         (pg-ui/menubar (str h (count streets))
+                        [["copy 📋" (partial _copy-handler streets)]])
+
+         (map <street> streets)
+
+         ]
+        )
+
+
+      ;; list all districts
+      (let [all-districts_ (into #{}
+                                 (map :districts)
+                                 raw-streets)
+
+
+            h "get all districts, clean-up if needed"
+            xf (comp
+                 (filter (fn [street]
+                           (= "Дарницький р-н" (:district street))))
+                 (map :districts))
+
+            ;all-districts (transduce xf into #{} raw-streets)
+            all-districts (transduce xf conj '() raw-streets)
+            ;all-districts (sequence xf raw-streets)
+            ]
+
+        [:div {:style {:width "25%"}}
+         [:p h]
+         (str (count all-districts) " total")
+
+         (<edn-list> all-districts "")
+         ]
+        )
+
+
+
+      ;; streets in several districts
+      #_[:div
+         [:p "find streets that occur more than once in parsed list: streets that span to multiple districts, etc"]
+
+         (->> (group-by :ua raw-streets)
+              (filter (fn [[k vs]] (> (count vs) 1)))
+              (map (fn [[k vs]]
+                     [:div
+                      [:header
+                       (pr-str (count vs)) " — "
+                       (pr-str k)]
+
+                      #_(map <street> vs)
+                      ]
+                     ))
+              )
+
+         ]
+
+
+
+
+      #_[:div
+
+         ;; find districts with enters
+         #_[:div {:style {:max-width "75%"}}
+            (->> raw-streets
+                 ; (take 100 raw-streets)
+                 (filter (fn [street]
+                           (let [district (:district street)]
+                             (re-find #"\n" district)
+                             )
+                           ))
+                 (map <street>)
+                 )
+            ]
+
+         ;; Подільський р-н
+         #_[:div {:style {:max-width "75%"}}
+            (->> raw-streets
+                 ; (take 100 raw-streets)
+                 (filter (fn [street]
+                           (let [district (:district street)]
+                             (and (= "Подільський р-н" district)
+                                  ;(not= ["Подільський р-н"] (:districts street))
+                                  )
+                             )
+                           ))
+                 (map <street>)
+                 )
+            ]
+
+
+         #_[:div {:style {:max-width "75%"}}
+            (->> (group-by :idx
+                           (filter #(= (:district %) "Подільський р-н") raw-streets)
+                           ; raw-streets
+
+                           )
+                 ;(filter (fn [[k vs]] (> (count vs) 1)))
+                 (sort-by first)
+                 (map (fn [[k vs]]
+                        [:pre
+                         (pr-str k)
+                         "\t"
+                         (pr-str (count vs))
+
+                         (map <street> vs)
+                         ]
+                        ))
+                 )
+            ]
+
+
+         #_(->> (group-by :district (take 10 raw-streets))
+                ;(filter (fn [[k vs]] (> (count vs) 1)))
+                (map (fn [[k vs]]
+                       [:pre
+                        (pr-str k)
+                        "\t"
+                        (pr-str (count vs))
+
+                        #_(map <street> vs)
+                        ]
+                       ))
+                )
+
+         ]
+      ]
+     ]
+    )
+
+  )
+
+
 (rum/defcs <streets-cc> < rum/reactive
                           (rum/local :MASTER-DATA__FULL :UI)
   [st *dict]
@@ -945,181 +1659,40 @@
                                   )]
 
                      ])
-     ;;::streets
-
+     [:hr]
 
      [:.flex
 
-      ;; extract renames to edn
-      (when-let [rename-pairs (:renamed-ru dict)]
-        (let [xf (comp
-                   (filter (fn [[old nu]]
-                             (re-find #"\(.+\)$" nu )))
-                   (map (fn [[old nu]]
-                          (re-find #"\(.+\)$" nu)))
-                   )
+      (cond
 
-              ru-ua-mapping {
-                             "б-р." "бульвар"
-                             "пл." "площа"
-                             "пер." "провулок"
-                             "пр-т." "проспект"
-                             "пр." "проспект"
-                             "ул." "вулиця"
-                             }
-              ru-canonized-gt-mapping {
-                          "б-р." "бульвар"
-                          "пл." "пл."
-                          "пер." "пер."
-                          "пр-т." "просп."
-                          "пр." "просп."
-                          "ул." "ул."
-                          }
+        (= ui :RENAME)
+        (let [raw-streets (get dict :raw-streets [])
 
-              ;; todo: do smth with these guesses
-              guesses {
-
-               }
-
-
-              renamings (map (fn [[old nu]]
-                               (let [_distr (re-find #"\(.+\)$" nu)
-                                     distr (if _distr
-                                             ({"(Дарницкий район)"   "Дарницький р-н"
-                                               "(Дарницкий)"         "Дарницький р-н"
-                                               "(Деснянский район)"  "Деснянський р-н"
-                                               "(Деснянский)"        "Деснянський р-н"
-                                               "(Днепровский район)" "Дніпровський р-н"
-                                               "(Печерский)"         "Печерський р-н"
-                                               "(Подол)"             "Подільський р-н"
-                                               "(Соломенский район)" "Солом'янський р-н"
-                                               "(Соломенский)"       "Солом'янський р-н"
-                                               } _distr)
-                                             )
-                                     nu-1 (if _distr
-                                            (str/trim (str/replace nu #"\(.+\)$" ""))
-                                            nu)
-
-                                     parts (str/split old " ")
-                                     raw-gt (last parts)
-
-                                     ]
-                                 ;(last parts)
-
-                                 {
-                                  :distr distr
-                                  :gt (get ru-ua-mapping raw-gt)
-                                  :ru-gt (get ru-canonized-gt-mapping raw-gt)
-                                  :ru nu-1
-                                  ; :ru1 (str nu-1 " " (get ru-canonized-gt-mapping raw-gt))
-                                  ;; :_old old
-
-                                  :guess (get guesses nu-1)
-                                  :old (str/join " " (drop-last parts))
-                                  }
-                                 )
-                               ) rename-pairs)
-
-
-              ]
-          [:.html
-
-
-           (map
-             (fn [z]
-               [:div.html.street-row
-                (.padEnd (pr-str (:guess z) ) 40)
-                " "
-                (pr-str (str (:ru z) " " (:ru-gt z) ) )]
-               )
-             (sort-by :guess (filter #(not (empty? (:guess %))) renamings ))
-             )
-
-           ;(<edn-list> (filter #(not (empty? (:guess %))) renamings ))
-
-
-           #_(pr-str (reduce #(conj %1 (:district %2)) #{} (:raw-streets dict)))
-           #_(<edn-list> (sequence xf rename-pairs))
-           #_#{"Солом'янський р-н" "Подільський р-н" "Голосіївський р-н" "Шевченківський р-н" "Деснянський р-н" "Дарницький р-н" "Печерський р-н" "Оболонський р-н" "Святошинський р-н" "Дніпровський р-н"}
-
-
-           ;(<edn-list> ks)
-
-           ;(pr-str rename-pairs)
-
-           ;[:hr]
-
-
-           ;; guessing street names - very slow
-           #_(let [
-                 ks (into #{} (map :ru renamings))
-
-                 street-xf  (comp
-                              (map (fn [s]
-                                     (assoc s :matches
-                                              (reduce (fn [a n]
-                                                        (let [d (jaro (:ua s) n)]
-                                                          (if (>= d 0.76 )
-                                                            (assoc a n d)
-                                                            a
-                                                            )
-                                                          )
-                                                        ) {} ks)
-                                              )
-
-                                     ))
-                              (filter (fn [s] (not (empty? (:matches s)))))
-                              )
-                 ]
-             (map (fn [s]
-                    [:div (pr-str (first (keys (:matches s)))) " -> " (pr-str (:ua s)) ])
-
-                  (sequence street-xf
-                            (:raw-streets dict)
-                            )
-
-                  )
-
-             )
-
-
-           ;[:hr]
-
-           #_(<rename> (apply assoc {}
-                            (interleave old nu)))
-
-           ;(d/pretty! (count (interleave old nu)))
-           ]
-          )
-
-        )
-
-
-      ;; provide here upd ru street names to be updated
-
-      #_(when-let [raw-streets (:raw-streets dict)]
-
-        (let [
-              ua-ru {
-
-                     }
-
+              ua-ru {}
               xf (map (fn [street]
                         (if (= "" (:ru street))
                           (assoc street :ru (get ua-ru (:ua street) ""))
-                          street
-                          )
-                        ))
+                          street)))
               ]
 
-          (<edn-list> (sequence xf raw-streets))
-          )
+          [:div
+           [:header "Enriched streets: "]
+           (<edn-list> (sequence xf raw-streets) "Enriched streets: ")
+           ])
+
+        (= ui :RENAME_)           (<RENAMING-UI> (get dict :renamed-ru []))
+
+        (= ui :MASTER-DATA__FULL) (<MAIN-DATA>   (get dict :raw-streets []))
 
         )
 
+
+
+
+
       ;; STREETS
       ;; city streets to canonical form
-      (when-let [raw-streets (:raw-streets dict)]
+      #_(when-let [raw-streets (:raw-streets dict)]
 
         (let [streets-delta (get dict :renamed-streets-delta [])
 
@@ -1339,163 +1912,7 @@
 
         )
 
-
-
       ]
-
-
-
-     #_(when-let [raw-streets (:raw-streets dict)]
-         [:div
-          ;; uncomment the checks
-
-          (let [streets (->> raw-streets
-                             ;(take 40 raw-streets)
-                             (filter (fn [street]
-                                       ;(= "Подільський р-н" (:district street))
-                                       (= "Дарницький р-н" (:district street))
-                                       ))
-                             )]
-            [:div {:style {:max-width "75%"}}
-
-
-             (pg-ui/menubar "podil streets"
-                            [["copy 📋" (fn []
-                                          (let [clipboard js/navigator.clipboard
-                                                copy-handler (fn []
-                                                               (-> (.writeText clipboard (d/pretty! streets))
-                                                                   (.then (fn [response] (.log js/console "Copied to clipboard - " response))
-                                                                          (fn [err]      (.warn js/console "Failed to copy to clipboard" err))))
-                                                               )
-                                                ]
-                                            (copy-handler)))]
-                             ])
-
-             (map <street> streets)
-
-             ]
-            )
-
-
-
-          ;; streets in several districts
-          #_[:div
-             [:p "find streets that occur more than once in parsed list: streets that span to multiple districts, etc"]
-
-             (->> (group-by :ua raw-streets)
-                  (filter (fn [[k vs]] (> (count vs) 1)))
-                  (map (fn [[k vs]]
-                         [:div
-                          [:header
-                           (pr-str (count vs)) " — "
-                           (pr-str k)]
-
-                          #_(map <street> vs)
-                          ]
-                         ))
-                  )
-
-             ]
-
-
-          ;; list all districts
-          (let [all-districts (reduce (fn [a x]
-                                        ;; take main one
-                                        ;(conj a (:district x))
-                                        ;; take all
-                                        (into a (:districts x))
-                                        ) #{} raw-streets)]
-            [:div {:style {:width "25%"}}
-             [:p "get all districts, clean-up if needed"]
-             (str (count all-districts) " total") [:hr]
-
-             (map (fn [x]
-                    [:div (pr-str x)]
-                    )
-                  (sort all-districts)
-                  )
-             ]
-            )
-
-
-          #_[:div
-
-             ;; find districts with enters
-             #_[:div {:style {:max-width "75%"}}
-                (->> raw-streets
-                     ; (take 100 raw-streets)
-                     (filter (fn [street]
-                               (let [district (:district street)]
-                                 (re-find #"\n" district)
-                                 )
-                               ) )
-                     (map <street>)
-                     )
-                ]
-
-             ;; Подільський р-н
-             #_[:div {:style {:max-width "75%"}}
-                (->> raw-streets
-                     ; (take 100 raw-streets)
-                     (filter (fn [street]
-                               (let [district (:district street)]
-                                 (and (= "Подільський р-н" district)
-                                      ;(not= ["Подільський р-н"] (:districts street))
-                                      )
-                                 )
-                               ) )
-                     (map <street>)
-                     )
-                ]
-
-
-             #_[:div {:style {:max-width "75%"}}
-                (->> (group-by :idx
-                               (filter #(= (:district %) "Подільський р-н") raw-streets)
-                               ; raw-streets
-
-                               )
-                     ;(filter (fn [[k vs]] (> (count vs) 1)))
-                     (sort-by first)
-                     (map (fn [[k vs]]
-                            [:pre
-                             (pr-str k)
-                             "\t"
-                             (pr-str (count vs))
-
-                             (map <street> vs)
-                             ]
-                            ))
-                     )
-                ]
-
-
-             #_[:pre
-                (pr-str
-                  (reduce (fn [a x]
-                            (into a (:districts x))
-                            ) #{} (take 3100 raw-streets))
-                  )
-                ]
-
-             #_(->> (group-by :district (take 10 raw-streets))
-                    ;(filter (fn [[k vs]] (> (count vs) 1)))
-                    (map (fn [[k vs]]
-                           [:pre
-                            (pr-str k)
-                            "\t"
-                            (pr-str (count vs))
-
-                            #_(map <street> vs)
-                            ]
-                           ))
-                    )
-
-             ]
-
-          ]
-
-         )
      ]
     )
 
@@ -1512,7 +1929,14 @@
      (if (= :not-started (:status wf))
        [:div "wf is not running"]
        (let [*dict (rum/cursor-in *wf [:state ::dict])]
-         (<streets-cc> *dict))
+         (try
+           (<streets-cc> *dict)
+           (catch js/Error e
+             [:pre (pr-str e)]
+             )
+
+           )
+         )
        )
      ]
     )
