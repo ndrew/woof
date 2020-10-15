@@ -52,6 +52,14 @@
 .tag.idx {
     background-color: #25679955;
 }
+.tag.district {
+    background-color: #25ff9955;
+}
+
+.tag.alias {
+    background-color: #ff679955;
+}
+
 
 .h {
     margin-top: .5rem;
@@ -119,4 +127,8 @@
 
 .blue {
     outline: 1px solid darkblue;
+}
+
+.OLD-NU {
+    background-color: #29a99f11;
 }
