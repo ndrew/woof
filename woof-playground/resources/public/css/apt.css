@@ -132,3 +132,11 @@
 .OLD-NU {
     background-color: #29a99f11;
 }
+
+.html:hover {
+    outline: 1px solid #29a99f;
+}
+
+.to-be-added {
+    background-color: red;
+}

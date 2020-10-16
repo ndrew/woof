@@ -28,7 +28,7 @@
     [clj-fuzzy.metrics :as metrics]
 
     [clojure.core.reducers :as r]
-    )
+    [clojure.set :as set])
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -788,7 +788,9 @@
    "cljs.core/PersistentHashSet" "#{"
    "cljs.core/PersistentHashMap" "{"
    "cljs.core/List"              "["
+   "cljs.core/EmptyList"         "["
    "cljs.core/LazySeq"           "("
+   "cljs.core/KeySeq"            "("
    "cljs.core/IndexedSeq"        "("
    "cljs.core/PersistentVector"  "["
    })
@@ -797,10 +799,12 @@
          {"cljs.core/PersistentTreeSet" "}"
           "cljs.core/PersistentHashSet" "}"
           "cljs.core/PersistentHashMap" "}"
-          "cljs.core/List"              "}"
+          "cljs.core/List"              "]"
+          "cljs.core/EmptyList"         "]"
+          "cljs.core/PersistentVector"  "]"
+          "cljs.core/KeySeq"            ")"
           "cljs.core/LazySeq"           ")"
           "cljs.core/IndexedSeq"        ")"
-          "cljs.core/PersistentVector"  "]"
           })
 
 
@@ -825,7 +829,7 @@
         ]
     [:.html
      (pg-ui/menu-item "copy" (partial woof-dom/copy-to-clipboard EDN-STR))
-     (if h (str ";; " h "\n") "\n")
+     (if h (str " ;; " h "\n") "\n")
      EDN-STR
      ]
     )
@@ -995,6 +999,32 @@
    )
   )
 
+(defn z-map-1
+  ([meta-xf persist-fn f]
+   (let [_meta-results (transient (meta-xf)) ;; always use vector for meta log
+         add-meta! (fn [input] (meta-xf _meta-results (meta-xf input)))
+         ]
+     (fn [rf]
+       (fn
+         ([] (rf))
+         ([result]
+          (persist-fn (persistent! _meta-results))
+          (rf result))
+         ([result input]
+          (let [nu-v (f input)]
+            (add-meta! nu-v)
+            (rf result nu-v)
+            )
+          )
+         ([result input & inputs]
+          (let [nu-v (apply f input inputs)]
+            (add-meta! nu-v)
+            (rf result nu-v))
+          ))))
+   )
+  )
+
+
 
 (defn z-filter
   ([*v v-xf pred]
@@ -1073,7 +1103,8 @@
 
 (rum/defcs <transform-list> < rum/static
                               (rum/local nil ::filter)
-  [st <item> items logs & {:keys [id-fn sort-fn] :or {id-fn identity}}]
+  [st <item> items logs & {:keys [id-fn sort-fn copy-fn] :or {id-fn identity
+                                                              copy-fn identity}}]
 
   (let [style-map (z-group id-fn (fn [a x]
                                    (if (nil? a)
@@ -1087,8 +1118,8 @@
                                      )
                                    )  logs)
 
-        &style (memoize (fn [item]
-                          (get style-map (id-fn item))))
+        &style (fn [item]
+                 (get style-map (id-fn item)))
 
 
         available-styles (into (sorted-set) (vals style-map))
@@ -1102,12 +1133,30 @@
         show-all? (= :all filter-id)
 
 
+        filter-rule (filter (fn [item]
+                              (or show-all? (= filter-id (&style item)))))
+
+        sorted-items (if sort-fn
+                       (sort sort-fn items)
+                       items)
         ]
     [:div.list
 
      (pg-ui/menubar "filters: "
                     (into
-                      [["all" (fn [] (reset! *filter :all))][]]
+                      [
+                       ["copy" (fn []
+                                 (woof-dom/copy-to-clipboard
+                                   (str "[\n" (str/join "\n"
+                                                        (into []
+                                                              (comp filter-rule
+                                                                    (map copy-fn)
+                                                                    (map pr-str))
+                                                              sorted-items)) "\n]")
+                                   )
+                                 )]
+                       []
+                       ["all" (fn [] (reset! *filter :all))][]]
                       (map #(do [% (fn [] (reset! *filter %)) ]) available-styles)
                       )
                     )
@@ -1119,21 +1168,20 @@
 
      (into [:.items]
            (comp
-             (filter (fn [item]
-                       (or show-all? (= filter-id (&style item)))))
+             filter-rule
              (map (fn [item]
+                    ;[:..html
+                    ; (str "item:\t" (pr-str item) "\n")
+                    ; (str "ID:\t" (id-fn item) "\n")
+
                     (if-let [c (&style item)]
                       [:.item {:class c}
                        (<item> item)]
                       (<item> item))
+                    ; ]
                     )
              ))
-
-           (if sort-fn
-             (sort sort-fn items)
-             items
-             )
-
+           sorted-items
            )
      ]
     )
@@ -1275,6 +1323,22 @@
                               })
 
 
+(defn map-1-1 [source-vector index-map f]
+  (reduce (fn [a [k v]]
+            (let [vs (map f (vals (select-keys source-vector v)))]
+              (if (= 1 (count vs))
+                (assoc a k (first vs))
+                (do
+                  (.log js/console "non 1-1 mapping" k vs)
+                  (assoc a k vs)
+                  )
+
+                )
+              )
+
+            ) {} index-map)
+  )
+
 (rum/defc <RENAMING-UI> < rum/static
   [dict]
 
@@ -1393,7 +1457,9 @@
 
 
    ;; STREETS
-   (let [all-streets (get dict :raw-streets [])
+   (let [
+
+         ;; renamings data source
 
          renamed-streets-list (get dict :renamed-streets-delta [])
 
@@ -1410,7 +1476,7 @@
          prev-k-fn (juxt :district :cid)
 
          ;; current -> old mapping
-         *curr-map (volatile! {})
+         *old->nu (volatile! {})
          curr-k-fn (juxt :district :old)
 
          rename-id-fn #(str (:old %) "->" (:cid %))
@@ -1426,7 +1492,7 @@
 
                           ;; build current/old mappings
                           (z-map-group *prev-map prev-k-fn i-rf identity)
-                          (z-map-group *curr-map curr-k-fn i-rf identity)
+                          (z-map-group *old->nu curr-k-fn i-rf identity)
                           )
                         renamed-streets-list)
 
@@ -1440,23 +1506,18 @@
                            (f street))))
                   ))
 
-         PREV-MAP @*prev-map
-
-         ;; markers for old -> new,
-         prev-markers (into []
-                              (group-by-i-xs #(hash-map
-                                                :ID    (prev-k-fn %)
-                                                :class "renamed"))
-                              PREV-MAP)
-
-         curr-markers (into []
-                              (group-by-i-xs #(hash-map
-                                                :ID    (curr-k-fn %)
-                                                :class "renamed_street_already_in_list"
-                                                ))
-                              @*curr-map)
+         renamed-streets-map @*prev-map
 
 
+
+         new-street-ids (into #{} (keys renamed-streets-map))
+
+
+
+         ;; MAIN DATA SOURCE
+         all-streets (get dict :raw-streets [])
+
+         *all-street-ids (volatile! #{})
          ref-id-fn (juxt :district :ua)
          enriched-streets (into []
                                 (comp
@@ -1464,37 +1525,134 @@
                                                           :ID (ref-id-fn %2)))
 
                                   ;; for now only new-old-mapping
-                                  (map #(assoc %
-                                          :_rename (select-keys renamings (get PREV-MAP (:ID %)))
-                                          ))
+                                  (z-map-1 (fn
+                                             ([] #{})
+                                             ([input] (:ID input))
+                                             ([tran-col input]
+                                              (conj! tran-col input)))
+                                           #(vswap! *all-street-ids into %)
+                                           #(assoc %
+                                              :_rename (select-keys renamings (get renamed-streets-map (:ID %))))
+                                           )
                                   )
+                                all-streets)
 
-                            all-streets)
+         ALL-IDS @*all-street-ids
+
+         obsolete-streets-map @*old->nu
+         obsolete-street-ids (into #{} (keys obsolete-streets-map))
+
+         streets2add-ids (set/difference new-street-ids ALL-IDS)
+
+         renamings-2-add (map-1-1 renamed-streets-list (select-keys renamed-streets-map streets2add-ids)
+                                  #(assoc % :ID (ref-id-fn %)))
+
+         ;; markers for newly added streets
+         newly-added__m (into []
+                            (map (fn [[[d _nu] v]]
+                                   {:ID [d _nu] ;[d (first (:alias v))]
+                                    :class "to-be-added"}))
+                      renamings-2-add)
+
+         should-be-renamed__m (into []
+                              (map (fn [[[d _nu] v]]
+                                     {:ID [d (first (:alias v))]
+                                      :class "should-be-renamed"}))
+                              renamings-2-add)
+
+         curr-markers (into []
+                            (group-by-i-xs #(hash-map
+                                              :ID    (curr-k-fn %)
+                                              :class "renamed_street_already_in_list"
+                                              ))
+                            @*old->nu)
+
+
+
 
          ]
 
      [:div.flex
 
-      ;(<edn-list> (take 10 enriched-streets) "!")
 
-      ;(<edn-list> curr-markers "...")
+      #_[:.html
+       [:header "RENAME & MAIN STREETS:"]
 
-      ; (<edn-list> old-nu-markers "MARKERS FOR OLD - NEW ITEMS")
-      ;[:hr]
+       ;; shows old street names present in
+       (<edn-list> (sort (set/intersection obsolete-street-ids ALL-IDS)) "streets both in MAIN DATA-SOURCE and OLD NAMES")
 
+       ;; already migrated, need to ensure that there is an alias to an old street name
+       [:hr]
+       (<edn-list> (sort (set/intersection new-street-ids ALL-IDS)) "new (renamed) streets ALREADY in MAIN DATA-SOURCE")
+
+       ;;
+       [:hr]
+       (<edn-list> (sort streets2add-ids) "new (renamed) streets NOT in MAIN DATA-SOURCE")
+
+       ]
+
+      #_[:.flex
+         [:.html
+          ;(d/pretty! renamings-2-add)
+          (<edn-list> should-be-renamed__m " should-be-renamed__m")
+
+          (<edn-list> newly-added__m " newly-added__m")
+          ]
+         ;[:.html (<edn-list>  renamings-2-add "street names that were actually renamed \n")]
+         ]
+
+
+      #_[:.html
+         "renamed streets that were not in master street list:\n"
+         (<transform-list> <street>
+                           (vals renamings-2-add)
+                           (concat
+                             newly-added__m
+                             should-be-renamed__m
+                             )
+                           :id-fn :ID
+                           :sort-fn (locale-comparator :district :ua)
+                           )
+         ]
+
+
+      ;; show lit of streets linked with renamed
       (<transform-list> (fn [street]
                           [:div.html
-                           (pr-str (:_rename street))
+                           ;(pr-str (:_rename street))
+                           ; (pr-str (:ID street))
                            (<street> street)
                            ]
                           )
-                        enriched-streets
+                        (concat enriched-streets
+                                (vals renamings-2-add))
+
                         (concat
-                          prev-markers
-                          curr-markers)
+                          newly-added__m
+                          should-be-renamed__m
+                          ;;curr-markers
+                          )
                         :id-fn :ID
-                        :sort-fn (locale-comparator :district :ua)
+                        :copy-fn #(dissoc % :ID)
+                        ;:sort-fn (locale-comparator :district :ua)
                         )
+
+
+      #_[:.html
+       [:header "MAIN DATA SOURCE:"]
+
+       (<transform-list> #(do [:p (pr-str %)])
+                         ALL-IDS
+                         []
+                         :id-fn identity
+                         :sort-fn compare
+                         )
+       ;(<edn-list> (sort ALL-IDS) "all available IDS")
+       ]
+
+
+
+
 
       ]
      )
