@@ -838,99 +838,7 @@
     )
   )
 
-(rum/defc <street-name> < rum/static
-                          { :key-fn (fn [m] (str (:idx m) "_" (:ua m) "_" (:district m) ))}
-  [street & {:keys [check-fn]}]
 
-  [:div.street-row
-
-   #_(if-let [{old-name :old-name
-             nu :new} (:rename street)]
-
-     (cond
-       ;(and old-name nu) [:span.tag.idx (str (pr-str old-name) "->" (pr-str nu))]
-       (and (not old-name) nu) [:span.tag.houses (str "->" (pr-str nu))]
-       (and old-name (not nu) ) [:span.tag.idx (str (pr-str old-name) "->" )]
-       )
-
-     )
-
-   (if check-fn
-     (check-fn street))
-
-   (if-let [alias (:alias street)]
-     (map
-       #(do [:span.tag.idx %]) alias)
-      )
-
-   (:ua street)
-   ;(pr-str street)
-
-   ;; check that shortened + geonim is the same as cana
-   #_(if (not= (full-street-name street)
-               (:id street))
-       [:.html {:style {:color "blue"}}
-        (full-street-name street) "\n"
-        (pr-str street)
-        ]
-       )
-
-   ;;
-
-
-   ;[:.html (pr-str (:g geonim-map))]
-
-   ;; [:hr]
-   #_(let [words (str/split (first (vals street)) #" ")
-           capitalized? (every? (fn [w]
-                                  ;(= w (str/capitalize w))
-                                  (re-find #"^[А-ЩЬЮЯҐЄІЇ]" w)
-                                  ) words)
-
-           not-a-name-by-first-word  (#{""} (first words))
-           not-a-name-by-second-word (#{"Вал" "Комісарів"} (second words))
-
-           has-numbers? (some (fn [w]
-                                (re-find #"^\d" w)
-                                ) words)
-           ]
-
-
-       [:span
-        {:style {:color
-                 (cond
-                   (and has-numbers? capitalized?) "blue"
-                   (and capitalized? not-a-name-by-second-word) "red"
-                   capitalized? "green"
-                   :else "#000"
-                   )
-
-                 }}
-        (pr-str
-          words
-          capitalized?
-          )
-        ]
-
-       )
-
-
-   #_(<rename> (reduce (fn [a [geonim sh]]
-                         (if (not= (str/index-of street geonim) -1 )
-                           (assoc a geonim street )
-                           a)
-                         ) {} ua-geonim-2-short))
-
-   #_(map (fn [[sh geonim]]
-            (<rename>)
-            )
-          ua-geonim-2-short
-          )
-
-   ;(pr-str (vals geonim-2-short))
-
-   ]
-  )
 
 
 (defn extract-ru-renamings [*dict]
@@ -1027,6 +935,35 @@
    )
   )
 
+(defn juxt-mapper [& fns]
+  (fn
+    ([] [])
+    ([item]
+     (let [xf (apply juxt fns)]
+       (xf item))
+     )
+    ([trans-col _metas]
+     (let [metas (if (or (seq? _metas) (vector? _metas)) _metas
+                                                         [_metas])]
+       (apply conj! trans-col (filter some? metas))
+       ))
+    )
+  )
+
+(defn cond-juxt-mapper [cond? & fns]
+  (fn
+    ([] [])
+    ([item]
+     (let [xf (apply juxt fns)]
+       (xf item))
+     )
+    ([trans-col _metas]
+     (let [metas (if (or (seq? _metas) (vector? _metas)) _metas
+                                                         [_metas])]
+       (apply conj! trans-col (filter #(and (some? %) (cond? %)) metas))   ;; (comp some? )
+       ))
+    )
+  )
 
 
 (defn z-filter
@@ -1226,9 +1163,6 @@
            ;;__dummy-assert (fn [item] (if (= "11823" (:idx item)) {:ID (:ID item) :class "dummy-assert"}))
 
            ;; map transducer that checks for assertions also. checks can be combined via juxtaposition (not comp)
-           assert-map (partial z-map *asserts (apply juxt
-                                                     [__no-ru-label
-                                                      __no-idx]))
 
            ;assert-filter (partial z-filter *asserts __no-ru-label)
 
@@ -1237,10 +1171,32 @@
            *dups (volatile! {})
 
            groupping-rf (fn [a x] (if (nil? a) 1 (+ a 1)))
-           map-group-dupes (partial z-map-group *dups :ID groupping-rf)
 
            *multi-idx (volatile! {})
            i-rf (fn [a x] (if (nil? a) #{(:i x)} (conj a (:i x))))
+
+
+           *grannular-streets (volatile! [])
+
+
+
+           _street-geonim (fn [geonim-2-short  street]
+                            (let [extracted-geonims (reduce (fn [a [geonim sh]]
+                                                             (if (nil? (str/index-of street (str " " geonim)))
+                                                               a
+                                                               (assoc a geonim (str/trim (str/replace street geonim "")))))
+                                                           {} geonim-2-short)]
+
+                             (let [ks (keys extracted-geonims)
+                                   vs (vals extracted-geonims)]
+                               (if (= (count ks) 0)
+                                 ["" street]
+                                 [(first ks) (first vs)])
+                               )
+                             )
+                           )
+
+           street-geonim (partial _street-geonim ua-geonim-2-short)
 
 
            ;; single-pass processing of the street list, that can build some additinal meta data via special transducers
@@ -1248,15 +1204,57 @@
                                     (comp
                                       ;; generate unique ID for each street
                                       (map-indexed #(assoc %2 :i %1))
-                                      (assert-map #(assoc % :ID (gen-street-id %))) ;; at the same time
+                                      ;
+                                      #_(z-map *asserts (apply juxt
+                                                             [__no-ru-label
+                                                              __no-idx])
+                                             #(assoc % :ID (gen-street-id %)))
+                                      ;
 
-                                      ;; normal filter (filter podil?)
-                                      ;; ;; or special one with logging
-                                      ;; (assert-filter podil?) ;; todo: add useful assertion
+                                      (z-map-1
+                                        (juxt-mapper __no-ru-label
+                                                     __no-idx)
+                                        #(vswap! *asserts into %)
+                                        #(assoc % :ID (gen-street-id %)))
 
-                                      (map-group-dupes identity)
 
-                                      (z-map-group *multi-idx :ua i-rf identity)
+                                      (z-map-1
+                                        (cond-juxt-mapper
+                                          (fn [item]
+                                            (not (empty? (:alias item)))
+                                            )
+                                          (fn [x]
+
+                                            (let [[t s] (street-geonim (:ua x))
+                                                  nu-aliases (map (fn [a]
+                                                                    (let [[at s] (street-geonim a)]
+
+                                                                      (cond
+                                                                        ;; should try the other langs
+                                                                        (= "" at)  (str "!!!" a)
+                                                                        (= at t) s
+                                                                        (not= at t) (str "~~~" a)
+                                                                        :else s
+                                                                        )
+                                                                      )) (get x :alias))
+                                                  ]
+                                              (if (= "" t)
+                                                (vswap! *asserts conj {:ID (:ID x) :class #{"empty-street-type"} } ))
+                                              {:t t
+                                               ;:ua s
+                                               :alias nu-aliases
+                                               }
+                                              ))
+                                          )
+                                        #(vswap! *grannular-streets into %)
+                                        identity)
+
+
+                                      ;; map-group-dupes
+                                      (z-map-group *dups :ID groupping-rf identity)
+
+                                      ;;
+                                      ;;(z-map-group *multi-idx :ua i-rf identity)
 
                                       ) raw-streets)
 
@@ -1267,15 +1265,27 @@
                                              a))
                                [] @*dups)
 
-           multi-idx-markers (into []
-                                   (comp
-                                     (filter (fn [[k v]] (> (count v) 1)))
-                                     (mapcat second)
-                                     (map (fn[x] { :ID (gen-street-id (get-in raw-streets [x])) :class #{"long-street"}}))
-                                     )
-                                      @*multi-idx)
+           ;multi-idx-markers (into []
+           ;                        (comp
+           ;                          (filter (fn [[k v]] (> (count v) 1)))
+           ;                          (mapcat second)
+           ;                          (map (fn[x] { :ID (gen-street-id (get-in raw-streets [x])) :class #{"long-street"}}))
+           ;                          )
+           ;                           @*multi-idx)
            ]
        [:div.flex
+
+        (<edn-list> @*grannular-streets "extracted grannular streets")
+
+
+        (<transform-list> <street> transduced-streets
+                          #_(concat dup-markers
+                                    multi-idx-markers
+                                    @*asserts)
+                          @*asserts
+                          :id-fn :ID
+                          :sort-fn (locale-comparator :ID))
+
 
         ;; example of simplest reduce
         #_(let [
@@ -1297,48 +1307,8 @@
         ;; todo: pass groupings into transform list, not for filtering, but for visual grouping
 
 
-        (let [
-              as-geonim (fn [street geonim-map]
-                          (let [ks (keys geonim-map)]
-                            (merge
-                              {
-                               :id street
-                               }
-                              (if (= (count ks) 0)
-                                {:t       ""
-                                 :s street
-                                 }
-                                {:t (first (keys geonim-map))
-                                 :s (first (vals geonim-map))
-                                 })
-                              )
+        #_(let [
 
-                            )
-                          )
-
-              extract-geonims (fn [geonim-map street]
-                                (reduce (fn [a [geonim sh]]
-                                          (if (nil? (str/index-of street (str " " geonim)))
-                                            a
-                                            (assoc a geonim (str/trim (str/replace street geonim "")))))
-                                        {} geonim-map)
-                                )
-
-              street-geonim (fn [geonim-2-short street]
-                              (let [extracted-geonims (reduce (fn [a [geonim sh]]
-                                                                (if (nil? (str/index-of street (str " " geonim)))
-                                                                  a
-                                                                  (assoc a geonim (str/trim (str/replace street geonim "")))))
-                                                              {} geonim-2-short)]
-
-                                ;; todo: how to split
-                                #_(if (empty? extracted-geonims)
-                                  (.log js/console street)
-                                  )
-                                (as-geonim street extracted-geonims)
-                                )
-
-                              )
 
               ua-geonims-list (->>
                                 (group-by :ua raw-streets)
@@ -1348,31 +1318,60 @@
                                 )
 
 
-              ru-geonims-list (->>
-                                (group-by :ru raw-streets)
-                                (map first)
-                                (sort)
-                                (map (partial street-geonim ru-geonim-2-short))
-                                )
+              ;ru-geonims-list (->>
+              ;                  (group-by :ru raw-streets)
+              ;                  (map first)
+              ;                  (sort)
+              ;                  (map (partial street-geonim ru-geonim-2-short))
+              ;                  )
               ]
           [:div.zzz
            (pg-ui/menubar "extract geonim types" [["copy 📋" (partial wdom/copy-to-clipboard ua-geonims-list)]])
            ; (pr-str geonim-2-short)
 
-           (<edn-list> ua-geonims-list "---")
-           ;(map <street-name> ua-geonims-list)
+          (<edn-list> ua-geonims-list "---")
+
+           ;; check that shortened + geonim is the same as cana
+
+           ;; [:hr]
+           #_(let [words (str/split (first (vals street)) #" ")
+                   capitalized? (every? (fn [w]
+                                          ;(= w (str/capitalize w))
+                                          (re-find #"^[А-ЩЬЮЯҐЄІЇ]" w)
+                                          ) words)
+
+                   not-a-name-by-first-word  (#{""} (first words))
+                   not-a-name-by-second-word (#{"Вал" "Комісарів"} (second words))
+
+                   has-numbers? (some (fn [w]
+                                        (re-find #"^\d" w)
+                                        ) words)
+                   ]
+
+
+               [:span
+                {:style {:color
+                         (cond
+                           (and has-numbers? capitalized?) "blue"
+                           (and capitalized? not-a-name-by-second-word) "red"
+                           capitalized? "green"
+                           :else "#000"
+                           )
+
+                         }}
+                (pr-str
+                  words
+                  capitalized?
+                  )
+                ]
+
+               )
+
+
            ]
 
           )
 
-
-        #_(<transform-list> <street> transduced-streets
-                          #_(concat dup-markers
-                                  multi-idx-markers
-                                  @*asserts)
-                          @*asserts
-                          :id-fn :ID
-                          :sort-fn (locale-comparator :ID))
 
         ]
        )
