@@ -51,16 +51,30 @@
 (def jaro (memoize metrics/jaro))
 
 
+(defn safe-compare [k a b]
+  (let [ka (k a)
+        kb (k b)]
+    (if (or (nil? ka)
+            (nil? kb))
+        (do
+          (.log js/console  "can't compare" a ka b kb "key-fn" k)
+          0)
+        (.localeCompare ka kb)
+        )
+    )
+  )
+
 (defn locale-comparator [k & ks]
   (fn [a b]
-    (loop [c1 (.localeCompare (k a) (k b))
+
+    (loop [c1 (safe-compare k a b)
            ks ks]
       (if (not= 0 c1)
         c1
         (if-not (seq ks)
           c1
           (let [k (first ks)]
-            (recur (.localeCompare (k a) (k b)) (rest ks)))
+            (recur (safe-compare k a b) (rest ks)))
           )
         )
       )
@@ -1103,45 +1117,48 @@
 
 (rum/defcs <transform-list> < rum/static
                               (rum/local nil ::filter)
-  [st <item> items logs & {:keys [id-fn sort-fn copy-fn] :or {id-fn identity
+  [st <item> items markers & {:keys [id-fn sort-fn copy-fn] :or {id-fn identity
                                                               copy-fn identity}}]
 
   (let [style-map (z-group id-fn (fn [a x]
                                    (if (nil? a)
                                      (:class x)
-                                     (if (= a (:class x))
-                                       (do
-                                         (.log js/console "duplicate " x)
-                                         a)
-                                       (str a " " (:class x))
-                                       )
+                                     (into a (:class x))
                                      )
-                                   )  logs)
+                                   )  markers)
+
+        available-styles_comb (filter
+                                #(or (string? %) (not= 1 (count %)))
+                                (apply conj (vals style-map)))
+
+        *filter (::filter st)
+        _ (if (nil? @*filter) (reset! *filter (first available-styles_comb)))
+        filter-id @*filter
+
 
         &style (fn [item]
                  (get style-map (id-fn item)))
 
 
-        available-styles (into (sorted-set) (vals style-map))
-
-        *filter (::filter st)
-
-        _ (if (nil? @*filter) (reset! *filter (first available-styles)))
-
-        filter-id @*filter
-
         show-all? (= :all filter-id)
 
-
-        filter-rule (filter (fn [item]
-                              (or show-all? (= filter-id (&style item)))))
+        filter-rule (if (string? filter-id)
+                      (filter (fn [item] (or show-all? (contains? (&style item) filter-id))))
+                      (filter (fn [item]
+                                (let [st (&style item)]
+                                  (or show-all? (empty? (set/difference filter-id st))))))
+                      )
 
         sorted-items (if sort-fn
                        (sort sort-fn items)
                        items)
+
         ]
+
+
     [:div.list
 
+     ;; todo: combinations
      (pg-ui/menubar "filters: "
                     (into
                       [
@@ -1157,14 +1174,18 @@
                                  )]
                        []
                        ["all" (fn [] (reset! *filter :all))][]]
-                      (map #(do [% (fn [] (reset! *filter %)) ]) available-styles)
+                      (map #(do [(pr-str %) (fn [] (reset! *filter %)) ]) available-styles_comb)
                       )
                     )
 
      #_[:.html
       (pr-str filter-id)
-      "\n===\n"
-      (d/pretty! style-map)]
+      ;(<edn-list> markers "markers")
+      ;"\n===\n"
+      ;(d/pretty! style-map)
+      ;"\n====\n"
+      ;(d/pretty! available-styles)
+      ]
 
      (into [:.items]
            (comp
@@ -1175,8 +1196,9 @@
                     ; (str "ID:\t" (id-fn item) "\n")
 
                     (if-let [c (&style item)]
-                      [:.item {:class c}
+                      [:.item {:class (str/join " "  c)}
                        (<item> item)]
+
                       (<item> item))
                     ; ]
                     )
@@ -1211,15 +1233,17 @@
            *asserts (volatile! [])
 
            ;; assert fns, should return an assertion record if some assertion is failing
-           __no-ru-label (fn [item] (if (= "" (:ru item)) {:ID (:ID item) :class "no-label"}))
-           __dummy-assert (fn [item] (if (= "11823" (:idx item)) {:ID (:ID item) :class "dummy-assert"}))
+           __no-ru-label (fn [item] (if (= "" (:ru item))  {:ID (:ID item) :class #{"no-label"}}))
+           __no-idx      (fn [item] (if (= "" (:idx item)) {:ID (:ID item) :class #{"no-idx"}}))
+
+           ;;__dummy-assert (fn [item] (if (= "11823" (:idx item)) {:ID (:ID item) :class "dummy-assert"}))
 
            ;; map transducer that checks for assertions also. checks can be combined via juxtaposition (not comp)
            assert-map (partial z-map *asserts (apply juxt
                                                      [__no-ru-label
-                                                      __dummy-assert]))
+                                                      __no-idx]))
 
-           assert-filter (partial z-filter *asserts __no-ru-label)
+           ;assert-filter (partial z-filter *asserts __no-ru-label)
 
 
            ;; external grouping for duplicates
@@ -1252,7 +1276,7 @@
 
            ;; after process - find out duplicated streets and convert this to assertions
            dup-markers (reduce (fn [a [k v]]
-                                 (if (> v 1) (conj a {:ID k :class "dup"})
+                                 (if (> v 1) (conj a {:ID k :class #{"dup"}})
                                              a))
                                [] @*dups)
 
@@ -1260,7 +1284,7 @@
                                    (comp
                                      (filter (fn [[k v]] (> (count v) 1)))
                                      (mapcat second)
-                                     (map (fn[x] { :ID (gen-street-id (get-in raw-streets [x])) :class "long-street"}))
+                                     (map (fn[x] { :ID (gen-street-id (get-in raw-streets [x])) :class #{"long-street"}}))
                                      )
                                       @*multi-idx)
            ]
@@ -1286,9 +1310,10 @@
         ;; todo: pass groupings into transform list, not for filtering, but for visual grouping
 
         (<transform-list> <street> transduced-streets
-                          (concat dup-markers
+                          #_(concat dup-markers
                                   multi-idx-markers
                                   @*asserts)
+                          @*asserts
                           :id-fn :ID
                           :sort-fn (locale-comparator :ID))
 
@@ -1551,23 +1576,21 @@
          newly-added__m (into []
                             (map (fn [[[d _nu] v]]
                                    {:ID [d _nu] ;[d (first (:alias v))]
-                                    :class "to-be-added"}))
+                                    :class #{"to-be-added"}} ))
                       renamings-2-add)
 
          should-be-renamed__m (into []
                               (map (fn [[[d _nu] v]]
                                      {:ID [d (first (:alias v))]
-                                      :class "should-be-renamed"}))
+                                      :class #{"should-be-renamed"} }))
                               renamings-2-add)
 
          curr-markers (into []
                             (group-by-i-xs #(hash-map
                                               :ID    (curr-k-fn %)
-                                              :class "renamed_street_already_in_list"
+                                              :class #{"renamed_street_already_in_list"}
                                               ))
                             @*old->nu)
-
-
 
 
          ]
@@ -1796,7 +1819,8 @@
 
 (rum/defcs <streets-cc> < rum/reactive
                           (rum/local
-                                :RENAME ;;:MASTER-DATA__FULL
+                                ;; :RENAME
+                                :MASTER-DATA__FULL
                             :UI)
   [st *dict]
 

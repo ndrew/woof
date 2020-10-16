@@ -125,6 +125,12 @@
     background-color: rgba(203, 68, 175, 0.18);
 }
 
+.no-idx {
+    outline: 1px solid red;
+    background-color: rgba(22, 68, 175, 0.18);
+}
+
+
 .blue {
     outline: 1px solid darkblue;
 }
