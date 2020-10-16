@@ -451,17 +451,6 @@
 
 
 
-(defn copy-geonims [t-map]
-  (let [
-        clipboard js/navigator.clipboard
-        copy-handler (fn []
-                       (-> (.writeText clipboard (d/pretty! t-map))
-                           (.then (fn [response] (.log js/console "Copied to clipboard - " response))
-                                  (fn [err] (.warn js/console "Failed to copy to clipboard" err)))))
-        ]
-    (copy-handler)))
-
-
 
 
 
@@ -1061,9 +1050,7 @@
               (rf result input)
               )
             result))))
-     )
-   )
-  )
+     )))
 
 
 (defn z-group
@@ -1309,7 +1296,77 @@
 
         ;; todo: pass groupings into transform list, not for filtering, but for visual grouping
 
-        (<transform-list> <street> transduced-streets
+
+        (let [
+              as-geonim (fn [street geonim-map]
+                          (let [ks (keys geonim-map)]
+                            (merge
+                              {
+                               :id street
+                               }
+                              (if (= (count ks) 0)
+                                {:t       ""
+                                 :s street
+                                 }
+                                {:t (first (keys geonim-map))
+                                 :s (first (vals geonim-map))
+                                 })
+                              )
+
+                            )
+                          )
+
+              extract-geonims (fn [geonim-map street]
+                                (reduce (fn [a [geonim sh]]
+                                          (if (nil? (str/index-of street (str " " geonim)))
+                                            a
+                                            (assoc a geonim (str/trim (str/replace street geonim "")))))
+                                        {} geonim-map)
+                                )
+
+              street-geonim (fn [geonim-2-short street]
+                              (let [extracted-geonims (reduce (fn [a [geonim sh]]
+                                                                (if (nil? (str/index-of street (str " " geonim)))
+                                                                  a
+                                                                  (assoc a geonim (str/trim (str/replace street geonim "")))))
+                                                              {} geonim-2-short)]
+
+                                ;; todo: how to split
+                                #_(if (empty? extracted-geonims)
+                                  (.log js/console street)
+                                  )
+                                (as-geonim street extracted-geonims)
+                                )
+
+                              )
+
+              ua-geonims-list (->>
+                                (group-by :ua raw-streets)
+                                (map first)
+                                (sort)
+                                (map (partial street-geonim ua-geonim-2-short))
+                                )
+
+
+              ru-geonims-list (->>
+                                (group-by :ru raw-streets)
+                                (map first)
+                                (sort)
+                                (map (partial street-geonim ru-geonim-2-short))
+                                )
+              ]
+          [:div.zzz
+           (pg-ui/menubar "extract geonim types" [["copy 📋" (partial wdom/copy-to-clipboard ua-geonims-list)]])
+           ; (pr-str geonim-2-short)
+
+           (<edn-list> ua-geonims-list "---")
+           ;(map <street-name> ua-geonims-list)
+           ]
+
+          )
+
+
+        #_(<transform-list> <street> transduced-streets
                           #_(concat dup-markers
                                   multi-idx-markers
                                   @*asserts)
@@ -1362,6 +1419,38 @@
               )
 
             ) {} index-map)
+  )
+
+(rum/defc <DRV> < rum/static
+  [dict]
+
+
+  ;; DRV
+  (let [drv-street-map (:drv-buildings-per-street dict)
+
+          ;raw-geonims (:ua-geonims dict)
+          ;canonical-streets-map (group-by :id raw-geonims)
+          street-aliases (:drv-renamed-streets dict)
+
+          ]
+
+      [:div
+       [:h3 "DRV"]
+       ;(<edn-list> (keys drv-street-map)  "___")
+       ;[:hr]
+       ;(<edn-list> drv-renamed-streets "___")
+
+       ;[:header "Convert DRV-street to canonical one"]
+       ;(<drv-extract-streets> drv-street-map canonical-streets-map)
+
+       ;[:header "List of all buildings per street"]
+       #_(<drv-buildings-list> canonical-streets-map
+                             (take 100 drv-street-map)
+                             )
+
+       ]
+      )
+
   )
 
 (rum/defc <RENAMING-UI> < rum/static
@@ -1812,8 +1901,6 @@
 
 
 
-
-
 ;;
 ;; command centre
 
@@ -1821,6 +1908,7 @@
                           (rum/local
                                 ;; :RENAME
                                 :MASTER-DATA__FULL
+                                ;:DRV
                             :UI)
   [st *dict]
 
@@ -1852,7 +1940,7 @@
      [:.panel
       (pg-ui/menubar "DRV Data      "
                      [
-                      ["load :drv-buildings-per-street" (fn [] (load-edn *dict "/s/drv/buildings.edn" :drv-buildings-per-street))]
+                      ["load :drv-buildings-per-street" (fn [] (load-edn *dict "/s/drv/_buildings.edn" :drv-buildings-per-street))]
                       ["load :drv-renamed-streets" (fn [] (load-edn *dict "/s/drv/street-renamings_n_alternate_names.edn" :drv-renamed-streets))]
                       ])
       ]
@@ -1881,37 +1969,13 @@
                  (get dict :raw-streets [])))
           " streets EDN, sorted by district and name")
 
-
         (= ui :RENAME)            (<RENAMING-UI> dict)
 
         (= ui :MASTER-DATA__FULL) (<MAIN-DATA>   (get dict :raw-streets []))
 
+        (= ui :DRV) (<DRV> dict)
         )
 
-
-      ;; DRV
-      #_(let [drv-street-map (:drv-buildings-per-street dict)
-
-            raw-geonims (:ua-geonims dict)
-            canonical-streets-map (group-by :id raw-geonims)
-
-            street-aliases (:drv-renamed-streets dict)
-
-            ]
-
-        [:div
-         [:h3 "DRV"]
-
-         [:header "Convert DRV-street to canonical one"]
-         (<drv-extract-streets> drv-street-map canonical-streets-map)
-
-         [:header "List of all buildings per street"]
-         (<drv-buildings-list> canonical-streets-map
-                               (take 100 drv-street-map)
-                               )
-
-         ]
-        )
 
       #_(when-let [raw-geonims (:ua-geonims dict)]
         (let [canonical-streets-map (group-by :id raw-geonims)
@@ -1928,15 +1992,11 @@
           [:.html
 
            (<rename> dist-map)
-
            ;(count canonical-streets-map)
            ;(<rename> (take 100 canonical-streets-map))
-
            ]
           )
-
         )
-
       ]
      ]
     )
