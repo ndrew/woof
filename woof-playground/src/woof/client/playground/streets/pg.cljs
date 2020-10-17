@@ -264,7 +264,8 @@
    "дорога" "дорога"
    "проїзд" "проїзд"
    }
-  ) ;; todo:
+  )
+
 
 
 ;; these can be generated automatically from map
@@ -284,7 +285,6 @@
 
 ;; move get type to be last
 (defn noramalize-geonim [street-name]
-
   ;; maybe this could be optimized by spliting string to words and checking the substitutions on first/last words
 
   (cond
@@ -444,13 +444,8 @@
   )
 
 
-
 (defn full-street-name [geonim-model]
   (str/trim (str (:s geonim-model) " " (:t geonim-model))))
-
-
-
-
 
 
 
@@ -1163,9 +1158,7 @@
            ;;__dummy-assert (fn [item] (if (= "11823" (:idx item)) {:ID (:ID item) :class "dummy-assert"}))
 
            ;; map transducer that checks for assertions also. checks can be combined via juxtaposition (not comp)
-
            ;assert-filter (partial z-filter *asserts __no-ru-label)
-
 
            ;; external grouping for duplicates
            *dups (volatile! {})
@@ -1178,25 +1171,62 @@
 
            *grannular-streets (volatile! [])
 
+           str-extract (fn [shortenings street]
 
-
-           _street-geonim (fn [geonim-2-short  street]
-                            (let [extracted-geonims (reduce (fn [a [geonim sh]]
-                                                             (if (nil? (str/index-of street (str " " geonim)))
-                                                               a
-                                                               (assoc a geonim (str/trim (str/replace street geonim "")))))
-                                                           {} geonim-2-short)]
-
-                             (let [ks (keys extracted-geonims)
-                                   vs (vals extracted-geonims)]
-                               (if (= (count ks) 0)
-                                 ["" street]
-                                 [(first ks) (first vs)])
+                         (loop [shortenings shortenings]
+                           (when (seq shortenings)
+                             (let [[geonim v] (first shortenings)]
+                               (if-not (nil? (str/index-of street (str " " geonim)))
+                                 [v (str/trim (str/replace street geonim ""))]
+                                 (recur (rest shortenings))
+                                 )
                                )
                              )
                            )
+                         )
 
-           street-geonim (partial _street-geonim ua-geonim-2-short)
+
+
+
+           match-geonim (fn [geonims street]
+                          (if-let [extracted-geonims (str-extract geonims street)]
+                            extracted-geonims
+                            ["" street]
+                            ))
+
+           ua-geonim (partial match-geonim (array-map
+                                             "вулиця" "вулиця"
+                                             "провулок" "провулок"
+                                             "проспект" "проспект"
+                                             "бульвар"  "бульвар"
+                                             "площа" "площа"
+                                             "алея"  "алея"
+                                            "дорога"  "дорога"
+                                            "набережна" "набережна"
+                                            "проїзд" "проїзд"
+                                            "тупик"  "тупик"
+                                            "узвіз"  "узвіз"
+                                            "шосе" "шосе"
+                                            ))
+
+
+           ru-geonim (partial match-geonim (array-map
+                                             ", ул." "вулиця"
+                                             "ул." "вулиця"
+                                             "аллея" "алея"
+                                             "ал." "алея"
+                                             "дорога" "дорога"
+                                             "улица" "вулиця"
+                                             "пл." "площа"
+                                             "пер." "провулок"
+                                             "бульв." "бульвар"
+                                             "просп." "проспект"
+                                             "проезд" "проїзд"
+                                             "наб." "набережна"
+                                             "туп." "тупик"
+                                             "шоссе" "шосе"
+                                             "спуск" "узвіз"
+                                             ))
 
 
            ;; single-pass processing of the street list, that can build some additinal meta data via special transducers
@@ -1221,28 +1251,53 @@
                                       (z-map-1
                                         (cond-juxt-mapper
                                           (fn [item]
-                                            (not (empty? (:alias item)))
+                                            ;(not (empty? (:alias item)))
+                                            true
                                             )
                                           (fn [x]
 
-                                            (let [[t s] (street-geonim (:ua x))
+                                            (let [[t s] (ua-geonim (:ua x))
+                                                  [rt rs] (ru-geonim (:ru x))
+
                                                   nu-aliases (map (fn [a]
-                                                                    (let [[at s] (street-geonim a)]
+
+                                                                    (let [
+                                                                          [at uas] (ua-geonim a)
+                                                                          [rt rus] (ru-geonim a)
+                                                                          ]
 
                                                                       (cond
                                                                         ;; should try the other langs
-                                                                        (= "" at)  (str "!!!" a)
-                                                                        (= at t) s
-                                                                        (not= at t) (str "~~~" a)
-                                                                        :else s
+                                                                        (not= "" at)  (do
+                                                                                        (if (not= at t)
+                                                                                          (vswap! *asserts conj {:ID (:ID x) :class #{"alias-different-street-type"}}))
+                                                                                        uas)
+                                                                        (not= "" rt) (do
+                                                                                       (if (not= rt t)
+                                                                                         (vswap! *asserts conj {:ID (:ID x) :class #{"alias-different-street-type"}}))
+                                                                                       rus)
+                                                                        :else a
                                                                         )
-                                                                      )) (get x :alias))
+                                                                      )
+                                                                    ) (get x :alias))
                                                   ]
-                                              (if (= "" t)
-                                                (vswap! *asserts conj {:ID (:ID x) :class #{"empty-street-type"} } ))
+
+                                              (cond
+                                                (= "" t) (vswap! *asserts conj {:ID (:ID x) :class #{"empty-street-type"}})
+                                                (and (= "" rt) (not= "" (:ru x))) (vswap! *asserts conj {:ID (:ID x) :class #{"ru-empty-street-type"}})
+
+                                                (and (not= t rt) (not= "" (:ru x))) (vswap! *asserts conj {:ID (:ID x) :class #{"different-steet-types"} } )
+
+                                                )
+
+
+
                                               {:t t
-                                               ;:ua s
+                                               :ua s
+                                               :ru rs
+
                                                :alias nu-aliases
+
                                                }
                                               ))
                                           )
@@ -1314,7 +1369,7 @@
                                 (group-by :ua raw-streets)
                                 (map first)
                                 (sort)
-                                (map (partial street-geonim ua-geonim-2-short))
+                                (map (partial match-geonim ua-geonim-2-short))
                                 )
 
 
