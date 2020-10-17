@@ -90,7 +90,8 @@
                                  :key-fn (fn [street] (str (:ua street) (:idx street)))}
   [street]
 
-  (let [{ua :ua
+  (let [{t :t
+         ua :ua
          ru :ru
          en :en
          idx :idx
@@ -115,7 +116,9 @@
         (map (fn [d] [:span.tag.small-tag.alias {:key (pr-str d)} d]) alias)]
 
        ]
+
       [:.langs
+       (if t [:.t t])
        [:.ua ua]
        [:.ru ru]
        [:.en en]
@@ -835,8 +838,52 @@
 
 
 
+(defn extract-ru-renamings_17_19 [*dict]
+  (let [c1 (rest (wdom/q* "#renamings_2017-2019 tr > td:nth-child(2)"))
+        c2 (rest (wdom/q* "#renamings_2017-2019 tr > td:nth-child(3)"))
+        c3 (rest (wdom/q* "#renamings_2017-2019 tr > td:nth-child(4)"))
 
-(defn extract-ru-renamings [*dict]
+        t (comp str/trim wdom/txt)
+
+        old (map t c1)
+        nu (map t c2)
+        ds (map t c3)
+
+        ;#{"Солом'янський р-н" "Подільський р-н" "Голосіївський р-н" "Шевченківський р-н" "Деснянський р-н" "Дарницький р-н" "Печерський р-н" "Оболонський р-н" "Святошинський р-н" "Дніпровський р-н"}
+        d-mapping {"Святошинский" "Святошинський р-н"
+                   "Соломенский" "Солом'янський р-н"
+                   "Печерский" "Печерський р-н"
+                   "Голосеевский" "Голосіївський р-н"
+                   "Дарницкий"  "Дарницький р-н"
+                   "Днепровский" "Дніпровський р-н"
+                   "Деснянский"  "Деснянський р-н"
+                   "Шевченковский" "Шевченківський р-н"
+                   "Подольский" "Подільський р-н"
+                   }
+
+        items (reduce
+          (fn [a [old nu ds]]
+            (into a (map (fn [_d]
+                           {:district (get d-mapping (str/trim _d) "")
+                            :ru nu :alias [old]}
+
+                           )(str/split ds ",")))
+            )
+          []
+          (partition-all 3
+                         (interleave
+                           old
+                           nu
+                           ds
+                           )))
+        ]
+
+    (swap! *dict assoc :renamed-ru-1 items)
+
+    )
+  )
+
+(defn extract-ru-renamings_15_17 [*dict]
   (let [c1 (rest (wdom/q* "#renamings_2015-2017 tr > td:nth-child(2)"))
         c2 (rest (wdom/q* "#renamings_2015-2017 tr > td:nth-child(3)"))
 
@@ -1152,7 +1199,9 @@
            *asserts (volatile! [])
 
            ;; assert fns, should return an assertion record if some assertion is failing
-           __no-ru-label (fn [item] (if (= "" (:ru item))  {:ID (:ID item) :class #{"no-label"}}))
+           __no-ru-label (fn [item]
+                           (if (= "" (:ru item))  {:ID (:ID item) :class #{"no-label"}})
+                           )
            __no-idx      (fn [item] (if (= "" (:idx item)) {:ID (:ID item) :class #{"no-idx"}}))
 
            ;;__dummy-assert (fn [item] (if (= "11823" (:idx item)) {:ID (:ID item) :class "dummy-assert"}))
@@ -1172,20 +1221,13 @@
            *grannular-streets (volatile! [])
 
            str-extract (fn [shortenings street]
-
                          (loop [shortenings shortenings]
                            (when (seq shortenings)
                              (let [[geonim v] (first shortenings)]
                                (if-not (nil? (str/index-of street (str " " geonim)))
                                  [v (str/trim (str/replace street geonim ""))]
                                  (recur (rest shortenings))
-                                 )
-                               )
-                             )
-                           )
-                         )
-
-
+                                 )))))
 
 
            match-geonim (fn [geonims street]
@@ -1228,6 +1270,12 @@
                                              "спуск" "узвіз"
                                              ))
 
+           en-geonim (partial match-geonim (array-map
+                                             "vul." "вулиця"
+                                             "prov." "провулок"
+                                             "pl." "площа"
+                                             ))
+
 
            ;; single-pass processing of the street list, that can build some additinal meta data via special transducers
            transduced-streets (into [] ; (sorted-set)
@@ -1248,6 +1296,7 @@
                                         #(assoc % :ID (gen-street-id %)))
 
 
+
                                       (z-map-1
                                         (cond-juxt-mapper
                                           (fn [item]
@@ -1256,26 +1305,35 @@
                                             )
                                           (fn [x]
 
-                                            (let [[t s] (ua-geonim (:ua x))
+                                            (let [add-assert! #(vswap! *asserts conj {:ID (:ID x) :class %})
+                                                  [t s] (ua-geonim (:ua x))
                                                   [rt rs] (ru-geonim (:ru x))
+                                                  [et es] (en-geonim (:en x))
+
+                                                  district (:district x)
 
                                                   nu-aliases (map (fn [a]
 
                                                                     (let [
                                                                           [at uas] (ua-geonim a)
                                                                           [rt rus] (ru-geonim a)
+                                                                          [et ens] (en-geonim a)
                                                                           ]
 
                                                                       (cond
                                                                         ;; should try the other langs
                                                                         (not= "" at)  (do
                                                                                         (if (not= at t)
-                                                                                          (vswap! *asserts conj {:ID (:ID x) :class #{"alias-different-street-type"}}))
+                                                                                          (add-assert! #{"alias-different-street-type"}))
                                                                                         uas)
                                                                         (not= "" rt) (do
                                                                                        (if (not= rt t)
-                                                                                         (vswap! *asserts conj {:ID (:ID x) :class #{"alias-different-street-type"}}))
+                                                                                         (add-assert! #{"alias-different-street-type"}))
                                                                                        rus)
+                                                                        (not= "" et) (do
+                                                                                       (if (not= et t)
+                                                                                         (add-assert! #{"alias-different-street-type"}))
+                                                                                       ens)
                                                                         :else a
                                                                         )
                                                                       )
@@ -1283,22 +1341,28 @@
                                                   ]
 
                                               (cond
-                                                (= "" t) (vswap! *asserts conj {:ID (:ID x) :class #{"empty-street-type"}})
-                                                (and (= "" rt) (not= "" (:ru x))) (vswap! *asserts conj {:ID (:ID x) :class #{"ru-empty-street-type"}})
+                                                (= "" t) (add-assert! #{"empty-street-type"})
+                                                (and (= "" rt) (not= "" (:ru x))) (add-assert! #{"ru-empty-street-type"})
+                                                (and (= "" et) (not= "" (:en x))) (add-assert! #{"en-empty-street-type"})
 
-                                                (and (not= t rt) (not= "" (:ru x))) (vswap! *asserts conj {:ID (:ID x) :class #{"different-steet-types"} } )
-
+                                                (and (not= t rt) (not= "" (:ru x))) (add-assert! #{"different-steet-types"} )
+                                                (and (not= t et) (not= "" (:en x))) (add-assert! #{"different-steet-types"} )
                                                 )
 
 
+                                              (array-map
+                                                :t t
+                                                :ua s
+                                                :ru rs
+                                                :en es
 
-                                              {:t t
-                                               :ua s
-                                               :ru rs
+                                                :alias (vec nu-aliases)
+                                                :idx (:idx x)
+                                                :district district
+                                                :districts (vec (filter #(not= district %) (:districts x)))
+                                                :other (:other x)
+                                                )
 
-                                               :alias nu-aliases
-
-                                               }
                                               ))
                                           )
                                         #(vswap! *grannular-streets into %)
@@ -1330,7 +1394,14 @@
            ]
        [:div.flex
 
-        (<edn-list> @*grannular-streets "extracted grannular streets")
+        ;; todo:
+        [:div
+         (<edn-list>  ;map <street>
+              (sort (locale-comparator :district :ua) @*grannular-streets)
+              ""
+              )
+         ]
+        ;(<edn-list> @*grannular-streets "extracted grannular streets")
 
 
         (<transform-list> <street> transduced-streets
@@ -1339,7 +1410,9 @@
                                     @*asserts)
                           @*asserts
                           :id-fn :ID
-                          :sort-fn (locale-comparator :ID))
+                          ;:sort-fn (locale-comparator :ID)
+                          :sort-fn (locale-comparator :district :ua)
+                          )
 
 
         ;; example of simplest reduce
@@ -1513,6 +1586,14 @@
 
 
   [:.flex
+
+    (if-let [renamed (get dict :renamed-ru-1 []) ]
+      [:div
+       (map <street> renamed)
+       ]
+      )
+
+
 
    #_[:.html
     "DATA:\n"
@@ -1960,7 +2041,7 @@
 
 (rum/defcs <streets-cc> < rum/reactive
                           (rum/local
-                                ;; :RENAME
+                                ;:RENAME
                                 :MASTER-DATA__FULL
                                 ;:DRV
                             :UI)
@@ -1987,7 +2068,8 @@
                       ["load :renamed-streets"       (fn [] (load-edn *dict "/s/streets/renamed-streets.edn" :renamed-streets))]
                       ["load :renamed-streets-delta" (fn [] (load-edn *dict "/s/streets/streets_delta.edn" :renamed-streets-delta))]
 
-                      ["load :renamed-ru (2015-2017)" (fn [] (extract-ru-renamings *dict))]
+                      ["load :renamed-ru (2015-2017)" (fn [] (extract-ru-renamings_15_17 *dict))]
+                      ["load :renamed-ru (2017-2019)" (fn [] (extract-ru-renamings_17_19 *dict))]
                       ])
       ]
 
