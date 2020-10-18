@@ -179,6 +179,7 @@
           "cljs.core/KeySeq"            "("
           "cljs.core/IndexedSeq"        "("
           "cljs.core/PersistentVector"  "["
+          "cljs.core/PersistentArrayMap" "{"
           })
 
 (defonce CLOSING-BRACKETS
@@ -191,6 +192,7 @@
           "cljs.core/KeySeq"            ")"
           "cljs.core/LazySeq"           ")"
           "cljs.core/IndexedSeq"        ")"
+          "cljs.core/PersistentArrayMap" "}"
           })
 
 

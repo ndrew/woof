@@ -39,6 +39,56 @@
 
   )
 
+
+
+(def filters-map
+  (assoc (sorted-map)
+    :img? #(= "IMG" (:tag %))
+    :link? #(= "A" (:tag %))
+    :text? #(not= "" (str/trim (:text %)))
+    :leaf? #(= (:child-count %) 0))
+  )
+
+
+(defn img-scrape [n]
+  (select-keys n #{:img-src}))
+
+(defn link-scrape [n]
+  (select-keys n #{:href}))
+
+(defn text-scrape [n]
+  (select-keys n #{:text}))
+
+
+;; todo:
+(def filter-scraping-rules
+  {
+   :img? img-scrape
+   :link? link-scrape
+   :text? text-scrape
+   })
+
+
+(defn make-filter-fn [selected-filters]
+  (fn [node]
+    (let [sub-filters (select-keys filters-map selected-filters)]
+      (filter #(not= nil %) (map (fn [[k v]]
+                                   (if (v node)
+                                     k)) sub-filters))
+      )
+    )
+  )
+
+(defn selector-usage [nodes]
+  (reduce
+    (fn [a node]
+      (reduce (fn [b sl]
+                (update-in b [sl] (fnil conj #{}) (:id node))
+                ) a
+              (map #(get % :_$) (:el-map node))))
+    (sorted-map) nodes))
+
+
 (rum/defc <link> < rum/static
                     {:key-fn (fn [m] (pr-str m))}
   [href els]
@@ -161,17 +211,29 @@
         idx (:idx node)
 
         exclusions (get cfg :filter/exclusions #{})
+
         excluded? (exclusions selector)
 
         aliases (get cfg :selector/aliases {})
 
-        quick-menu [(if excluded?
-                      ["cancel exclusion" (fn []
-                                            ((:cfg/upd! cfg) :filter/exclusions (disj exclusions selector)))]
-                      ["exclude" (fn []
-                                   ((:cfg/upd! cfg) :filter/exclusions (conj exclusions selector)))])
+
+        analysis-nodes (get cfg :selector/analysis {})
+
+        analyzed? (analysis-nodes selector)
+
+        upd! (:cfg/upd! cfg)
+
+        quick-menu [(if analyzed?
+                      ["cancel analysis" (fn [] (upd! :selector/analysis (dissoc analysis-nodes selector)))]
+                      ["analysis"          (fn [] (upd! :selector/analysis (assoc analysis-nodes selector {
+                                                                                                           :parent-selector parent-selector
+                                                                                                           :node node
+                                                                                                           })))])
+                    (if excluded?
+                      ["cancel exclusion" (fn [] (upd! :filter/exclusions (disj exclusions selector)))]
+                      ["exclude"          (fn [] (upd! :filter/exclusions (conj exclusions selector)))])
                     ["alias" (fn []
-                               ((:cfg/upd! cfg) :selector/aliases
+                               (upd! :selector/aliases
                                 (assoc aliases
                                   selector
                                   (js/prompt "provide an alias" "")
@@ -230,18 +292,31 @@
         details? @(::details? st)
         applied-filters (get node :applied-filters #{})
 
+        selector (:_$ node)
+
         exclusions (get cfg :filter/exclusions #{})
-        excluded? (exclusions (:_$ node))
+        excluded? (exclusions selector)
+
+        used-by (get (::usage cfg) selector #{})
+        node-id (first (::ids cfg))
+        used-by-others (disj used-by node-id)
+
+
         ]
+
     [:div.plan
-     (if (empty? applied-filters) {:class "not-matched"}
-                                  (if excluded? {:class "excluded"} {}))
+     {:class (str/join " " (concat (if (empty? applied-filters) #{"not-matched"} )
+                                   (if excluded? #{"excluded"})
+                                   (if (empty? used-by-others) #{"unique"})))}
+
 
      (<plan-header> (assoc cfg
                       :node/prefix "pl_header_")
                       (::details? st) node)
 
      [:.details
+
+
       (if (= "IMG" curr-tag)
         [:img.el-img {:src (:img-src node)}]
         #_(str
@@ -315,9 +390,13 @@
                                      (merge
                                        {:_$ selector
                                         :filters applied-filters}
+                                       (reduce (fn [_a [k f]]
+                                                 (merge _a (f n))
+                                                 )
+                                               {}
+                                              (select-keys filter-scraping-rules applied-filters))
                                        (if-let [alias (get-in cfg [:selector/aliases selector])]
-                                         {:alias alias}
-                                         )
+                                         {:alias alias})
                                        )
                                      )
                                )
@@ -348,7 +427,9 @@
                          [(if hide? "show all" "show only matched") (fn [] (swap! (::hide-not-matched? st) not))]
                          [] [] [] ["BUILD PARSE PLAN" (fn []
                                                         (let [scrape-plan (build-scrape-plan cfg plan)]
-                                                          (.log js/console scrape-plan))
+                                                          (.log js/console scrape-plan)
+                                                          (wdom/copy-to-clipboard scrape-plan)
+                                                          )
                                                         )]
                          ])
       ]
@@ -630,33 +711,6 @@
    (map <html-node> nodes)])
 
 
-(def filters-map
-  (assoc (sorted-map)
-    :img? #(= "IMG" (:tag %))
-    :link? #(= "A" (:tag %))
-    :text? #(not= "" (:text %))
-    :leaf? #(= (:child-count %) 0))
-  )
-
-(defn make-filter-fn [selected-filters]
-  (fn [node]
-    (let [sub-filters (select-keys filters-map selected-filters)]
-      (filter #(not= nil %) (map (fn [[k v]]
-                         (if (v node)
-                           k)) sub-filters))
-      )
-    )
-  )
-
-(defn selector-usage [nodes]
-  (reduce
-    (fn [a node]
-      (reduce (fn [b sl]
-                (update-in b [sl] (fnil conj #{}) (:id node))
-                ) a
-              (map #(get % :_$) (:el-map node))))
-    (sorted-map) nodes))
-
 
 (rum/defcs <dashboard>
   < rum/static
@@ -683,6 +737,7 @@
                 :filter/exclusions #{}
 
                 :selector/aliases {}
+                :selector/analysis {}
 
                 } ::cfg)
   [st nodes]
@@ -758,8 +813,24 @@
        [:header "aliases"]
        (pr-str (get cfg :selector/aliases))
        ]
-
       ]
+
+     (let [analysis-map (get cfg :selector/analysis)]
+
+       [:div.analysis
+        [:header "ANALYSIS"]
+        (map
+          (fn [[k v]]
+            [:div (pr-str k)
+             [:div ; (pr-str v)
+              ]
+             ]
+            )
+          analysis-map
+          )
+        ]
+       )
+
 
      ;[:.html (d/pretty! selected-filters)]
 
@@ -789,29 +860,781 @@
 
   [:div
    (let [skip-fn (fn [$el $]
-                   (#{"SVG" "G" "PATH"} (str/upper-case (.-tagName $el))))
+                   (#{; "SVG"
+                      "G" "PATH"} (str/upper-case (.-tagName $el))))
 
          els (wdom/q* "#contents #content")
 
          ;; taking first and second items
-         id-1 0 ;(rand-int (count els)) ;
-         id-2 1
+         ;id-1 0 ;(rand-int (count els)) ;
+         id-2 0 ;;1
 
          ;; taking random items
-         ;id-1 (rand-int (count els)) ;
-         ;id-2 (rand-int (count els)) ;(nth coll )
+         id-1 (rand-int (count els)) ;
+         ;;id-2 (rand-int (count els)) ;(nth coll )
 
 
-         el-map-1 (wdom/el-map (nth els id-1)
+         _el-map-1 (wdom/el-map (nth els id-1)
                                :skip-fn skip-fn
                                :node-fn wdom/enrich-node
                                :top-selector-fn (fn [base el] { :nth-child (:i base)}))
 
 
-         el-map-2 (wdom/el-map (nth els id-2)
+         _el-map-2 (wdom/el-map (nth els id-2)
                                :skip-fn skip-fn
                                :node-fn wdom/enrich-node
                                :top-selector-fn (fn [base el] { :nth-child (:i base)}))
+
+         el-map-1 [{:child-count 4,
+                     :text "",
+                     :$ [{:t "A", :i 1, :nth-child 1}],
+                     :tag "A",
+                     :_$ "A:nth-child(1)",
+                     :parent-idx 0,
+                     :idx 1}
+                    {:child-count 0,
+                     :text "",
+                     :$ [{:t "DIV", :i 2, :nth-child 2}],
+                     :tag "DIV",
+                     :_$ "DIV:nth-child(2)",
+                     :parent-idx 0,
+                     :idx 2}
+                    {:child-count 1,
+                     :text "",
+                     :$ [{:t "DIV", :i 3, :nth-child 3}],
+                     :tag "DIV",
+                     :_$ "DIV:nth-child(3)",
+                     :parent-idx 0,
+                     :idx 3}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}],
+                     :_$ "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1)",
+                     :tag "YTD-THUMBNAIL",
+                     :idx 4,
+                     :parent-idx 1}
+                    {:child-count 2,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}],
+                     :_$ "A:nth-child(1) > DIV:nth-child(2)",
+                     :tag "DIV",
+                     :idx 5,
+                     :parent-idx 1}
+                    {:child-count 0,
+                     :text "\n      ",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-BADGE-SUPPORTED-RENDERER",
+                                    :i 3,
+                                    :child-count 4,
+                                    :nth-child 3}],
+                     :_$ "A:nth-child(1) > YTD-BADGE-SUPPORTED-RENDERER:nth-child(3)",
+                     :tag "YTD-BADGE-SUPPORTED-RENDERER",
+                     :idx 6,
+                     :parent-idx 1}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YT-FORMATTED-STRING", :i 4, :child-count 4, :nth-child 4}],
+                     :_$ "A:nth-child(1) > YT-FORMATTED-STRING:nth-child(4)",
+                     :tag "YT-FORMATTED-STRING",
+                     :idx 7,
+                     :parent-idx 1}
+                    {:child-count 2,
+                     :text "",
+                     :$
+                                  [{:t "DIV", :i 3, :nth-child 3}
+                                   {:t "YTD-MENU-RENDERER", :i 1, :child-count 1}],
+                     :_$ "DIV:nth-child(3) > YTD-MENU-RENDERER",
+                     :tag "YTD-MENU-RENDERER",
+                     :idx 8,
+                     :parent-idx 3}
+                    {:child-count 4,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}],
+                     :_$ "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A",
+                     :tag "A",
+                     :idx 9,
+                     :parent-idx 4}
+                    {:child-count 2,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "H3", :i 1, :child-count 2, :nth-child 1}],
+                     :_$ "A:nth-child(1) > DIV:nth-child(2) > H3:nth-child(1)",
+                     :tag "H3",
+                     :idx 10,
+                     :parent-idx 5}
+                    {:child-count 2,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2)",
+                     :tag "YTD-VIDEO-META-BLOCK",
+                     :idx 11,
+                     :parent-idx 5}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "DIV", :i 3, :nth-child 3}
+                                   {:t "YTD-MENU-RENDERER", :i 1, :child-count 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}],
+                     :_$ "DIV:nth-child(3) > YTD-MENU-RENDERER > DIV:nth-child(1)",
+                     :tag "DIV",
+                     :idx 12,
+                     :parent-idx 8}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "DIV", :i 3, :nth-child 3}
+                                   {:t "YTD-MENU-RENDERER", :i 1, :child-count 1}
+                                   {:t "YT-ICON-BUTTON", :i 2, :child-count 2, :nth-child 2}],
+                     :_$
+                                  "DIV:nth-child(3) > YTD-MENU-RENDERER > YT-ICON-BUTTON:nth-child(2)",
+                     :tag "YT-ICON-BUTTON",
+                     :idx 13,
+                     :parent-idx 8}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "YT-IMG-SHADOW", :i 1, :child-count 4, :nth-child 1}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > YT-IMG-SHADOW:nth-child(1)",
+                     :tag "YT-IMG-SHADOW",
+                     :idx 14,
+                     :parent-idx 9}
+                    {:child-count 4,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2)",
+                     :tag "DIV",
+                     :idx 15,
+                     :parent-idx 9}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 3, :child-count 4, :nth-child 3}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(3)",
+                     :tag "DIV",
+                     :idx 16,
+                     :parent-idx 9}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 4, :child-count 4, :nth-child 4}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(4)",
+                     :tag "DIV",
+                     :idx 17,
+                     :parent-idx 9}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "H3", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-BADGE-SUPPORTED-RENDERER",
+                                    :i 1,
+                                    :child-count 2,
+                                    :nth-child 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > H3:nth-child(1) > YTD-BADGE-SUPPORTED-RENDERER:nth-child(1)",
+                     :tag "YTD-BADGE-SUPPORTED-RENDERER",
+                     :idx 18,
+                     :parent-idx 10}
+                    {:child-count 0,
+                     :text
+                                  "\n            Пленки Вовка - новый поворот. Импичмент Тимошенко. Наливайченко и Сакварелидзе топят за Ахметова\n          ",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "H3", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "SPAN", :i 2, :child-count 2, :nth-child 2}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > H3:nth-child(1) > SPAN:nth-child(2)",
+                     :tag "SPAN",
+                     :idx 19,
+                     :parent-idx 10}
+                    {:child-count 2,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1)",
+                     :tag "DIV",
+                     :idx 20,
+                     :parent-idx 11}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 2, :child-count 2, :nth-child 2}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(2)",
+                     :tag "DIV",
+                     :idx 21,
+                     :parent-idx 11}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "DIV", :i 3, :nth-child 3}
+                                   {:t "YTD-MENU-RENDERER", :i 1, :child-count 1}
+                                   {:t "YT-ICON-BUTTON", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "BUTTON", :i 1, :child-count 1}],
+                     :_$
+                                  "DIV:nth-child(3) > YTD-MENU-RENDERER > YT-ICON-BUTTON:nth-child(2) > BUTTON",
+                     :tag "BUTTON",
+                     :idx 22,
+                     :parent-idx 13}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "YT-IMG-SHADOW", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "IMG", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > YT-IMG-SHADOW:nth-child(1) > IMG",
+                     :tag "IMG",
+                     :idx 23,
+                     :parent-idx 14}
+                    {:child-count 2,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-THUMBNAIL-OVERLAY-PLAYBACK-STATUS-RENDERER",
+                                    :i 1,
+                                    :child-count 4,
+                                    :nth-child 1}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-PLAYBACK-STATUS-RENDERER:nth-child(1)",
+                     :tag "YTD-THUMBNAIL-OVERLAY-PLAYBACK-STATUS-RENDERER",
+                     :idx 24,
+                     :parent-idx 15}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-THUMBNAIL-OVERLAY-RESUME-PLAYBACK-RENDERER",
+                                    :i 2,
+                                    :child-count 4,
+                                    :nth-child 2}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-RESUME-PLAYBACK-RENDERER:nth-child(2)",
+                     :tag "YTD-THUMBNAIL-OVERLAY-RESUME-PLAYBACK-RENDERER",
+                     :idx 25,
+                     :parent-idx 15}
+                    {:child-count 2,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER",
+                                    :i 3,
+                                    :child-count 4,
+                                    :nth-child 3}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER:nth-child(3)",
+                     :tag "YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER",
+                     :idx 26,
+                     :parent-idx 15}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-THUMBNAIL-OVERLAY-NOW-PLAYING-RENDERER",
+                                    :i 4,
+                                    :child-count 4,
+                                    :nth-child 4}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-NOW-PLAYING-RENDERER:nth-child(4)",
+                     :tag "YTD-THUMBNAIL-OVERLAY-NOW-PLAYING-RENDERER",
+                     :idx 27,
+                     :parent-idx 15}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "H3", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-BADGE-SUPPORTED-RENDERER",
+                                    :i 1,
+                                    :child-count 2,
+                                    :nth-child 1}
+                                   {:t "DOM-REPEAT", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > H3:nth-child(1) > YTD-BADGE-SUPPORTED-RENDERER:nth-child(1) > DOM-REPEAT",
+                     :tag "DOM-REPEAT",
+                     :idx 28,
+                     :parent-idx 18}
+                    {:child-count 2,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1)",
+                     :tag "DIV",
+                     :idx 29,
+                     :parent-idx 20}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 2, :nth-child 2}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(2)",
+                     :tag "DIV",
+                     :idx 30,
+                     :parent-idx 20}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DOM-REPEAT", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(2) > DOM-REPEAT",
+                     :tag "DOM-REPEAT",
+                     :idx 31,
+                     :parent-idx 21}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "DIV", :i 3, :nth-child 3}
+                                   {:t "YTD-MENU-RENDERER", :i 1, :child-count 1}
+                                   {:t "YT-ICON-BUTTON", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "BUTTON", :i 1, :child-count 1}
+                                   {:t "YT-ICON", :i 1, :child-count 1}],
+                     :_$
+                                  "DIV:nth-child(3) > YTD-MENU-RENDERER > YT-ICON-BUTTON:nth-child(2) > BUTTON > YT-ICON",
+                     :tag "YT-ICON",
+                     :idx 32,
+                     :parent-idx 22}
+                    {:child-count 0,
+                     :text "ПЕРЕГЛЯНУТО",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-THUMBNAIL-OVERLAY-PLAYBACK-STATUS-RENDERER",
+                                    :i 1,
+                                    :child-count 4,
+                                    :nth-child 1}
+                                   {:t "YT-FORMATTED-STRING", :i 1, :child-count 2, :nth-child 1}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-PLAYBACK-STATUS-RENDERER:nth-child(1) > YT-FORMATTED-STRING:nth-child(1)",
+                     :tag "YT-FORMATTED-STRING",
+                     :idx 33,
+                     :parent-idx 24}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-THUMBNAIL-OVERLAY-PLAYBACK-STATUS-RENDERER",
+                                    :i 1,
+                                    :child-count 4,
+                                    :nth-child 1}
+                                   {:t "DOM-REPEAT", :i 2, :child-count 2, :nth-child 2}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-PLAYBACK-STATUS-RENDERER:nth-child(1) > DOM-REPEAT:nth-child(2)",
+                     :tag "DOM-REPEAT",
+                     :idx 34,
+                     :parent-idx 24}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-THUMBNAIL-OVERLAY-RESUME-PLAYBACK-RENDERER",
+                                    :i 2,
+                                    :child-count 4,
+                                    :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-RESUME-PLAYBACK-RENDERER:nth-child(2) > DIV",
+                     :tag "DIV",
+                     :idx 35,
+                     :parent-idx 25}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER",
+                                    :i 3,
+                                    :child-count 4,
+                                    :nth-child 3}
+                                   {:t "YT-ICON", :i 1, :child-count 2, :nth-child 1}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER:nth-child(3) > YT-ICON:nth-child(1)",
+                     :tag "YT-ICON",
+                     :idx 36,
+                     :parent-idx 26}
+                    {:child-count 0,
+                     :text "\n  28:56\n",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER",
+                                    :i 3,
+                                    :child-count 4,
+                                    :nth-child 3}
+                                   {:t "SPAN", :i 2, :child-count 2, :nth-child 2}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER:nth-child(3) > SPAN:nth-child(2)",
+                     :tag "SPAN",
+                     :idx 37,
+                     :parent-idx 26}
+                    {:child-count 0,
+                     :text "Зараз відтворюється",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-THUMBNAIL-OVERLAY-NOW-PLAYING-RENDERER",
+                                    :i 4,
+                                    :child-count 4,
+                                    :nth-child 4}
+                                   {:t "SPAN", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-NOW-PLAYING-RENDERER:nth-child(4) > SPAN",
+                     :tag "SPAN",
+                     :idx 38,
+                     :parent-idx 27}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "H3", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-BADGE-SUPPORTED-RENDERER",
+                                    :i 1,
+                                    :child-count 2,
+                                    :nth-child 1}
+                                   {:t "DOM-REPEAT", :i 1, :child-count 1}
+                                   {:t "TEMPLATE", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > H3:nth-child(1) > YTD-BADGE-SUPPORTED-RENDERER:nth-child(1) > DOM-REPEAT > TEMPLATE",
+                     :tag "TEMPLATE",
+                     :idx 39,
+                     :parent-idx 28}
+                    {:child-count 2,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-CHANNEL-NAME", :i 1, :child-count 2, :nth-child 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1)",
+                     :tag "YTD-CHANNEL-NAME",
+                     :idx 40,
+                     :parent-idx 29}
+                    {:child-count 0,
+                     :text "•",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 2, :nth-child 2}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(2)",
+                     :tag "DIV",
+                     :idx 41,
+                     :parent-idx 29}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DOM-REPEAT", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(2) > DOM-REPEAT",
+                     :tag "DOM-REPEAT",
+                     :idx 42,
+                     :parent-idx 30}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DOM-REPEAT", :i 1, :child-count 1}
+                                   {:t "TEMPLATE", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(2) > DOM-REPEAT > TEMPLATE",
+                     :tag "TEMPLATE",
+                     :idx 43,
+                     :parent-idx 31}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "DIV", :i 3, :nth-child 3}
+                                   {:t "YTD-MENU-RENDERER", :i 1, :child-count 1}
+                                   {:t "YT-ICON-BUTTON", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "BUTTON", :i 1, :child-count 1}
+                                   {:t "YT-ICON", :i 1, :child-count 1}
+                                   {:t "svg", :i 1, :child-count 1}],
+                     :_$
+                                  "DIV:nth-child(3) > YTD-MENU-RENDERER > YT-ICON-BUTTON:nth-child(2) > BUTTON > YT-ICON > svg",
+                     :tag "svg",
+                     :idx 44,
+                     :parent-idx 32}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "YTD-THUMBNAIL", :i 1, :child-count 4, :nth-child 1}
+                                   {:t "A", :i 1, :child-count 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-THUMBNAIL-OVERLAY-PLAYBACK-STATUS-RENDERER",
+                                    :i 1,
+                                    :child-count 4,
+                                    :nth-child 1}
+                                   {:t "DOM-REPEAT", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "TEMPLATE", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-PLAYBACK-STATUS-RENDERER:nth-child(1) > DOM-REPEAT:nth-child(2) > TEMPLATE",
+                     :tag "TEMPLATE",
+                     :idx 45,
+                     :parent-idx 34}
+                    {:child-count 2,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-CHANNEL-NAME", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1)",
+                     :tag "DIV",
+                     :idx 46,
+                     :parent-idx 40}
+                    {:child-count 0,
+                     :text "\n    ",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-CHANNEL-NAME", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-BADGE-SUPPORTED-RENDERER",
+                                    :i 2,
+                                    :child-count 2,
+                                    :nth-child 2}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > YTD-BADGE-SUPPORTED-RENDERER:nth-child(2)",
+                     :tag "YTD-BADGE-SUPPORTED-RENDERER",
+                     :idx 47,
+                     :parent-idx 40}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DOM-REPEAT", :i 1, :child-count 1}
+                                   {:t "TEMPLATE", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(2) > DOM-REPEAT > TEMPLATE",
+                     :tag "TEMPLATE",
+                     :idx 48,
+                     :parent-idx 42}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "DIV", :i 3, :nth-child 3}
+                                   {:t "YTD-MENU-RENDERER", :i 1, :child-count 1}
+                                   {:t "YT-ICON-BUTTON", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "BUTTON", :i 1, :child-count 1}
+                                   {:t "YT-ICON", :i 1, :child-count 1}
+                                   {:t "svg", :i 1, :child-count 1}
+                                   {:t "g", :i 1, :child-count 1}],
+                     :_$
+                                  "DIV:nth-child(3) > YTD-MENU-RENDERER > YT-ICON-BUTTON:nth-child(2) > BUTTON > YT-ICON > svg > g",
+                     :tag "g",
+                     :idx 49,
+                     :parent-idx 44}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-CHANNEL-NAME", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1)",
+                     :tag "DIV",
+                     :idx 50,
+                     :parent-idx 46}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-CHANNEL-NAME", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "PAPER-TOOLTIP", :i 2, :child-count 2, :nth-child 2}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > PAPER-TOOLTIP:nth-child(2)",
+                     :tag "PAPER-TOOLTIP",
+                     :idx 51,
+                     :parent-idx 46}
+                    {:child-count 0,
+                     :text "",
+                     :$
+                                  [{:t "DIV", :i 3, :nth-child 3}
+                                   {:t "YTD-MENU-RENDERER", :i 1, :child-count 1}
+                                   {:t "YT-ICON-BUTTON", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "BUTTON", :i 1, :child-count 1}
+                                   {:t "YT-ICON", :i 1, :child-count 1}
+                                   {:t "svg", :i 1, :child-count 1}
+                                   {:t "g", :i 1, :child-count 1}
+                                   {:t "path", :i 1, :child-count 1}],
+                     :_$
+                                  "DIV:nth-child(3) > YTD-MENU-RENDERER > YT-ICON-BUTTON:nth-child(2) > BUTTON > YT-ICON > svg > g > path",
+                     :tag "path",
+                     :idx 52,
+                     :parent-idx 49}
+                    {:child-count 1,
+                     :text "",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-CHANNEL-NAME", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YT-FORMATTED-STRING", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING",
+                     :tag "YT-FORMATTED-STRING",
+                     :idx 53,
+                     :parent-idx 50}
+                    {:child-count 0,
+                     :text "\n      \n        Сергій Лещенко\n      \n    ",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-CHANNEL-NAME", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "PAPER-TOOLTIP", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > PAPER-TOOLTIP:nth-child(2) > DIV",
+                     :tag "DIV",
+                     :idx 54,
+                     :parent-idx 51}
+                    {:child-count 0,
+                     :text "Сергій Лещенко",
+                     :$
+                                  [{:t "A", :i 1, :nth-child 1}
+                                   {:t "DIV", :i 2, :child-count 4, :nth-child 2}
+                                   {:t "YTD-VIDEO-META-BLOCK", :i 2, :child-count 2, :nth-child 2}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YTD-CHANNEL-NAME", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "DIV", :i 1, :child-count 2, :nth-child 1}
+                                   {:t "YT-FORMATTED-STRING", :i 1, :child-count 1}
+                                   {:t "A", :i 1, :child-count 1}],
+                     :_$
+                                  "A:nth-child(1) > DIV:nth-child(2) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A",
+                     :tag "A",
+                     :idx 55,
+                     :parent-idx 53}]
+
+         el-map-2 _el-map-2
 
          el-1 (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-1)
          el-2 (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-2)
@@ -831,7 +1654,9 @@
          :el-map el-map-2
          :nodes el-2
          }
-        ]))]
+        ])
+     )
+   ]
 
   )
 
@@ -964,7 +1789,6 @@
                    ["load tw 02" (fn [] (load-edn *state "/s/twitter/tw_02.edn" :tweets))]
                    ["load tw 03" (fn [] (load-edn *state "/s/twitter/tw_03.edn" :tweets))]
                    ])
-
 
 
    #_[:p "processing twittor "]

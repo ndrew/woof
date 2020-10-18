@@ -72,3 +72,72 @@
     :else street-name
     )
   )
+
+
+(defn str-extract [shortenings street]
+  (loop [shortenings shortenings]
+    (when (seq shortenings)
+      (let [[geonim v] (first shortenings)]
+        (if-not (nil? (str/index-of street geonim))
+          [v (str/trim (str/replace street geonim ""))]
+          (recur (rest shortenings))
+          )))))
+
+
+(defn match-geonim [geonims street]
+  (if-let [extracted-geonims (str-extract geonims street)]
+    extracted-geonims
+    ["" street]
+    ))
+
+
+(def ua-geonim (partial match-geonim (array-map
+                                       "вулиця" "вулиця"
+                                       "вул." "вулиця"
+
+                                       "провулок" "провулок"
+                                       "пров." "провулок"
+
+                                       "проспект" "проспект"
+                                       "просп." "проспект"
+
+                                       "бульвар" "бульвар"
+                                       "бульв." "бульвар"
+
+                                       "площа" "площа"
+                                       "пл." "площа"
+
+                                       "алея" "алея"
+                                       "дорога" "дорога"
+                                       "набережна" "набережна"
+                                       "проїзд" "проїзд"
+                                       "тупик" "тупик"
+                                       "узвіз" "узвіз"
+                                       "шосе" "шосе"
+
+                                       )))
+
+
+(def ru-geonim (partial match-geonim (array-map
+                                     ", ул." "вулиця"
+                                     "ул." "вулиця"
+                                     "аллея" "алея"
+                                     "ал." "алея"
+                                     "дорога" "дорога"
+                                     "улица" "вулиця"
+                                     "пл." "площа"
+                                     "пер." "провулок"
+                                     "бульв." "бульвар"
+                                     "просп." "проспект"
+                                     "проезд" "проїзд"
+                                     "наб." "набережна"
+                                     "туп." "тупик"
+                                     "шоссе" "шосе"
+                                     "спуск" "узвіз"
+                                     )))
+
+(def en-geonim (partial match-geonim (array-map
+                                     "vul." "вулиця"
+                                     "prov." "провулок"
+                                     "pl." "площа"
+                                     )))

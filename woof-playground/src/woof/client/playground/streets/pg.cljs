@@ -253,6 +253,7 @@
   )
 
 
+;; initial version of rename mapping
 (rum/defcs <street-renaming-nu> < rum/static
   [st renamed-streets cstreet-names]
 
@@ -1101,61 +1102,6 @@
 
            *grannular-streets (volatile! [])
 
-           str-extract (fn [shortenings street]
-                         (loop [shortenings shortenings]
-                           (when (seq shortenings)
-                             (let [[geonim v] (first shortenings)]
-                               (if-not (nil? (str/index-of street (str " " geonim)))
-                                 [v (str/trim (str/replace street geonim ""))]
-                                 (recur (rest shortenings))
-                                 )))))
-
-
-           match-geonim (fn [geonims street]
-                          (if-let [extracted-geonims (str-extract geonims street)]
-                            extracted-geonims
-                            ["" street]
-                            ))
-
-           ua-geonim (partial match-geonim (array-map
-                                             "вулиця" "вулиця"
-                                             "провулок" "провулок"
-                                             "проспект" "проспект"
-                                             "бульвар"  "бульвар"
-                                             "площа" "площа"
-                                             "алея"  "алея"
-                                            "дорога"  "дорога"
-                                            "набережна" "набережна"
-                                            "проїзд" "проїзд"
-                                            "тупик"  "тупик"
-                                            "узвіз"  "узвіз"
-                                            "шосе" "шосе"
-                                            ))
-
-
-           ru-geonim (partial match-geonim (array-map
-                                             ", ул." "вулиця"
-                                             "ул." "вулиця"
-                                             "аллея" "алея"
-                                             "ал." "алея"
-                                             "дорога" "дорога"
-                                             "улица" "вулиця"
-                                             "пл." "площа"
-                                             "пер." "провулок"
-                                             "бульв." "бульвар"
-                                             "просп." "проспект"
-                                             "проезд" "проїзд"
-                                             "наб." "набережна"
-                                             "туп." "тупик"
-                                             "шоссе" "шосе"
-                                             "спуск" "узвіз"
-                                             ))
-
-           en-geonim (partial match-geonim (array-map
-                                             "vul." "вулиця"
-                                             "prov." "провулок"
-                                             "pl." "площа"
-                                             ))
 
 
            ;; single-pass processing of the street list, that can build some additinal meta data via special transducers
@@ -1187,18 +1133,18 @@
                                           (fn [x]
 
                                             (let [add-assert! #(vswap! *asserts conj {:ID (:ID x) :class %})
-                                                  [t s] (ua-geonim (:ua x))
-                                                  [rt rs] (ru-geonim (:ru x))
-                                                  [et es] (en-geonim (:en x))
+                                                  [t s] (ds/ua-geonim (:ua x))
+                                                  [rt rs] (ds/ru-geonim (:ru x))
+                                                  [et es] (ds/en-geonim (:en x))
 
                                                   district (:district x)
 
                                                   nu-aliases (map (fn [a]
 
                                                                     (let [
-                                                                          [at uas] (ua-geonim a)
-                                                                          [rt rus] (ru-geonim a)
-                                                                          [et ens] (en-geonim a)
+                                                                          [at uas] (ds/ua-geonim a)
+                                                                          [rt rus] (ds/ru-geonim a)
+                                                                          [et ens] (ds/en-geonim a)
                                                                           ]
 
                                                                       (cond
@@ -1323,7 +1269,7 @@
                                 (group-by :ua raw-streets)
                                 (map first)
                                 (sort)
-                                (map (partial match-geonim ua-geonim-2-short))
+                                (map (partial ds/match-geonim ua-geonim-2-short))
                                 )
 
 
@@ -1452,7 +1398,43 @@
 
   [:.flex
 
-    (if-let [renamed (get dict :renamed-ru-1 []) ]
+
+   ;; from renaming map to street delta
+   #_(when-let [renamed-streets (:renamed-streets dict)]
+     (let [renamed-streets-delta (reduce
+
+                                   (fn [a [k vs]]
+                                     (into a (map (fn [[old nu]]
+                                                    (let [[nu-t nu-short] (ds/ua-geonim nu)
+                                                          [old-t old-short] (ds/ua-geonim old)]
+                                                      (array-map
+                                                        :t nu-t
+                                                        :ua nu-short
+                                                        :ru ""
+                                                        :en ""
+                                                        :alias [old-short]
+                                                        :idx ""
+                                                        :district k
+                                                        :z (= nu-t old-t)
+                                                        :other (str "renamed from '" old "' to '" nu "'")
+                                                        )
+
+                                                      )
+
+                                                    ) vs))
+                                     )
+                                   [] renamed-streets
+                                   )]
+       ;[:.html (d/pretty! renamed-streets)]
+       (pg-ui/<edn-list> renamed-streets-delta "...")
+
+       ;;
+       )
+
+     )
+
+
+    #_(if-let [renamed (get dict :renamed-ru-1 []) ]
       [:div
        (map <street> renamed)
        ]
@@ -1575,7 +1557,32 @@
 
          ;; renamings data source
 
-         renamed-streets-list (get dict :renamed-streets-delta [])
+         ;; renamed-streets-list (get dict :renamed-streets-delta []) ;; -- loaded from file
+
+         renamed-streets-list (reduce
+
+                                 (fn [a [k vs]]
+                                   (into a (map (fn [[old nu]]
+                                                  (let [[nu-t nu-short] (ds/ua-geonim nu)
+                                                        [old-t old-short] (ds/ua-geonim old)]
+                                                    (array-map
+                                                      :t nu-t
+                                                      :ua nu-short
+                                                      :ru ""
+                                                      :en ""
+                                                      :alias [old-short]
+                                                      :idx ""
+                                                      :district k
+                                                      ;;:z (= nu-t old-t)
+
+                                                      :other (str "renamed from '" old "' to '" nu "'")
+                                                      )
+                                                    )
+
+                                                  ) vs))
+                                   )
+                                 [] (get dict :renamed-streets [])
+                                 )
 
          ; get renaming from alias
          map--add-old (map #(let [cid (:ua %)
@@ -1623,16 +1630,14 @@
          renamed-streets-map @*prev-map
 
 
-
          new-street-ids (into #{} (keys renamed-streets-map))
-
 
 
          ;; MAIN DATA SOURCE
          all-streets (get dict :raw-streets [])
 
          *all-street-ids (volatile! #{})
-         ref-id-fn (juxt :district :ua)
+         ref-id-fn (juxt :district :t :ua)
          enriched-streets (into []
                                 (comp
                                   (map-indexed #(assoc %2 :i %1
@@ -1901,8 +1906,8 @@
 
 (rum/defcs <streets-cc> < rum/reactive
                           (rum/local
-                                ;:RENAME
-                                :MASTER-DATA__FULL
+                                :RENAME
+                                ;:MASTER-DATA__FULL
                                 ;:DRV
                             :UI)
   [st *dict]
@@ -1925,7 +1930,7 @@
      [:.panel
       (pg-ui/menubar "Renaming Data "
                      [
-                      ["load :renamed-streets"       (fn [] (load-edn *dict "/s/streets/renamed-streets.edn" :renamed-streets))]
+                      ["load :renamed-streets"       (fn [] (load-edn *dict "/s/streets/renamed-streets-all.edn" :renamed-streets))]
                       ["load :renamed-streets-delta" (fn [] (load-edn *dict "/s/streets/streets_delta.edn" :renamed-streets-delta))]
 
                       ["load :renamed-ru (2015-2017)" (fn [] (extract-ru-renamings_15_17 *dict))]
