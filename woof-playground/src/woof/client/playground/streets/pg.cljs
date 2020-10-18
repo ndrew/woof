@@ -13,7 +13,6 @@
     [woof.base :as base]
     [woof.data :as d]
     [woof.data.core :as data]
-    [woof.data.stat :as stat]
     [woof.utils :as utils]
 
     [woof.browser :as woof-browser]
@@ -22,6 +21,8 @@
     [woof.client.dom :as woof-dom]
     [woof.client.playground.ui :as pg-ui]
     [woof.client.playground.ui.wf :as wf-ui]
+
+    [woof.client.playground.streets.ds :as ds]
     [woof.client.ws :as ws]
 
     [woof.wfs.evt-loop :as evt-loop]
@@ -240,44 +241,6 @@
 
 
 
-;; these can be generated automatically from map
-
-(def vul-regex #"вул\.\s" )
-(def vul-regex-1 #"вулиця\s" )
-
-(def pl-regex #"пл\.\s" )
-(def pl-regex-1 #"площа\s" )
-(def prov-regex #"пров\.\s" )
-(def prosp-regex #"просп\.\s" )
-
-(def bulv-regex #"бульв\.\s" )
-
-(def prosp-regex-1 #"проспект\s" )
-(def shose-regex #"шосе\s" )
-
-;; move get type to be last
-(defn noramalize-geonim [street-name]
-  ;; maybe this could be optimized by spliting string to words and checking the substitutions on first/last words
-
-  (cond
-    (re-find vul-regex street-name) (str (str/replace street-name vul-regex "") " вулиця")
-    (re-find vul-regex-1 street-name) (str (str/replace street-name vul-regex-1 "") " вулиця")
-
-    (re-find pl-regex street-name) (str (str/replace street-name pl-regex "") " площа")
-    (re-find pl-regex-1 street-name) (str (str/replace street-name pl-regex-1 "") " площа")
-
-    (re-find prov-regex street-name) (str (str/replace street-name prov-regex "") " провулок")
-
-    (re-find prosp-regex street-name) (str (str/replace street-name prosp-regex "") " проспект")
-    (re-find prosp-regex-1 street-name) (str (str/replace street-name prosp-regex-1 "") " проспект")
-
-    (re-find bulv-regex street-name) (str (str/replace street-name bulv-regex "") " бульвар")
-
-    (re-find shose-regex street-name) (str (str/replace street-name shose-regex "") " шосе")
-    :else street-name
-    )
-  )
-
 
 (rum/defc <rename> < rum/static
                      { :key-fn (fn [m] (apply str (sort (keys m))))}
@@ -320,7 +283,7 @@
              ; canonical-names
              [:div.rename
               (map (fn [[k v]]
-                     (let [_c-old-name (noramalize-geonim k)
+                     (let [_c-old-name (ds/normalize-ua-geonim k)
 
 
                            words (str/split _c-old-name " ")
@@ -354,7 +317,7 @@
                                           )
                                         _c-old-name)
 
-                           c-new-name (noramalize-geonim v)
+                           c-new-name (ds/normalize-ua-geonim v)
                            has-new-name? (contains? canonical-names c-new-name)
 
 
@@ -780,29 +743,6 @@
 
 
 
-(rum/defc <edn-list> < rum/static
-  [edn h]
-
-  (let [t (pr-str (type edn))
-        EDN-STR (reduce
-                  str
-                  ""
-                  (concat
-                    (get OPENING-BRACKETS t (str "!!!" t)) "\n"
-                    (map
-                      #(str " " (pr-str %) "\n") edn)
-                    (get CLOSING-BRACKETS t (str "!!!" t))
-                    )
-
-                  )
-        ]
-    [:.html
-     (pg-ui/menu-item "copy" (partial woof-dom/copy-to-clipboard EDN-STR))
-     (if h (str " ;; " h "\n") "\n")
-     EDN-STR
-     ]
-    )
-  )
 
 
 
@@ -1337,7 +1277,7 @@
 
         ;; todo:
         [:div
-         (<edn-list>  ;map <street>
+         (pg-ui/<edn-list>  ;map <street>
               (sort (data/locale-comparator :district :ua) @*grannular-streets)
               ""
               )
@@ -1366,7 +1306,7 @@
 
               ;; reduce street names but for certain district
               ]
-          (<edn-list> reduced-districts "REDUCED DISTRICTS")
+          (pg-ui/<edn-list> reduced-districts "REDUCED DISTRICTS")
           )
 
         ;; other assertions
@@ -1398,7 +1338,7 @@
            (pg-ui/menubar "extract geonim types" [["copy 📋" (partial wdom/copy-to-clipboard ua-geonims-list)]])
            ; (pr-str geonim-2-short)
 
-          (<edn-list> ua-geonims-list "---")
+          (pg-ui/<edn-list> ua-geonims-list "---")
 
            ;; check that shortened + geonim is the same as cana
 
@@ -1607,7 +1547,7 @@
       "\textract street type\n"
       "\textract district from street name\n\n"
 
-      (<edn-list> renamings "AA")
+      (pg-ui/<edn-list> renamings "AA")
 
       (map
         (fn [z]
@@ -1621,7 +1561,7 @@
         )
 
       #_(pr-str (reduce #(conj %1 (:district %2)) #{} (:raw-streets dict)))
-      #_(<edn-list> (sequence xf rename-pairs))
+      #_(pg-ui/<edn-list> (sequence xf rename-pairs))
       #_#{"Солом'янський р-н" "Подільський р-н" "Голосіївський р-н" "Шевченківський р-н" "Деснянський р-н" "Дарницький р-н" "Печерський р-н" "Оболонський р-н" "Святошинський р-н" "Дніпровський р-н"}
 
 
@@ -1751,24 +1691,24 @@
        [:header "RENAME & MAIN STREETS:"]
 
        ;; shows old street names present in
-       (<edn-list> (sort (set/intersection obsolete-street-ids ALL-IDS)) "streets both in MAIN DATA-SOURCE and OLD NAMES")
+       (pg-ui/<edn-list> (sort (set/intersection obsolete-street-ids ALL-IDS)) "streets both in MAIN DATA-SOURCE and OLD NAMES")
 
        ;; already migrated, need to ensure that there is an alias to an old street name
        [:hr]
-       (<edn-list> (sort (set/intersection new-street-ids ALL-IDS)) "new (renamed) streets ALREADY in MAIN DATA-SOURCE")
+       (pg-ui/<edn-list> (sort (set/intersection new-street-ids ALL-IDS)) "new (renamed) streets ALREADY in MAIN DATA-SOURCE")
 
        ;;
        [:hr]
-       (<edn-list> (sort streets2add-ids) "new (renamed) streets NOT in MAIN DATA-SOURCE")
+       (pg-ui/<edn-list> (sort streets2add-ids) "new (renamed) streets NOT in MAIN DATA-SOURCE")
 
        ]
 
       #_[:.flex
          [:.html
           ;(d/pretty! renamings-2-add)
-          (<edn-list> should-be-renamed__m " should-be-renamed__m")
+          (pg-ui/<edn-list> should-be-renamed__m " should-be-renamed__m")
 
-          (<edn-list> newly-added__m " newly-added__m")
+          (pg-ui/<edn-list> newly-added__m " newly-added__m")
           ]
          ;[:.html (<edn-list>  renamings-2-add "street names that were actually renamed \n")]
          ]
@@ -1821,11 +1761,6 @@
                          )
        ;(<edn-list> (sort ALL-IDS) "all available IDS")
        ]
-
-
-
-
-
       ]
      )
 
@@ -1905,7 +1840,7 @@
        (let [raw-streets (:raw-streets dict)]
          [:.html
 
-          (<edn-list> new-renamed)
+          (pg-ui/<edn-list> new-renamed)
 
           ;(pr-str new-renamed)
           ]
@@ -2024,7 +1959,7 @@
 
       (cond
         (= ui :EXPORT)
-        (<edn-list>
+        (pg-ui/<edn-list>
           (vec (sort
                  (data/locale-comparator :district :ua) ;; or by :idx
                  (get dict :raw-streets [])))
@@ -2042,7 +1977,7 @@
         (let [canonical-streets-map (group-by :id raw-geonims)
               find-str "Василя Стуса вулиця"
               dist-map (reduce (fn [a n]
-                        (let [d (stat/levenshtein-distance find-str n)]
+                        (let [d (metrics/levenshtein-distance find-str n)]
                           (if (>= d 80)
                             (assoc a n d)
                             a

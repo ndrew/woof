@@ -3,7 +3,8 @@
     [rum.core :as rum]
 
     [woof.playground.v1.utils :refer [dstr kstr vstr]]
-    [clojure.string :as str])
+    [clojure.string :as str]
+    [woof.client.dom :as woof-dom])
   )
 
 
@@ -166,3 +167,53 @@
 (defn shorten-bool [b]
   (if b
     "✓" "✕"))
+
+
+(defonce OPENING-BRACKETS
+         {"cljs.core/PersistentTreeSet" "#{"
+          "cljs.core/PersistentHashSet" "#{"
+          "cljs.core/PersistentHashMap" "{"
+          "cljs.core/List"              "["
+          "cljs.core/EmptyList"         "["
+          "cljs.core/LazySeq"           "("
+          "cljs.core/KeySeq"            "("
+          "cljs.core/IndexedSeq"        "("
+          "cljs.core/PersistentVector"  "["
+          })
+
+(defonce CLOSING-BRACKETS
+         {"cljs.core/PersistentTreeSet" "}"
+          "cljs.core/PersistentHashSet" "}"
+          "cljs.core/PersistentHashMap" "}"
+          "cljs.core/List"              "]"
+          "cljs.core/EmptyList"         "]"
+          "cljs.core/PersistentVector"  "]"
+          "cljs.core/KeySeq"            ")"
+          "cljs.core/LazySeq"           ")"
+          "cljs.core/IndexedSeq"        ")"
+          })
+
+
+(rum/defc <edn-list> < rum/static
+  [edn h]
+
+  (let [t (pr-str (type edn))
+        EDN-STR (reduce
+                  str
+                  ""
+                  (concat
+                    (get OPENING-BRACKETS t (str "!!!" t)) "\n"
+                    (map
+                      #(str " " (pr-str %) "\n") edn)
+                    (get CLOSING-BRACKETS t (str "!!!" t))
+                    )
+
+                  )
+        ]
+    [:.html
+     (menu-item "copy" (partial woof-dom/copy-to-clipboard EDN-STR))
+     (if h (str " ;; " h "\n") "\n")
+     EDN-STR
+     ]
+    )
+  )
