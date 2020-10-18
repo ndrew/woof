@@ -12,6 +12,7 @@
 
     [woof.base :as base]
     [woof.data :as d]
+    [woof.data.core :as data]
     [woof.data.stat :as stat]
     [woof.utils :as utils]
 
@@ -50,36 +51,6 @@
 ;;
 (def jaro (memoize metrics/jaro))
 
-
-(defn safe-compare [k a b]
-  (let [ka (k a)
-        kb (k b)]
-    (if (or (nil? ka)
-            (nil? kb))
-        (do
-          (.log js/console  "can't compare" a ka b kb "key-fn" k)
-          0)
-        (.localeCompare ka kb)
-        )
-    )
-  )
-
-(defn locale-comparator [k & ks]
-  (fn [a b]
-
-    (loop [c1 (safe-compare k a b)
-           ks ks]
-      (if (not= 0 c1)
-        c1
-        (if-not (seq ks)
-          c1
-          (let [k (first ks)]
-            (recur (safe-compare k a b) (rest ks)))
-          )
-        )
-      )
-    )
-  )
 
 
 ;;
@@ -126,8 +97,6 @@
       ]
 
      ;[:.other other]
-
-
 
 
      (if (:test street)
@@ -319,7 +288,6 @@
           ) m)
    ]
   )
-
 
 
 (rum/defcs <street-renaming-nu> < rum/static
@@ -915,9 +883,6 @@
 
 
 
-
-
-
 ;; extend filtering with saving meta-data
 
 (defn z-map
@@ -952,30 +917,6 @@
    )
   )
 
-(defn z-map-1
-  ([meta-xf persist-fn f]
-   (let [_meta-results (transient (meta-xf)) ;; always use vector for meta log
-         add-meta! (fn [input] (meta-xf _meta-results (meta-xf input)))
-         ]
-     (fn [rf]
-       (fn
-         ([] (rf))
-         ([result]
-          (persist-fn (persistent! _meta-results))
-          (rf result))
-         ([result input]
-          (let [nu-v (f input)]
-            (add-meta! nu-v)
-            (rf result nu-v)
-            )
-          )
-         ([result input & inputs]
-          (let [nu-v (apply f input inputs)]
-            (add-meta! nu-v)
-            (rf result nu-v))
-          ))))
-   )
-  )
 
 (defn juxt-mapper [& fns]
   (fn
@@ -1289,7 +1230,7 @@
                                              #(assoc % :ID (gen-street-id %)))
                                       ;
 
-                                      (z-map-1
+                                      (data/z-map-1
                                         (juxt-mapper __no-ru-label
                                                      __no-idx)
                                         #(vswap! *asserts into %)
@@ -1297,7 +1238,7 @@
 
 
 
-                                      (z-map-1
+                                      (data/z-map-1
                                         (cond-juxt-mapper
                                           (fn [item]
                                             ;(not (empty? (:alias item)))
@@ -1397,7 +1338,7 @@
         ;; todo:
         [:div
          (<edn-list>  ;map <street>
-              (sort (locale-comparator :district :ua) @*grannular-streets)
+              (sort (data/locale-comparator :district :ua) @*grannular-streets)
               ""
               )
          ]
@@ -1410,8 +1351,8 @@
                                     @*asserts)
                           @*asserts
                           :id-fn :ID
-                          ;:sort-fn (locale-comparator :ID)
-                          :sort-fn (locale-comparator :district :ua)
+                          ;:sort-fn (data/locale-comparator :ID)
+                          :sort-fn (data/locale-comparator :district :ua)
                           )
 
 
@@ -1532,21 +1473,6 @@
                               })
 
 
-(defn map-1-1 [source-vector index-map f]
-  (reduce (fn [a [k v]]
-            (let [vs (map f (vals (select-keys source-vector v)))]
-              (if (= 1 (count vs))
-                (assoc a k (first vs))
-                (do
-                  (.log js/console "non 1-1 mapping" k vs)
-                  (assoc a k vs)
-                  )
-
-                )
-              )
-
-            ) {} index-map)
-  )
 
 (rum/defc <DRV> < rum/static
   [dict]
@@ -1577,7 +1503,6 @@
 
        ]
       )
-
   )
 
 (rum/defc <RENAMING-UI> < rum/static
@@ -1774,7 +1699,7 @@
                                                           :ID (ref-id-fn %2)))
 
                                   ;; for now only new-old-mapping
-                                  (z-map-1 (fn
+                                  (data/z-map-1 (fn
                                              ([] #{})
                                              ([input] (:ID input))
                                              ([tran-col input]
@@ -1793,7 +1718,7 @@
 
          streets2add-ids (set/difference new-street-ids ALL-IDS)
 
-         renamings-2-add (map-1-1 renamed-streets-list (select-keys renamed-streets-map streets2add-ids)
+         renamings-2-add (data/map-1-1 renamed-streets-list (select-keys renamed-streets-map streets2add-ids)
                                   #(assoc % :ID (ref-id-fn %)))
 
          ;; markers for newly added streets
@@ -1858,7 +1783,7 @@
                              should-be-renamed__m
                              )
                            :id-fn :ID
-                           :sort-fn (locale-comparator :district :ua)
+                           :sort-fn (data/locale-comparator :district :ua)
                            )
          ]
 
@@ -2101,7 +2026,7 @@
         (= ui :EXPORT)
         (<edn-list>
           (vec (sort
-                 (locale-comparator :district :ua) ;; or by :idx
+                 (data/locale-comparator :district :ua) ;; or by :idx
                  (get dict :raw-streets [])))
           " streets EDN, sorted by district and name")
 
