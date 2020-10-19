@@ -1060,114 +1060,132 @@
 
 ;; unique street id - comination of post index + canonical street name
 (defn gen-street-id [street]
-  (str (:idx street) "_" (:ua street)))
+  (str (:idx street) "_" (:t street) "_" (:ua street)))
 
 
 (rum/defc <MAIN-DATA> < rum/static
   [raw-streets]
 
-  (let [*inv (volatile! [
-                         ;; event { :id ... , :check "zzz" }
-                         ])]
-    [:div
+  [:div
 
-     [:p "[street.. ] view: visually ensure properties, like uniqueness, correctness, etc."]
+   [:p "[street.. ] view: visually ensure properties, like uniqueness, correctness, etc."]
 
-     (let [
-           podil? #(= "Подільський р-н" (:district %))
-           podil-xf (filter podil?)
+   (let [
+         ;; external modifiable asserts list, for storing failed assertion
+         *asserts (volatile! [])
 
-           ;; external modifiable asserts list, for storing failed assertion
-           *asserts (volatile! [])
+         ;; assert fns, should return an assertion record if some assertion is failing
+         __no-ru-label (fn [item]
+                         (if (= "" (:ru item))  {:ID (:ID item) :class #{"no-label"}})
+                         )
+         __no-idx      (fn [item] (if (= "" (:idx item)) {:ID (:ID item) :class #{"no-idx"}}))
 
-           ;; assert fns, should return an assertion record if some assertion is failing
-           __no-ru-label (fn [item]
-                           (if (= "" (:ru item))  {:ID (:ID item) :class #{"no-label"}})
-                           )
-           __no-idx      (fn [item] (if (= "" (:idx item)) {:ID (:ID item) :class #{"no-idx"}}))
+         ;;__dummy-assert (fn [item] (if (= "11823" (:idx item)) {:ID (:ID item) :class "dummy-assert"}))
 
-           ;;__dummy-assert (fn [item] (if (= "11823" (:idx item)) {:ID (:ID item) :class "dummy-assert"}))
+         ;; map transducer that checks for assertions also. checks can be combined via juxtaposition (not comp)
+         ;assert-filter (partial z-filter *asserts __no-ru-label)
 
-           ;; map transducer that checks for assertions also. checks can be combined via juxtaposition (not comp)
-           ;assert-filter (partial z-filter *asserts __no-ru-label)
+         ;; external grouping for duplicates
+         *dups (volatile! {})
 
-           ;; external grouping for duplicates
-           *dups (volatile! {})
+         groupping-rf (fn [a x] (if (nil? a) 1 (+ a 1)))
 
-           groupping-rf (fn [a x] (if (nil? a) 1 (+ a 1)))
-
-           *multi-idx (volatile! {})
-           i-rf (fn [a x] (if (nil? a) #{(:i x)} (conj a (:i x))))
+         *multi-idx (volatile! {})
+         i-rf (fn [a x] (if (nil? a) #{(:i x)} (conj a (:i x))))
 
 
-           *grannular-streets (volatile! [])
+         *grannular-streets (volatile! [])
+         *all-renamings (volatile! #{})
 
+         ;; *alias
+         ;; *all-renamings (volatile! #{})
 
-
-           ;; single-pass processing of the street list, that can build some additinal meta data via special transducers
-           transduced-streets (into [] ; (sorted-set)
-                                    (comp
-                                      ;; generate unique ID for each street
-                                      (map-indexed #(assoc %2 :i %1))
-                                      ;
-                                      #_(z-map *asserts (apply juxt
+         ;; single-pass processing of the street list, that can build some additinal meta data via special transducers
+         transduced-streets (into [] ; (sorted-set)
+                                  (comp
+                                    ;; generate unique ID for each street
+                                    (map-indexed #(assoc %2 :i %1))
+                                    ;
+                                    #_(z-map *asserts (apply juxt
                                                              [__no-ru-label
                                                               __no-idx])
                                              #(assoc % :ID (gen-street-id %)))
-                                      ;
+                                    ;
 
-                                      (data/z-map-1
-                                        (juxt-mapper __no-ru-label
-                                                     __no-idx)
-                                        #(vswap! *asserts into %)
-                                        #(assoc % :ID (gen-street-id %)))
+                                    (data/z-map-1
+                                      (juxt-mapper __no-ru-label
+                                                   __no-idx)
+                                      #(vswap! *asserts into %)
+                                      #(assoc % :ID (gen-street-id %)))
 
 
 
-                                      (data/z-map-1
-                                        (cond-juxt-mapper
-                                          (fn [item]
-                                            ;(not (empty? (:alias item)))
-                                            true
+                                    (data/z-map-1
+                                      (cond-juxt-mapper
+                                        (fn [item]
+                                          ;(not (empty? (:alias item)))
+                                          true
+                                          )
+                                        (fn [x]
+
+                                          (let [add-assert! #(vswap! *asserts conj {:ID (:ID x) :class %})]
+                                            (if (not (empty? (:alias x)))
+                                              (do
+                                                ;(.log js/console (:ID x) (:alias x))
+                                                (vswap! *all-renamings into (:alias x))
+                                                )
+                                              )
+                                            x
                                             )
-                                          (fn [x]
+                                          #_(let [add-assert! #(vswap! *asserts conj {:ID (:ID x) :class %})
+                                                [t s] (ds/ua-geonim (:ua x))
+                                                [rt rs] (ds/ru-geonim (:ru x))
+                                                [et es] (ds/en-geonim (:en x))
 
-                                            (let [add-assert! #(vswap! *asserts conj {:ID (:ID x) :class %})
-                                                  [t s] (ds/ua-geonim (:ua x))
-                                                  [rt rs] (ds/ru-geonim (:ru x))
-                                                  [et es] (ds/en-geonim (:en x))
+                                                district (:district x)
 
-                                                  district (:district x)
+                                                nu-aliases (map (fn [a]
 
-                                                  nu-aliases (map (fn [a]
+                                                                  (let [
+                                                                        [at uas] (ds/ua-geonim a)
+                                                                        [rt rus] (ds/ru-geonim a)
+                                                                        [et ens] (ds/en-geonim a)
+                                                                        ]
 
-                                                                    (let [
-                                                                          [at uas] (ds/ua-geonim a)
-                                                                          [rt rus] (ds/ru-geonim a)
-                                                                          [et ens] (ds/en-geonim a)
-                                                                          ]
-
-                                                                      (cond
-                                                                        ;; should try the other langs
-                                                                        (not= "" at)  (do
-                                                                                        (if (not= at t)
-                                                                                          (add-assert! #{"alias-different-street-type"}))
-                                                                                        uas)
-                                                                        (not= "" rt) (do
-                                                                                       (if (not= rt t)
-                                                                                         (add-assert! #{"alias-different-street-type"}))
-                                                                                       rus)
-                                                                        (not= "" et) (do
-                                                                                       (if (not= et t)
-                                                                                         (add-assert! #{"alias-different-street-type"}))
-                                                                                       ens)
-                                                                        :else a
-                                                                        )
+                                                                    (cond
+                                                                      ;; should try the other langs
+                                                                      (not= "" at)  (do
+                                                                                      (if (not= at t)
+                                                                                        (add-assert! #{"alias-different-street-type"}))
+                                                                                      uas)
+                                                                      (not= "" rt) (do
+                                                                                     (if (not= rt t)
+                                                                                       (add-assert! #{"alias-different-street-type"}))
+                                                                                     rus)
+                                                                      (not= "" et) (do
+                                                                                     (if (not= et t)
+                                                                                       (add-assert! #{"alias-different-street-type"}))
+                                                                                     ens)
+                                                                      :else a
                                                                       )
-                                                                    ) (get x :alias))
-                                                  ]
+                                                                    )
+                                                                  ) (get x :alias))
+                                                ]
 
-                                              (cond
+
+                                            (if (not (empty? (:alias x)))
+                                              ;
+                                              (do
+                                                ;(.log js/console (:ID x) (:alias x))
+                                                (vswap! *all-renamings into (:alias x))
+                                                )
+
+                                              ;(add-assert! #{"ru-empty-street-type"})
+                                              )
+
+
+                                            ;; todo: clean-up
+                                            #_(cond
                                                 (= "" t) (add-assert! #{"empty-street-type"})
                                                 (and (= "" rt) (not= "" (:ru x))) (add-assert! #{"ru-empty-street-type"})
                                                 (and (= "" et) (not= "" (:en x))) (add-assert! #{"en-empty-street-type"})
@@ -1177,73 +1195,86 @@
                                                 )
 
 
-                                              (array-map
-                                                :t t
-                                                :ua s
-                                                :ru rs
-                                                :en es
+                                            (array-map
+                                              :t t
+                                              :ua s
+                                              :ru rs
+                                              :en es
 
-                                                :alias (vec nu-aliases)
-                                                :idx (:idx x)
-                                                :district district
-                                                :districts (vec (filter #(not= district %) (:districts x)))
-                                                :other (:other x)
-                                                )
+                                              :alias (vec nu-aliases)
+                                              :idx (:idx x)
+                                              :district district
+                                              :districts (vec (filter #(not= district %) (:districts x)))
+                                              :other (:other x)
+                                              )
 
-                                              ))
+                                            )
                                           )
-                                        #(vswap! *grannular-streets into %)
-                                        identity)
+                                        )
+                                      #(vswap! *grannular-streets into %)
+                                      identity)
 
 
-                                      ;; map-group-dupes
-                                      (z-map-group *dups :ID groupping-rf identity)
+                                    ;; map-group-dupes
+                                    (z-map-group *dups :ID groupping-rf identity)
 
-                                      ;;
-                                      ;;(z-map-group *multi-idx :ua i-rf identity)
+                                    ;;
+                                    ;;(z-map-group *multi-idx :ua i-rf identity)
 
-                                      ) raw-streets)
+                                    ) raw-streets)
 
 
-           ;; after process - find out duplicated streets and convert this to assertions
-           dup-markers (reduce (fn [a [k v]]
-                                 (if (> v 1) (conj a {:ID k :class #{"dup"}})
-                                             a))
-                               [] @*dups)
+         ;; after process - find out duplicated streets and convert this to assertions
+         dup-markers (reduce (fn [a [k v]]
+                               (if (> v 1) (conj a {:ID k :class #{"dup"}})
+                                           a))
+                             [] @*dups)
 
-           ;multi-idx-markers (into []
-           ;                        (comp
-           ;                          (filter (fn [[k v]] (> (count v) 1)))
-           ;                          (mapcat second)
-           ;                          (map (fn[x] { :ID (gen-street-id (get-in raw-streets [x])) :class #{"long-street"}}))
-           ;                          )
-           ;                           @*multi-idx)
-           ]
-       [:div.flex
 
-        ;; todo:
-        [:div
-         (pg-ui/<edn-list>  ;map <street>
-              (sort (data/locale-comparator :district :ua) @*grannular-streets)
-              ""
-              )
+         ;; todo: copy indexes
+         all-renamings @*all-renamings
+         deletion-markers (reduce
+                            (fn [a x]
+                              (if (all-renamings (:ua x))
+                                (conj a {:ID (:ID x) :class #{"to-be-deleted"}})
+                                a
+                                )
+                              )
+                            []
+                            transduced-streets
+                            )
+         ;multi-idx-markers (into []
+         ;                        (comp
+         ;                          (filter (fn [[k v]] (> (count v) 1)))
+         ;                          (mapcat second)
+         ;                          (map (fn[x] { :ID (gen-street-id (get-in raw-streets [x])) :class #{"long-street"}}))
+         ;                          )
+         ;                           @*multi-idx)
          ]
-        ;(<edn-list> @*grannular-streets "extracted grannular streets")
+     [:div.flex
+
+      ;; todo:
+      [:div
+         (pg-ui/<edn-list>  ;map <street>
+           (sort (data/locale-comparator :district :t :ua) @*grannular-streets) "")
+       ]
+      ;(<edn-list> @*grannular-streets "extracted grannular streets")
+
+      [:.html (pr-str @*all-renamings)]
+
+      (<transform-list> <street> transduced-streets
+                        #_(concat dup-markers
+                                  multi-idx-markers
+                                  @*asserts)
+                        (concat deletion-markers @*asserts)
+                        :id-fn :ID
+                        ;:sort-fn (data/locale-comparator :ID)
+                        :sort-fn (data/locale-comparator :district :t :ua)
+                        )
 
 
-        (<transform-list> <street> transduced-streets
-                          #_(concat dup-markers
-                                    multi-idx-markers
-                                    @*asserts)
-                          @*asserts
-                          :id-fn :ID
-                          ;:sort-fn (data/locale-comparator :ID)
-                          :sort-fn (data/locale-comparator :district :ua)
-                          )
-
-
-        ;; example of simplest reduce
-        #_(let [
+      ;; example of simplest reduce
+      #_(let [
               reduced-districts (reduce
                                   (fn [a x]
                                     (conj a (:district x)))
@@ -1255,23 +1286,20 @@
           (pg-ui/<edn-list> reduced-districts "REDUCED DISTRICTS")
           )
 
-        ;; other assertions
-        ;; - streets in several districts - "find streets that occur more than once in parsed list: streets that span to multiple districts, etc"
-        ;; - multilines in district
+      ;; other assertions
+      ;; - streets in several districts - "find streets that occur more than once in parsed list: streets that span to multiple districts, etc"
+      ;; - multilines in district
 
-        ;; todo: pass groupings into transform list, not for filtering, but for visual grouping
-
-
-        #_(let [
+      ;; todo: pass groupings into transform list, not for filtering, but for visual grouping
 
 
+      #_(let [
               ua-geonims-list (->>
                                 (group-by :ua raw-streets)
                                 (map first)
                                 (sort)
                                 (map (partial ds/match-geonim ua-geonim-2-short))
                                 )
-
 
               ;ru-geonims-list (->>
               ;                  (group-by :ru raw-streets)
@@ -1284,7 +1312,7 @@
            (pg-ui/menubar "extract geonim types" [["copy 📋" (partial wdom/copy-to-clipboard ua-geonims-list)]])
            ; (pr-str geonim-2-short)
 
-          (pg-ui/<edn-list> ua-geonims-list "---")
+           (pg-ui/<edn-list> ua-geonims-list "---")
 
            ;; check that shortened + geonim is the same as cana
 
@@ -1303,7 +1331,6 @@
                                         ) words)
                    ]
 
-
                [:span
                 {:style {:color
                          (cond
@@ -1312,26 +1339,17 @@
                            capitalized? "green"
                            :else "#000"
                            )
-
                          }}
                 (pr-str
                   words
                   capitalized?
-                  )
-                ]
-
+                  )]
                )
-
-
            ]
-
           )
-
-
-        ]
-       )
-     ]
-    )
+      ]
+     )
+   ]
   )
 
 
@@ -1394,10 +1412,7 @@
 (rum/defc <RENAMING-UI> < rum/static
   [dict]
 
-
-
   [:.flex
-
 
    ;; from renaming map to street delta
    #_(when-let [renamed-streets (:renamed-streets dict)]
@@ -1556,7 +1571,6 @@
    (let [
 
          ;; renamings data source
-
          ;; renamed-streets-list (get dict :renamed-streets-delta []) ;; -- loaded from file
 
          renamed-streets-list (reduce
@@ -1594,11 +1608,11 @@
 
          ;; old -> current mapping
          *prev-map (volatile! {})
-         prev-k-fn (juxt :district :cid)
+         prev-k-fn (juxt :district :t :cid)
 
          ;; current -> old mapping
          *old->nu (volatile! {})
-         curr-k-fn (juxt :district :old)
+         curr-k-fn (juxt :district :t :old)
 
          rename-id-fn #(str (:old %) "->" (:cid %))
 
@@ -1638,10 +1652,39 @@
 
          *all-street-ids (volatile! #{})
          ref-id-fn (juxt :district :t :ua)
+
+
+         *asserts (volatile! [])
+         add-assert! #(vswap! *asserts conj %)
+
          enriched-streets (into []
                                 (comp
-                                  (map-indexed #(assoc %2 :i %1
-                                                          :ID (ref-id-fn %2)))
+                                  (map-indexed
+                                    (fn [i x]
+
+                                      (let [ID (ref-id-fn x)]
+
+                                        (when (= "" (:idx x))
+                                          (.log js/console ID (:idx x))
+                                          (add-assert! {:ID ID :class #{"no-idx"}}))
+
+                                        (assoc x
+                                          :i i
+                                          :ID ID)
+                                        )
+
+                                      )
+                                    )
+
+
+                                  #_(data/z-map-1 (fn
+                                                  ([] #{})
+                                                  ([input] (:ID input))
+                                                  ([trans-col input]
+                                                   (conj trans-col input)))
+                                                #(vswap! )
+                                                #(assoc % )
+                                                )
 
                                   ;; for now only new-old-mapping
                                   (data/z-map-1 (fn
@@ -1668,14 +1711,14 @@
 
          ;; markers for newly added streets
          newly-added__m (into []
-                            (map (fn [[[d _nu] v]]
-                                   {:ID [d _nu] ;[d (first (:alias v))]
+                            (map (fn [[[d t _nu] v]]
+                                   {:ID [d t _nu] ;[d (first (:alias v))]
                                     :class #{"to-be-added"}} ))
                       renamings-2-add)
 
          should-be-renamed__m (into []
-                              (map (fn [[[d _nu] v]]
-                                     {:ID [d (first (:alias v))]
+                              (map (fn [[[d t _nu] v]]
+                                     {:ID [d t (first (:alias v))]
                                       :class #{"should-be-renamed"} }))
                               renamings-2-add)
 
@@ -1692,7 +1735,7 @@
      [:div.flex
 
 
-      #_[:.html
+      [:.html
        [:header "RENAME & MAIN STREETS:"]
 
        ;; shows old street names present in
@@ -1733,6 +1776,19 @@
          ]
 
 
+      ;(pg-ui/<edn-list> renamed-streets-list "generated street deltas")
+
+      (pg-ui/<edn-list>  (concat enriched-streets
+                                 (vals renamings-2-add)
+                                 ) "enriched street deltas")
+      ;(pg-ui/<edn-list> renamings "enriched street deltas")
+
+      ;[:.html (d/pretty! renamed-streets-map)]
+      ;[:.html (d/pretty! (first enriched-streets))]
+      ;[:.html (d/pretty! (first (vals renamings-2-add)))]
+      ;[:.html (d/pretty! renamings-2-add)]
+      ;[:.html (d/pretty! streets2add-ids)]
+
       ;; show lit of streets linked with renamed
       (<transform-list> (fn [street]
                           [:div.html
@@ -1747,6 +1803,8 @@
                         (concat
                           newly-added__m
                           should-be-renamed__m
+
+                          @*asserts
                           ;;curr-markers
                           )
                         :id-fn :ID
@@ -1907,8 +1965,8 @@
 (rum/defcs <streets-cc> < rum/reactive
                           (rum/local
                                 :RENAME
-                                ;:MASTER-DATA__FULL
-                                ;:DRV
+                                ; :MASTER-DATA__FULL
+                                ; :DRV
                             :UI)
   [st *dict]
 
@@ -1930,7 +1988,7 @@
      [:.panel
       (pg-ui/menubar "Renaming Data "
                      [
-                      ["load :renamed-streets"       (fn [] (load-edn *dict "/s/streets/renamed-streets-all.edn" :renamed-streets))]
+                      ["load :renamed-streets"       (fn [] (load-edn *dict "/s/streets/renamed-streets.edn" :renamed-streets))]
                       ["load :renamed-streets-delta" (fn [] (load-edn *dict "/s/streets/streets_delta.edn" :renamed-streets-delta))]
 
                       ["load :renamed-ru (2015-2017)" (fn [] (extract-ru-renamings_15_17 *dict))]
