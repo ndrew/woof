@@ -1248,47 +1248,96 @@
 
 
   ;; DRV
-  (let [drv-street-map (:drv-buildings-per-street dict)
+  (let [
 
-          ;raw-geonims (:ua-geonims dict)
-          ;canonical-streets-map (group-by :id raw-geonims)
-          street-aliases (:drv-renamed-streets dict)
+        ;; pre-process streets
+        all-streets (get dict :raw-streets [])
+        *all-street-ids (volatile! {})
+        ref-id-fn (juxt :t :ua)
+        enriched-streets (into []
+                               (comp
+                                 (map-indexed
+                                   (fn [i x]
+                                     (let [ID (ref-id-fn x)]
+                                       (vswap! *all-street-ids update ID (fn [a b]
+                                                                           (if a
+                                                                             (conj a b)
+                                                                             #{b})
+                                                                           ) i)
+                                       (assoc x
+                                         :i i
+                                         :ID ID))))
+                                 )
+                               all-streets)
+        street-mapping @*all-street-ids
+
+        ;; drv stuff
+
+        drv-street-map (:drv-buildings-per-street dict)
+
+        ;raw-geonims (:ua-geonims dict)
+        ;canonical-streets-map (group-by :id raw-geonims)
+        street-aliases (:drv-renamed-streets dict)
 
 
-          *asserts (volatile! [])
+        *asserts (volatile! [])
 
-          drv-streets (into []
-                            (comp
-                              (map-indexed #(hash-map
-                                              :i %1
-                                              :drv %2
-                                              :v (get drv-street-map %2)
-                                              ))
-                              (data/z-map-1
-                                (juxt-mapper (fn [item]
-                                               ;(.log js/console item)
-                                               (let [[t s] (:ua item)]
-                                                 (if (= "" t)
-                                                   {:drv (:drv item) :class #{"not-guessed"}})
-                                                 )
+        drv-streets (into []
+                          (comp
+                            (map-indexed #(hash-map
+                                            :i %1
+                                            :drv %2
+                                            :v (get drv-street-map %2)
+                                            ))
+                            ;;
+                            (data/z-map-1
+                              (juxt-mapper (fn [item]
+                                             ;(.log js/console item)
+                                             (let [[t s] (:ua item)]
+                                               (if (= "" t)
+                                                 {:drv (:drv item) :class #{"not-guessed"}})
+                                               )
 
-                                               ))
-                                #(vswap! *asserts into %)
-                                #(assoc % :ua (ds/ua-geonim (:drv %))
-                                          )
-                                )
-
+                                             ))
+                              #(vswap! *asserts into %)
+                              (fn [x]
+                                (let [ua (ds/ua-geonim (:drv x))]
+                                  (assoc x :ua ua)))
                               )
-                            (keys drv-street-map))
-          ]
+
+                            (data/z-map-1
+                              (juxt-mapper (fn [item]
+                                             ;(.log js/console item)
+                                             (if-let [ua (:ua item)]
+                                               (if-not (:x item)
+                                                 {:drv (:drv item) :class #{"cant-match"}})
+                                               )
+
+                                             ))
+                              #(vswap! *asserts into %)
+                              (fn [x]
+                                (if-let [ua (:ua x)]
+                                  (assoc x :x (get street-mapping ua))
+                                  x
+                                  ))
+                              )
+
+                            )
+                          (keys drv-street-map))
+        ]
 
       [:div
        [:h3 "DRV"]
 
 
+       ;(pg-ui/<edn-list> street-mapping "index of all streets")
+       ;[:hr]
+       ;(pg-ui/<edn-list> [(first enriched-streets)] "enriched ex")
+
        (pg-ui/<transform-list> (fn [x]
                                  [:.html
-                                  [:span.old (:drv x)] " → " [:span.nu (str/join " " (:ua x))]
+                                  ;(d/pretty! x)
+                                  [:span.old (:drv x)] " → " [:span.nu (str/join " " (:ua x))] " → " [:span.nu (pr-str (:x x))]
                                   ;(pr-str (select-keys x [:drv :ua]))
                                   ]
                                  )
@@ -1296,6 +1345,9 @@
                                (group-by :drv @*asserts)
                                :id-fn :drv
                                :filter-map {
+                                            "cant-match" (partial pg-ui/_marker-class-filter "cant-match")
+                                            "good!" (partial pg-ui/_marker-except-class-filter "cant-match")
+
                                             "not-guessed" (partial pg-ui/_marker-class-filter "not-guessed")
                                             "guessed" (partial pg-ui/_marker-except-class-filter "not-guessed")
                                             }
