@@ -80,6 +80,7 @@
       }
      [:div
       [:div
+       [:span.tag.small-tag.idx (get street :i -1)]
        [:span.tag.small-tag.idx idx]
        [:span.tag.small-tag.district district]
        #_[:span.districts
@@ -97,7 +98,7 @@
        ]
       ]
 
-     ;[:.other other]
+     [:.other other]
 
 
      (if (:test street)
@@ -1414,159 +1415,6 @@
 
   [:.flex
 
-   ;; from renaming map to street delta
-   #_(when-let [renamed-streets (:renamed-streets dict)]
-     (let [renamed-streets-delta (reduce
-
-                                   (fn [a [k vs]]
-                                     (into a (map (fn [[old nu]]
-                                                    (let [[nu-t nu-short] (ds/ua-geonim nu)
-                                                          [old-t old-short] (ds/ua-geonim old)]
-                                                      (array-map
-                                                        :t nu-t
-                                                        :ua nu-short
-                                                        :ru ""
-                                                        :en ""
-                                                        :alias [old-short]
-                                                        :idx ""
-                                                        :district k
-                                                        :z (= nu-t old-t)
-                                                        :other (str "renamed from '" old "' to '" nu "'")
-                                                        )
-
-                                                      )
-
-                                                    ) vs))
-                                     )
-                                   [] renamed-streets
-                                   )]
-       ;[:.html (d/pretty! renamed-streets)]
-       (pg-ui/<edn-list> renamed-streets-delta "...")
-
-       ;;
-       )
-
-     )
-
-
-    #_(if-let [renamed (get dict :renamed-ru-1 []) ]
-      [:div
-       (map <street> renamed)
-       ]
-      )
-
-
-
-   #_[:.html
-    "DATA:\n"
-
-    "\n"
-    [:h3 "what renamings are already actualized?"]
-    "\n"
-
-    "\n:renamed-streets - \n"
-    "\tdistrict {old-ua => new-ua}\n"
-    "\told-ua/new-ua - non-canonical\n"
-
-
-    "\n:renamed-streets-delta - \n"
-    "\t..."
-    "\t:ua - renamed canonical name"
-    "\t:alias - prev canonical name"
-    ; (<edn-list> (get dict :renamed-streets-delta []) "")
-
-
-    "\n:renamed-ru - list extracted RU street names (old-RU->new-RU)"
-    "\n\told-RU => in canonic format"
-    "\n\tnew-RU => non-canonic"
-    ;;(<edn-list> rename-pairs "")
-
-    ]
-
-
-
-   #_(let [rename-pairs (get dict :renamed-ru [])
-         xf (comp
-              (filter (fn [[old nu]] (re-find #"\(.+\)$" nu)))
-              (map (fn [[old nu]] (re-find #"\(.+\)$" nu)))
-              )
-
-
-         ;; todo: do smth with these guesses
-         guesses {
-                  }
-
-         renamings (map (fn [[old nu]]
-                          (let [_distr (re-find #"\(.+\)$" nu)
-                                distr (if _distr
-                                        ({"(Дарницкий район)"   "Дарницький р-н"
-                                          "(Дарницкий)"         "Дарницький р-н"
-                                          "(Деснянский район)"  "Деснянський р-н"
-                                          "(Деснянский)"        "Деснянський р-н"
-                                          "(Днепровский район)" "Дніпровський р-н"
-                                          "(Печерский)"         "Печерський р-н"
-                                          "(Подол)"             "Подільський р-н"
-                                          "(Соломенский район)" "Солом'янський р-н"
-                                          "(Соломенский)"       "Солом'янський р-н"
-                                          } _distr)
-                                        )
-                                nu-1 (if _distr
-                                       (str/trim (str/replace nu #"\(.+\)$" ""))
-                                       nu)
-
-                                parts (str/split old " ")
-                                raw-gt (last parts)
-
-                                ]
-                            ;(last parts)
-
-                            {
-                             :distr distr
-                             :gt (get ru-ua-mapping raw-gt)
-                             :ru-gt (get ru-canonized-gt-mapping raw-gt)
-                             :ru nu-1
-                             ; :ru1 (str nu-1 " " (get ru-canonized-gt-mapping raw-gt))
-                             ;; :_old old
-
-                             :guess (get guesses nu-1)
-                             :old (str/join " " (drop-last parts))
-                             }
-                            )
-                          ) rename-pairs)
-
-         ;rrr (into [])
-         ]
-
-
-     [:.html
-
-      "process extracted RU names:\n"
-      "\textract street type\n"
-      "\textract district from street name\n\n"
-
-      (pg-ui/<edn-list> renamings "AA")
-
-      (map
-        (fn [z]
-          [:div.html.street-row
-           (.padEnd (pr-str (:guess z) ) 40)
-           " "
-           (pr-str (str (:ru z) " " (:ru-gt z) ) )]
-          )
-        (sort-by :guess
-                 (filter #(not (empty? (:guess %))) renamings))
-        )
-
-      #_(pr-str (reduce #(conj %1 (:district %2)) #{} (:raw-streets dict)))
-      #_(pg-ui/<edn-list> (sequence xf rename-pairs))
-      #_#{"Солом'янський р-н" "Подільський р-н" "Голосіївський р-н" "Шевченківський р-н" "Деснянський р-н" "Дарницький р-н" "Печерський р-н" "Оболонський р-н" "Святошинський р-н" "Дніпровський р-н"}
-
-
-      ]
-
-     )
-
-
    ;; STREETS
    (let [
 
@@ -1657,22 +1505,27 @@
          *asserts (volatile! [])
          add-assert! #(vswap! *asserts conj %)
 
+
+         *alias-i (volatile! {})
+         *no-idx-i (volatile! {})
+
+
          enriched-streets (into []
                                 (comp
                                   (map-indexed
                                     (fn [i x]
-
                                       (let [ID (ref-id-fn x)]
+                                        (vswap! *alias-i assoc (str (:t x) " " (:ua x)) i)
 
                                         (when (= "" (:idx x))
-                                          (.log js/console ID (:idx x))
+                                          ;(.log js/console ID (:idx x))
+                                          (vswap! *no-idx-i assoc (str (:t x) " " (:ua x)) i)
                                           (add-assert! {:ID ID :class #{"no-idx"}}))
 
                                         (assoc x
                                           :i i
                                           :ID ID)
                                         )
-
                                       )
                                     )
 
@@ -1729,6 +1582,33 @@
                                               ))
                             @*old->nu)
 
+         ;;;
+         ;;
+
+         a-index @*alias-i
+         upd-no-idx-streets (map (fn [[ID i]]
+                                   (when-let [x (get enriched-streets i)]
+
+                                     (let [_ID (str (:t x) " " (get-in x [:alias 0]))]
+                                       (if-let [z (get a-index _ID)]
+                                         (let [prev-x (get-in enriched-streets [z])
+
+                                               ]
+                                           ;; (str ID " -> " _ID " (" i " | " z ") => " (d/pretty! (get-in enriched-streets [z])))
+                                           (assoc x
+                                             :idx (:idx prev-x)
+                                             :alias (concat (:alias x) (filter #(not= "" %) [(:ru prev-x) (:en prev-x)]))
+                                             :other (str (:other x) "; " (:other prev-x))
+                                             :districts (vec (concat (get x :districts []) (get prev-x :districts [])))
+                                             )
+                                           )
+                                         x
+                                         )
+                                       )
+                                     )
+                                   ;[ID ]
+                                   )
+                                 @*no-idx-i)
 
          ]
 
@@ -1738,16 +1618,35 @@
       [:.html
        [:header "RENAME & MAIN STREETS:"]
 
+       (let [
+             ]
+         [:.html
+          ;(map <street> (sort (data/locale-comparator :district :ua) upd-no-idx-streets))
+          ;(pg-ui/<edn-list> (sort (data/locale-comparator :district :ua) upd-no-idx-streets) " copied prev idx")
+
+          (<transform-list> <street>
+                            upd-no-idx-streets
+
+                            []
+                            :id-fn :ID
+                            :copy-fn #(dissoc % :ID :_rename)
+                            :sort-fn (data/locale-comparator :district :ua)
+                            )
+          ]
+
+         )
+
+
        ;; shows old street names present in
-       (pg-ui/<edn-list> (sort (set/intersection obsolete-street-ids ALL-IDS)) "streets both in MAIN DATA-SOURCE and OLD NAMES")
+       ;(pg-ui/<edn-list> (sort (set/intersection obsolete-street-ids ALL-IDS)) "streets both in MAIN DATA-SOURCE and OLD NAMES")
 
        ;; already migrated, need to ensure that there is an alias to an old street name
-       [:hr]
-       (pg-ui/<edn-list> (sort (set/intersection new-street-ids ALL-IDS)) "new (renamed) streets ALREADY in MAIN DATA-SOURCE")
+       ;[:hr]
+       ;(pg-ui/<edn-list> (sort (set/intersection new-street-ids ALL-IDS)) "new (renamed) streets ALREADY in MAIN DATA-SOURCE")
 
        ;;
-       [:hr]
-       (pg-ui/<edn-list> (sort streets2add-ids) "new (renamed) streets NOT in MAIN DATA-SOURCE")
+       ;[:hr]
+       ;(pg-ui/<edn-list> (sort streets2add-ids) "new (renamed) streets NOT in MAIN DATA-SOURCE")
 
        ]
 
@@ -1778,7 +1677,7 @@
 
       ;(pg-ui/<edn-list> renamed-streets-list "generated street deltas")
 
-      (pg-ui/<edn-list>  (concat enriched-streets
+      #_(pg-ui/<edn-list>  (concat enriched-streets
                                  (vals renamings-2-add)
                                  ) "enriched street deltas")
       ;(pg-ui/<edn-list> renamings "enriched street deltas")
@@ -1797,7 +1696,13 @@
                            (<street> street)
                            ]
                           )
-                        (concat enriched-streets
+
+                        (reduce (fn [all x]
+                                  (assoc all (:i x) x))
+                          enriched-streets upd-no-idx-streets
+                          )
+
+                        #_(concat enriched-streets
                                 (vals renamings-2-add))
 
                         (concat
@@ -1808,8 +1713,29 @@
                           ;;curr-markers
                           )
                         :id-fn :ID
-                        :copy-fn #(dissoc % :ID)
-                        ;:sort-fn (locale-comparator :district :ua)
+                        ;; ugly, but works
+                        :copy-fn #(let [{t :t
+                                         ua :ua
+                                         ru :ru
+                                         en :en
+                                         alias :alias
+                                         idx :idx
+                                         district :district
+                                         districts :districts
+                                         other :other} (dissoc % :ID :_rename :i)]
+                                    (array-map
+                                      :t t
+                                      :ua ua
+                                      :ru ru
+                                      :en en
+                                      :alias (vec alias)
+                                      :idx idx
+                                      :district district
+                                      :districts districts
+                                      :other (if (nil? other) "" other)
+                                      )
+                                    )
+                        :sort-fn (data/locale-comparator :district :ua)
                         )
 
 
