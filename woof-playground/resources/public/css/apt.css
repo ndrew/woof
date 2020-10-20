@@ -146,3 +146,15 @@
 .to-be-added {
     background-color: red;
 }
+
+.not-guessed {
+    background-color: #4169e144;
+}
+
+span.old {
+    color: gray;
+}
+
+span.nu {
+    color: #000;
+}

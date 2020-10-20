@@ -1153,14 +1153,7 @@
                         :copy-fn #(street2export (dissoc % :ID :_rename :i))
                         :sort-fn (data/locale-comparator :district :ua)
                         :filter-map {"to-be-deleted" (partial pg-ui/_marker-class-filter "to-be-deleted")
-                                     "all-except-deleted" (fn [item st]
-                                                            (if st
-                                                              (let [classes (reduce set/union #{} (map :class st))]
-                                                                (not (get classes "to-be-deleted")))
-                                                              true
-                                                              )
-                                                            )
-
+                                     "all-except-deleted" (partial pg-ui/_marker-except-class-filter "to-be-deleted")
                                      }
                         )
 
@@ -1261,11 +1254,54 @@
           ;canonical-streets-map (group-by :id raw-geonims)
           street-aliases (:drv-renamed-streets dict)
 
+
+          *asserts (volatile! [])
+
+          drv-streets (into []
+                            (comp
+                              (map-indexed #(hash-map
+                                              :i %1
+                                              :drv %2
+                                              :v (get drv-street-map %2)
+                                              ))
+                              (data/z-map-1
+                                (juxt-mapper (fn [item]
+                                               ;(.log js/console item)
+                                               (let [[t s] (:ua item)]
+                                                 (if (= "" t)
+                                                   {:drv (:drv item) :class #{"not-guessed"}})
+                                                 )
+
+                                               ))
+                                #(vswap! *asserts into %)
+                                #(assoc % :ua (ds/ua-geonim (:drv %))
+                                          )
+                                )
+
+                              )
+                            (keys drv-street-map))
           ]
 
       [:div
        [:h3 "DRV"]
-       ;(<edn-list> (keys drv-street-map)  "___")
+
+
+       (pg-ui/<transform-list> (fn [x]
+                                 [:.html
+                                  [:span.old (:drv x)] " → " [:span.nu (str/join " " (:ua x))]
+                                  ;(pr-str (select-keys x [:drv :ua]))
+                                  ]
+                                 )
+                               drv-streets
+                               (group-by :drv @*asserts)
+                               :id-fn :drv
+                               :filter-map {
+                                            "not-guessed" (partial pg-ui/_marker-class-filter "not-guessed")
+                                            "guessed" (partial pg-ui/_marker-except-class-filter "not-guessed")
+                                            }
+                               )
+       ;
+       ;(pg-ui/<edn-list> (keys drv-street-map)  "___")
        ;[:hr]
        ;(<edn-list> drv-renamed-streets "___")
 
@@ -1719,8 +1755,8 @@
 (rum/defcs <streets-cc> < rum/reactive
                           (rum/local
                                 ;:RENAME
-                                 :MASTER-DATA__FULL
-                                ; :DRV
+                                ; :MASTER-DATA__FULL
+                                 :DRV
                             :UI)
   [st *dict]
 

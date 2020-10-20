@@ -232,6 +232,14 @@
     )
   )
 
+(defn _marker-except-class-filter [class item st]
+  (if st
+    (let [classes (reduce set/union #{} (map :class st))]
+      (not (get classes class)))
+    true
+    )
+  )
+
 
 (rum/defcs <transform-list> < rum/static
                               (rum/local nil ::filter)
