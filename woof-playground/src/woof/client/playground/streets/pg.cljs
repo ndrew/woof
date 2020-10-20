@@ -916,79 +916,6 @@
   )
 
 
-(defn _filter-by-class [class item st]
-  (if st
-    (let [classes (reduce set/union #{} (map :class st))]
-      (get classes class))
-    false
-    )
-  )
-
-
-(rum/defcs <transform-list> < rum/static
-                              (rum/local nil ::filter)
-  [st <item> items markers-map & {:keys [id-fn sort-fn copy-fn filter-map]
-                               :or  {id-fn identity
-                                     copy-fn identity
-                                     filter-map {}}}]
-
-  (let [&markers    (fn [item] (get markers-map (id-fn item)))
-
-        filter-ids (keys filter-map)
-
-        *filter (::filter st)
-
-        _ (if (nil? @*filter) (reset! *filter
-                                      (if filter-ids (first filter-ids)
-                                        :all)))
-       filter-id @*filter
-
-        show-all? (= :all filter-id)
-
-        filter-rule (filter (fn [item]
-                              (let [st (&markers item)
-                                    xf (get filter-map filter-id (fn [_ _] show-all?))]
-                                (xf item st))))
-
-        sorted-items (if sort-fn
-                       (sort sort-fn items)
-                       items)
-        ]
-
-    [:div.list
-     ;; todo: combinations
-     (pg-ui/menubar "filters: "
-                    (into
-                      [
-                       ["copy" (fn []
-                                 (woof-dom/copy-to-clipboard
-                                   (str "[\n" (str/join "\n"
-                                                        (into []
-                                                              (comp filter-rule
-                                                                    (map copy-fn)
-                                                                    (map pr-str))
-                                                              sorted-items)) "\n]")
-                                   )
-                                 )]
-                       []
-                       ["all" (fn [] (reset! *filter :all))][]]
-
-                       (map #(do [(pr-str %) (fn [] (reset! *filter %)) ]) filter-ids)
-                      )
-                    )
-
-     (into [:.items]
-           (comp
-             filter-rule
-             (map (fn [item]
-                    (if-let [c (&markers item)]
-                      [:.item {:class (str/join " " (reduce set/union #{} (map :class c)))} (<item> item)]
-                      (<item> item)))))
-           sorted-items)
-     ]
-    )
-  )
-
 
 ;; unique street id - comination of post index + canonical street name
 (defn gen-street-id [street]
@@ -1216,7 +1143,7 @@
 
       ;[:.html (pr-str @*all-renamings)]
 
-      (<transform-list> <street> transduced-streets
+      (pg-ui/<transform-list> <street> transduced-streets
                         #_(concat dup-markers
                                   multi-idx-markers
                                   @*asserts)
@@ -1225,7 +1152,7 @@
                         ;:sort-fn (data/locale-comparator :ID)
                         :copy-fn #(street2export (dissoc % :ID :_rename :i))
                         :sort-fn (data/locale-comparator :district :ua)
-                        :filter-map {"to-be-deleted" (partial _filter-by-class "to-be-deleted")
+                        :filter-map {"to-be-deleted" (partial pg-ui/_marker-class-filter "to-be-deleted")
                                      "all-except-deleted" (fn [item st]
                                                             (if st
                                                               (let [classes (reduce set/union #{} (map :class st))]
@@ -1559,7 +1486,7 @@
 
         ;(map <street> (sort (data/locale-comparator :district :ua) upd-no-idx-streets))
         ;(pg-ui/<edn-list> (sort (data/locale-comparator :district :ua) upd-no-idx-streets) " copied prev idx")
-        (<transform-list> <street>
+        (pg-ui/<transform-list> <street>
                           upd-no-idx-streets
                           {}
                           :id-fn :ID
@@ -1619,7 +1546,7 @@
       [:.html
        [:header "MAIN DATA SOURCE (all streets)"]
        ;; show lit of streets linked with renamed
-       (<transform-list> <street>
+       (pg-ui/<transform-list> <street>
                          (reduce (fn [all x]
                                    (assoc all (:i x) x))
                                  enriched-streets upd-no-idx-streets)
@@ -1634,7 +1561,7 @@
                          ;; ugly, but works
                          :copy-fn #(street2export (dissoc % :ID :_rename :i))
                          :sort-fn (data/locale-comparator :district :ua)
-                         :filter-map {"no-idx" (partial _filter-by-class "no-idx")}
+                         :filter-map {"no-idx" (partial pg-ui/_marker-class-filter "no-idx")}
                          )
        ]
 

@@ -4,7 +4,8 @@
 
     [woof.playground.v1.utils :refer [dstr kstr vstr]]
     [clojure.string :as str]
-    [woof.client.dom :as woof-dom])
+    [woof.client.dom :as woof-dom]
+    [clojure.set :as set])
   )
 
 
@@ -196,6 +197,8 @@
           })
 
 
+
+;; todo: make h first
 (rum/defc <edn-list> < rum/static
   [edn h]
 
@@ -216,6 +219,80 @@
      (menu-item "copy" (partial woof-dom/copy-to-clipboard EDN-STR))
      (if h (str " ;; " h "\n") "\n")
      EDN-STR
+     ]
+    )
+  )
+
+
+(defn _marker-class-filter [class item st]
+  (if st
+    (let [classes (reduce set/union #{} (map :class st))]
+      (get classes class))
+    false
+    )
+  )
+
+
+(rum/defcs <transform-list> < rum/static
+                              (rum/local nil ::filter)
+  [st <item> items markers-map & {:keys [id-fn sort-fn copy-fn filter-map]
+                                  :or  {id-fn identity
+                                        copy-fn identity
+                                        filter-map {}}}]
+
+  (let [&markers    (fn [item] (get markers-map (id-fn item)))
+
+        filter-ids (keys filter-map)
+
+        *filter (::filter st)
+
+        ;; select first available filter instead of displaying all
+        _ (if (nil? @*filter) (reset! *filter
+                                      (if filter-ids (first filter-ids)
+                                                     :all)))
+        filter-id @*filter
+
+        show-all? (= :all filter-id)
+
+        filter-rule (filter (fn [item]
+                              (let [st (&markers item)
+                                    xf (get filter-map filter-id (fn [_ _] show-all?))]
+                                (xf item st))))
+
+        sorted-items (if sort-fn
+                       (sort sort-fn items)
+                       items)
+        ]
+
+    [:div.list
+     (menubar "filters: "
+              (into
+                [
+                 ["copy" (fn []
+                           (woof-dom/copy-to-clipboard
+                             (str "[\n" (str/join "\n"
+                                                  (into []
+                                                        (comp filter-rule
+                                                              (map copy-fn)
+                                                              (map pr-str))
+                                                        sorted-items)) "\n]")
+                             )
+                           )]
+                 []
+                 ["all" (fn [] (reset! *filter :all))] []]
+
+                (map #(do [(pr-str %) (fn [] (reset! *filter %))]) filter-ids)
+                )
+              )
+
+     (into [:.items]
+           (comp
+             filter-rule
+             (map (fn [item]
+                    (if-let [c (&markers item)]
+                      [:.item {:class (str/join " " (reduce set/union #{} (map :class c)))} (<item> item)]
+                      (<item> item)))))
+           sorted-items)
      ]
     )
   )
