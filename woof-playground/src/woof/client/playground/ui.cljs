@@ -270,10 +270,13 @@
         sorted-items (if sort-fn
                        (sort sort-fn items)
                        items)
+
+
+        display-items (into [] filter-rule sorted-items)
         ]
 
     [:div.list
-     (menubar "filters: "
+     (menubar (str (count display-items)  " ___ filters: ")
               (into
                 [
                  ["copy" (fn []
@@ -294,13 +297,11 @@
               )
 
      (into [:.items]
-           (comp
-             filter-rule
-             (map (fn [item]
-                    (if-let [c (&markers item)]
-                      [:.item {:class (str/join " " (reduce set/union #{} (map :class c)))} (<item> item)]
-                      (<item> item)))))
-           sorted-items)
+           (map (fn [item]
+                  (if-let [c (&markers item)]
+                    [:.item {:class (str/join " " (reduce set/union #{} (map :class c)))} (<item> item)]
+                    (<item> item))))
+           display-items)
      ]
     )
   )
