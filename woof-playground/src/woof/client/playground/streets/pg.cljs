@@ -1241,6 +1241,32 @@
 ;;
 ;; renamings
 
+(defn match-geonim [street-mapping ua]
+  (let [[t s] ua]
+
+    (let [words (str/split
+                  (->
+                    s
+                    (str/replace #"’" "'")
+                    )
+                  " ")
+
+          perms (reduce #(if-let [m (get street-mapping [t (str/join " " %2 )])]
+                     (conj %1 m)
+                     %1)
+                  [] (combo/permutations words))
+          ]
+
+      #_(if (> (count perms) 0)
+        (.log js/console ua))
+
+      (first perms)
+      )
+
+    )
+  )
+
+;;
 
 
 (rum/defc <DRV> < rum/static
@@ -1288,6 +1314,7 @@
                                             :i %1
                                             :drv %2
                                             :v (get drv-street-map %2)
+                                            :drv-idxs (reduce (fn [a b] (conj a (:idx b))) #{} (get drv-street-map %2))
                                             ))
                             ;;
                             (data/z-map-1
@@ -1295,31 +1322,31 @@
                                              ;(.log js/console item)
                                              (let [[t s] (:ua item)]
                                                (if (= "" t)
-                                                 {:drv (:drv item) :class #{"not-guessed"}})
+                                                 {:drv (:drv item) :class #{"not-guessed"}}
+                                                 #_(if-not (get (:drv-idxs item) (:idx item))
+                                                   {:drv (:drv item) :class #{"wrong-idx"}}
+                                                   )
+                                                 )
                                                )
-
-                                             ))
-                              #(vswap! *asserts into %)
-                              (fn [x]
-                                (let [ua (ds/ua-geonim (:drv x))]
-                                  (assoc x :ua ua)))
-                              )
-
-                            (data/z-map-1
-                              (juxt-mapper (fn [item]
+                                             )
+                                           (fn [item]
                                              ;(.log js/console item)
                                              (if-let [ua (:ua item)]
                                                (if-not (:x item)
-                                                 {:drv (:drv item) :class #{"cant-match"}})
-                                               )
-
-                                             ))
+                                                 {:drv (:drv item) :class #{"cant-match"}}
+                                                 (if (> (count (:x item)) 1)
+                                                   {:drv (:drv item) :class #{"multi-match"}}
+                                                   )
+                                                 )
+                                               ))
+                                           )
                               #(vswap! *asserts into %)
                               (fn [x]
-                                (if-let [ua (:ua x)]
-                                  (assoc x :x (get street-mapping ua))
-                                  x
-                                  ))
+
+                                (let [ua (ds/ua-geonim (:drv x))]
+                                  (assoc x :ua ua
+                                           :x (match-geonim street-mapping ua)
+                                           )))
                               )
 
                             )
@@ -1329,28 +1356,50 @@
       [:div
        [:h3 "DRV"]
 
-
        ;(pg-ui/<edn-list> street-mapping "index of all streets")
        ;[:hr]
        ;(pg-ui/<edn-list> [(first enriched-streets)] "enriched ex")
 
        (pg-ui/<transform-list> (fn [x]
-                                 [:.html
-                                  ;(d/pretty! x)
-                                  [:span.old (:drv x)] " → " [:span.nu (str/join " " (:ua x))] " → " [:span.nu (pr-str (:x x))]
-                                  ;(pr-str (select-keys x [:drv :ua]))
-                                  ]
+                                 (let [houses-list (:v x)]
+                                   [:.html
+
+                                    #_(if (seq houses-list)
+                                      (d/pretty!
+                                        (reduce (fn [a b] (conj a (:idx b))) #{} houses-list)
+                                        ;(reduce #(into %1 (:idx %2)) {} houses-list)
+                                        )
+                                      )
+
+                                    [:span.old (:drv x)] " → " [:span.nu (str/join " " (:ua x))] " → " [:span.nu (pr-str (:x x))]
+                                    (map
+                                      (fn [street]
+                                        [:div
+                                         (<street> street)
+                                         ]
+                                        )
+                                        (map all-streets (get x :x []))
+                                        )
+                                    ;(pr-str (select-keys x [:drv :ua]))
+                                    ]
+                                   )
+
                                  )
                                drv-streets
                                (group-by :drv @*asserts)
                                :id-fn :drv
-                               :filter-map {
-                                            "cant-match" (partial pg-ui/_marker-class-filter "cant-match")
-                                            "good!" (partial pg-ui/_marker-except-class-filter "cant-match")
+                               :filter-map (array-map
+                                             ;"wrong idx" (partial pg-ui/_marker-class-filter "wrong-idx")
 
-                                            "not-guessed" (partial pg-ui/_marker-class-filter "not-guessed")
-                                            "guessed" (partial pg-ui/_marker-except-class-filter "not-guessed")
-                                            }
+                                             "geonim: not-guessed" (partial pg-ui/_marker-class-filter "not-guessed")
+                                             "geonim: guessed" (partial pg-ui/_marker-except-class-filter "not-guessed")
+
+                                             "streets: cant-match" (partial pg-ui/_marker-class-filter "cant-match")
+                                             "streets: matched" (partial pg-ui/_marker-except-class-filter "cant-match")
+
+                                             "streets: multi-match" (partial pg-ui/_marker-class-filter "multi-match")
+
+                                             )
                                )
        ;
        ;(pg-ui/<edn-list> (keys drv-street-map)  "___")
