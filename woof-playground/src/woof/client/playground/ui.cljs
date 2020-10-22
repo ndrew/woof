@@ -292,7 +292,11 @@
                  []
                  ["all" (fn [] (reset! *filter :all))] []]
 
-                (map #(do [(pr-str %) (fn [] (reset! *filter %))]) filter-ids)
+                (map #(do [(if (= filter-id %)
+                             (str "✅️" (pr-str %))
+                             (pr-str %)
+                             )
+                            (fn [] (reset! *filter %))]) filter-ids)
                 )
               )
 
