@@ -11,8 +11,11 @@
     [clojure.string :as str]
     [woof.data :as d]
     [woof.utils :as u]
+
+    [woof.client.dbg :as dbg :refer [__log]]
     [woof.client.dom :as woof-dom]
     [woof.client.ws :as ws]
+
     [woof.client.browser.scraper.session :as ss]
     [woof.client.browser.scraper.scraping-ui :as sui]
 
@@ -399,7 +402,9 @@
        :ui/mark-progress [:new-listing-ui* :ui/LISTINGS-MAP]
        }
       {
-       :ui/scraping-session [:scraping-ui nil]
+       ;; now it's added automatically
+
+       ;;:ui/scraping-session [:scraping-ui nil]
        }
       )
     ;; UI: OUT
@@ -424,6 +429,55 @@
     (ws+parse+ui-steps params)
     (parse+ui-steps params)
     )
+
+  )
+
+
+;; the example of workflow that scrapes data from web page and stores them in the scraping session
+(defn scrapping-test-wf! [*wf-state meta-info]
+
+  {
+   ;:init []
+   :ctx [scraper-ctx]
+   :steps [scraper-steps]
+
+   :api (array-map
+          "ping" (fn []
+                   (__log "API CALL FOR FREE"))
+
+          "request broad cast" (fn []
+                                 (let [params (get @*wf-state :WF/params {})
+                                       evt-loop (evt-loop/&evt-loop params)
+
+                                       MSG (base/rand-sid)
+                                       ]
+
+                                   (async/put! evt-loop {
+                                                         MSG [:v (ss/ask-for-update-msg)]
+                                                         (base/rand-sid) [:ws-send! [:ws/socket MSG]]
+
+                                                         })
+
+                                   ;; (.log js/console @*wf-state)
+
+                                   )
+                                 )
+
+          )
+
+   :on-stop (fn [state]
+
+              (__log "ON STOP")
+              (.log js/console state)
+
+              (when-let [socket (:ws-socket state)]
+                (__log "closing web-socket")
+                (.close socket)
+                )
+
+              ;; can return channel
+              )
+   }
 
   )
 
