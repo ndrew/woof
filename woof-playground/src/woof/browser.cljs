@@ -9,24 +9,18 @@
 
     [goog.dom :as dom]
 
-    ;; scraper example
-    [woof.client.browser.scraper.test-wf :as scraping-test-ws]
+    [woof.client.browser.impl :as impl]
+
+
     ;; auto.ria.com
     [woof.client.browser.autoria.scraper :as autoria-scraper]
     ;; domik
     [woof.client.browser.domik.scraper :as domik-scraper]
     ;; lun
     [woof.client.browser.lun.scraper :as lun-scraper]
-    ;; blagovist.ua
-    [woof.client.browser.blago.scraper :as blago-scraper]
-    ;; twitter/in-view test
-    [woof.client.browser.in-view :as in-view]
 
     [woof.client.browser.scraper.generic :as default-scraper]
 
-    ;; example workflows
-    [woof.client.browser.example.ui-wf :as ex-ui-wf]
-    [woof.client.browser.example.seq-wf :as ex-seq-wf]
 
 
     ;;
@@ -72,6 +66,7 @@
 (def META-INFO {
                 :ws? false
                 :evt-loop? true
+                :ui? true
                 })
 
 
@@ -153,7 +148,6 @@
               :collect? true
               }
 
-
    ;; kv zipping - joins keys with values
    :*kv-zip            {
                         :fn       (fn [[[k] vs]]
@@ -206,46 +200,11 @@
    }
   )
 
-;; browser
-(defn- copy-to-clipboard [v]
-  (when js/navigator.clipboard.writeText
-    (let [clipboard js/navigator.clipboard
-
-          copy-handler (fn []
-                         (-> (.writeText clipboard (d/pretty! v))
-                             (.then (fn [response] (.log js/console "Copied to clipboard - " response))
-                                    (fn [err]      (.warn js/console "Failed to copy to clipboard" err))))
-                         )
-          ]
-
-      (let [btn-el (dom/createDom "button" ""
-                                  "copy results to clipboard")]
-
-        (goog.events.listen btn-el goog.events.EventType.CLICK copy-handler)
-        (woof-dom/ui-add-el! btn-el)
-
-        (.focus btn-el)
-        )
-      )
-    )
-
-  )
 
 (defn browser-ctx [params]
   {
-   :copy-to-clipboard   {:fn copy-to-clipboard}
+   :copy-to-clipboard   {:fn woof-dom/copy-to-clipboard-handler}
 
-   :ui-progress {
-                 :fn (fn [v]
-                       ;; todo: use value
-                       (let [el (dom/createDom "div" ""
-                                               "READY!")]
-
-
-                            (woof-dom/ui-add-el! el)
-                            )
-                       )
-                 }
    }
   )
 
@@ -272,7 +231,12 @@
 ;; opts
 
 
-(defonce *running-wf (atom nil))
+;; todo: migrate to use *wf-instance
+(defonce *running-wf-xtor (atom nil))
+
+(defonce *wf-instance (atom nil))
+(defonce *initialized (volatile! false))
+
 
 (defn &display-results-fn [params] (get params :wf/display-results-fn identity))
 
@@ -280,7 +244,7 @@
   {
    :before-process  (fn [wf-chan xtor]   ;; swf-bp-store-xtor
                       ;; is this actually needed? as use state workflows?
-                      (reset! *running-wf xtor)
+                      (reset! *running-wf-xtor xtor)
                       ;; (swap! *state assoc-in [:runtime :xtor] xtor)
                       :ok)
 
@@ -314,10 +278,7 @@
    })
 
 
-(defonce *wf-instance (atom nil))
-
-
-;;
+;; fixme: deprecate this
 (defn run-wf! [wf-impl & {:keys [api on-stop meta-info] :or {
                                                              api     {}
                                                              on-stop (fn [state] (__log "default on-stop"))
@@ -384,16 +345,6 @@
 
     )
   )
-
-
-#_(base/auto-run-wf! state/*server-wf
-                   (fn [prev-state]
-                     ;; (info "[RELOAD] re-runing wf\n" prev-state)
-
-                     (scraper-wf! state/ws-cfg)
-                     )
-                   ;; TODO: provide :on-stop
-                   )
 
 
 ;;;;;;;;;;;;;;;;;;;
@@ -530,12 +481,14 @@
 
 
 
-;; generic implementation of the scraping workflow, so
 
-(defn scraper-wf! [*wf-state meta-info scraper-fn]
+(defn scraper-wf!
+  "boilerplate for defining scraping workflow"
+  [*wf-state meta-info scraper-fn]
   (let [meta-init-fn (fn [params]
-                       ;; use this as starting point
-                       (sui/indicate-wf-started)
+                       (if (:ui? meta-info)
+                         ;; use this as starting point
+                         (sui/indicate-wf-started))
 
                        meta-info)
 
@@ -621,116 +574,34 @@
 
 
 
-;; the example of workflow that scrapes data from web page and stores them in the scraping session
-(defn scrapping-test-wf! [*wf-state meta-info]
-
-  {
-   ;:init []
-   :ctx [scraping-test-ws/scraper-ctx]
-   :steps [scraping-test-ws/scraper-steps]
-
-   :api (array-map
-          "ping" (fn []
-                   (__log "API CALL FOR FREE"))
-
-          "request broad cast" (fn []
-                                 (let [params (get @*wf-state :WF/params {})
-                                       evt-loop (evt-loop/&evt-loop params)
-
-                                       MSG (base/rand-sid)
-                                       ]
-
-                                   (async/put! evt-loop {
-                                                         MSG [:v (ss/ask-for-update-msg)]
-                                                         (base/rand-sid) [:ws-send! [:ws/socket MSG]]
-
-                                                         })
-
-                                   ;; (.log js/console @*wf-state)
-
-                                   )
-                                 )
-
-          )
-
-   :on-stop (fn [state]
-
-              (__log "ON STOP")
-              (.log js/console state)
-
-
-              (when-let [socket (:ws-socket state)]
-                (__log "closing web-socket")
-                (.close socket)
-                )
-
-              ;; can return channel
-              )
-   }
-
-  )
-
 
 ;; export runner workflow to be accessible from console dev tools
-
-
-
 (defn ^:export run_workflow []
-
   (.warn js/console "RUNNING WORKFLOW" (u/now))
 
   (let [url (.. js/document -location -href)
         wf! (partial scraper-wf! *wf-instance META-INFO)
         ]
-    (woof-dom/<scraping-ui>)
 
-    ;; map localhost to a specific wf
-    (cond
-      (clojure.string/starts-with? url "http://localhost:9500/scraper")   (wf! scrapping-test-wf!)
+    (if (:ui? META-INFO)
+      (woof-dom/<scraping-ui>))
 
-      ;; sites
-      (clojure.string/starts-with? url "http://domik.ua/")        (domik-scraping! url)
-      (clojure.string/starts-with? url "https://auto.ria.com")    (autoria-sraping!)
+    ;; map localhost to a specific wf implementation
+    (if-let [w (impl/choose-workflow url)]
+      (wf! w)
+      (do
+        (.log js/console "trying generic scraper workflow" url)
+        (wf! default-scraper/wf!)
 
-      (clojure.string/starts-with? url "https://lun.ua/")         (lun-scraping!)
-
-      ;; internal workflows
-
-      ;; kyiv streets parsing
-      (clojure.string/starts-with? url "http://localhost:9500/s/streets.html")   (wf! streets/wf!)
-
-      (clojure.string/starts-with? url "http://localhost:9500/s/streets/streets-renamed.html")   (wf! street-rename/wf!)
-
-      (clojure.string/starts-with? url "http://localhost:9500/s/blagovist.ua")   (wf! blago-scraper/wf!)
-      (clojure.string/starts-with? url "https://blagovist.ua")    (wf! blago-scraper/wf!)
-
-      (clojure.string/starts-with? url "http://localhost:9500/domik")        (domik-scraping! url)
-
-      (= url "http://localhost:9500/example/ui.html")  (wf! ex-ui-wf/wf!)
-      (= url "http://localhost:9500/example/seq.html")  (wf! ex-seq-wf/wf!)
-
-      ;; prototype todo: convert this to example
-      (clojure.string/starts-with? url "http://localhost:9500/inview.html")   (wf! in-view/in-view-wf!)
-      ;; copied data
-      (clojure.string/starts-with? url "http://localhost:9500/twitter.html")   (wf! in-view/in-view-wf!)
-      ;; prod)
-      (clojure.string/starts-with? url "https://twitter.com/__ndrw/likes")   (wf! in-view/in-view-wf!)
-
-
-      ;; try the generic scraper
-      :else (do
-              (.log js/console "trying generic scraper workflow" url)
-
-              (wf! default-scraper/wf!)
-
-              #_(let [el (dom/createDom "h3" ""
-                                      (str "can't find scraping wf for URL: " url))]
-
-                (woof-dom/ui-add-el! el)
-                )
-
-              )
+        ;; or displaying an error text
+        #_(let [el (dom/createDom "h3" ""
+                                  (str "can't find scraping wf for URL: " url))]
+            (woof-dom/ui-add-el! el)
+            )
+        )
       )
+
+
 
     )
 
@@ -738,7 +609,7 @@
 
 ;; export the function to stop the workflow
 (defn ^:export stop_workflow []
-  (when-let [xtor @*running-wf]
+  (when-let [xtor @*running-wf-xtor]
 
     (let [end-chan (base/end! xtor)]
       (.log js/console "browser wf: Stopping WF" end-chan)))
@@ -754,28 +625,14 @@
 
 ;; CASE 1: auto-start of browser workflow in BROWSER_PLAYGROUND
 
-(defonce *initialized (volatile! false))
-
-
 ;; start wf automatically - if we are in browser playground
 (when (and (goog.object/get js/window "BROWSER_PLAYGROUND")
            AUTO-START-WF?
-           (not @*initialized)
-           )
+           (not @*initialized))
   (vswap! *initialized not)
   (dbg/__log-start)
   ;(dbg/__log-once "auto-starting browser workflow")
   (run_workflow))
-
-
-(defn ^:after-load on-js-reload []
-  (dbg/__log "browser wf: JS RELOAD")
-
-  ;; handle re-load from other ns
-  (if AUTO-START-WF?
-    (run_workflow)
-    )
-  )
 
 
 ;; CASE 2: auto-start from extension or after manual script load
@@ -790,10 +647,33 @@
                                     ;(dbg/__log-once "auto-starting browser workflow")
                                     (vswap! *initialized not)
                                     (run_workflow)
-                                    )
-
-                          )
+                                    ))
                         )
   )
 
 
+;; CASE 3: figwheel reload
+(defn ^:after-load on-js-reload []
+
+  ;; handle re-load from other ns
+  (when AUTO-START-WF?
+    (dbg/__log "browser wf: JS RELOAD")
+    (run_workflow)
+    )
+  )
+
+
+
+;;;
+
+(defonce *styles-added-map (atom {}))
+
+
+;; "http://localhost:9500/css/apt.css"
+
+(defn _add-style-once-steps-fn [css-url params]   ;; add css styles only once
+  (if-not (get @*styles-added-map css-url)
+    (do
+      (swap! *styles-added-map assoc css-url true)
+      { (base/rand-sid "CSS-") [:css-file css-url]})
+    {}))

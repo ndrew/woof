@@ -7,16 +7,34 @@
 
     [goog.log :as glog]
 
+    [woof.base :as base]
+    [woof.utils :as u]
+
     ;; common workflow stuff and ui
-    [woof.playground.common :as cmn]
+    [woof.client.stateful :as state]
     [woof.client.playground.ui :as ui]
+    [woof.client.ws :as ws]
+
+    [woof.playground.common :as cmn]
 
 
-    ;; alpha workflow
-    [woof.client.stateful :as st-wf]
+    ;; streets processing
+    [woof.client.playground.streets.pg :as streets-wf]
+    [woof.client.playground.streets.kga :as kga-wf]
+
+    ;; apt playground
+    [woof.client.playground.apt.wf :as apt-wf]
+
+    ;;
+    [woof.client.playground.scraper.cc :as scraper-wf]
+    [woof.client.playground.scraper.tw :as tw-wf]
+
+    ;; examples
+    ;;
     ;; example of frontend ui
     [woof.client.playground.ui.internal :as internal]
     [woof.client.playground.ui.wf :as wf-ui]
+
 
     [woof.client.playground.wf.simple :as simple-wf]
     [woof.client.playground.wf.simple-custom-ui :as simple-w-ui]
@@ -24,22 +42,17 @@
     [woof.client.playground.wf.sandbox :as sandbox-wf]
     [woof.client.playground.wf.expand :as expand-wf]
 
+    [woof.client.playground.wf.listing :as listing-wf]
 
     [woof.client.playground.wf.page :as page-wf]
-    [woof.client.playground.wf.listing :as listing-wf]
     [woof.client.playground.wf.post :as post-wf]
     [woof.client.playground.wf.preview :as preview-wf]
     [woof.client.playground.wf.in-out :as in-out-wf]
 
     [woof.client.playground.wf.multi.wf :as multi-wf]
     [woof.client.playground.wf.multi.templating-wf :as templating-wf]
-
-    [woof.client.stateful :as state]
-
-    [woof.client.ws :as ws]
-
-    [woof.utils :as u]
-    [woof.base :as base])
+    [woof.client.playground.wf.multi.meta-wf :as meta-wf]
+    )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -58,7 +71,7 @@
 
         run-wf-fn! (partial state/swf-run! *SWF)
         stop-wf-fn! (partial state/swf-stop! *SWF)
-        reset-wf-fn! (partial st-wf/wf-init! *SWF)
+        reset-wf-fn! (partial state/wf-init! *SWF)
         wf-state (if update? nu-wf-state
                              (merge
                                initial-state
@@ -70,7 +83,7 @@
                                 :stop!   stop-wf-fn!
                                 :reset!  reset-wf-fn!
 
-                                :actions (st-wf/default-actions-map
+                                :actions (state/default-actions-map
                                            reset-wf-fn!
                                            run-wf-fn!
                                            stop-wf-fn!
@@ -93,9 +106,10 @@
 
 (defn playground-wf!
   [wf-cfg]
+
   (let [wf-id (::wf-id wf-cfg)
         initial-state (state/empty-swf wf-id)]
-    (st-wf/wf wf-id (partial playground-wf-handler
+    (state/wf wf-id (partial playground-wf-handler
                              (merge
                                {::initial-state initial-state}
                                wf-cfg)))))
@@ -107,47 +121,115 @@
 ;; * each node starting with wf- is a separate workflow
 ;; * internal - internal woof stuff
 
-(defn init-test-wfs [update?] {
+(defn init-test-wfs [update?]
+  (merge
+    (array-map)
+    {
+     :wf-tw-wf (playground-wf! {::wf-id    :scraper-wf
+                                ::init-fn  (fn [*swf] (tw-wf/wf! *swf))
+                                ::update?  update?
+                                ::auto-run true})
+     }
 
-                               :wf-sandbox    (playground-wf! {::wf-id   :wf-sandbox
-                                                               ::init-fn sandbox-wf/sandbox-wf-init!
-                                                               ::update? update?})
+    {
+     ; scraper-wf
+     :wf-scraper-wf (playground-wf! {::wf-id    :scraper-wf
+                                     ::init-fn  (fn [*swf] (scraper-wf/wf! *swf))
+                                     ::update?  update?
+                                     ::auto-run true
+                                     })
 
-                               :wf-basic-wf   (playground-wf! {::wf-id   :wf-basic-wf
-                                                               ::init-fn simple-wf/basic-wf-initializer
-                                                               ::update? update?})
+     }
 
-                               :wf-with-ui    (playground-wf! {::wf-id   :wf-with-ui
-                                                               ::init-fn simple-w-ui/wf-with-ui-initializer
-                                                               ::update? update?}
-                                                              )
+    ;; apt workflows
+    {
+     :wf-streets-wf (playground-wf! {::wf-id    :streets-wf
+                                     ::init-fn  (fn [*swf] (streets-wf/wf! *swf))
+                                     ::update?  update?
+                                     ::auto-run true})
+     }
 
-                               :wf-expand     (playground-wf! {::wf-id   :wf-expand
-                                                               ::init-fn expand-wf/expand-wf-init!
-                                                               ::update? update?})
+    {
+     :wf-streets-kadastr (playground-wf! {::wf-id    :kadastr-wf
+                                          ::init-fn  (fn [*swf] (kga-wf/wf! *swf))
+                                          ::update?  update?
+                                          ::auto-run true})
+     }
 
-                               :wf-multi      (playground-wf! {::wf-id    :wf-multi
-                                                               ::init-fn  multi-wf/wf-as-process-initializer
-                                                               ::update?  update?
-                                                               ::auto-run true
-                                                               })
+    {
+     :wf-apt (playground-wf! {::wf-id    :atp-wf
+                              ::init-fn  (fn [*swf] (apt-wf/wf! *swf))
+                              ::update?  update?
+                              ::auto-run true})
+     }
 
-                               :wf-templating (playground-wf! {::wf-id    :wf-templating
-                                                               ::init-fn  templating-wf/hiccup-template-wf-initializer
-                                                               ::update?  update?
-                                                               ::auto-run true
-                                                               })
+    ;; old workflows - todo: go through them
+    #_{
+
+     :wf-sandbox    (playground-wf! {::wf-id   :wf-sandbox
+                                     ::init-fn sandbox-wf/sandbox-wf-init!
+                                     ::update? update?
+                                     ::auto-run true
+                                     })
+
+     :wf-basic-wf   (playground-wf! {::wf-id   :wf-basic-wf
+                                     ::init-fn simple-wf/basic-wf-initializer
+                                     ::update? update?})
+
+     :wf-with-ui    (playground-wf! {::wf-id   :wf-with-ui
+                                     ::init-fn simple-w-ui/wf-with-ui-initializer
+                                     ::update? update?}
+                                    )
+
+     :wf-expand     (playground-wf! {::wf-id   :wf-expand
+                                     ::init-fn expand-wf/expand-wf-init!
+                                     ::update? update?})
+
+     :wf-multi      (playground-wf! {::wf-id   :wf-multi
+                                     ::init-fn multi-wf/wf-as-process-initializer
+                                     ::update? update?
+                                     ;;
+                                     ;;::auto-run true
+                                     })
+
+     :wf-templating (playground-wf! {::wf-id    :wf-templating
+                                     ::init-fn  templating-wf/hiccup-template-wf-initializer
+                                     ::update?  update?
+                                     ::auto-run true
+                                     })
+
+     :wf-meta       (playground-wf! {::wf-id    :wf-meta
+                                     ::init-fn  (fn [*swf] (meta-wf/meta-wf-initializer *swf))
+                                     ::update?  update?
+                                     ::auto-run true
+                                     })
 
 
-                               ;:wf-page                  (init-alpha-wf! update? :wf-page page-wf/initialize!)
-                               ;:wf-listings              (init-alpha-wf! update? :wf-listings listing-wf/initialize!)
+     ;:wf-page (playground-wf! {::wf-id    :wf-page
+     ;                 ::init-fn  (fn [*swf] (page-wf/initialize! *swf))
+     ;                 ::update?  update?
+     ;                 ::auto-run true
+     ;                 })
 
-                               ;:wf-local-storage-post    (init-alpha-wf! update? :wf-local-storage-post post-wf/init-post-wf!)
-                               ;:wf-local-storage-preview (init-alpha-wf! update? :wf-local-storage-preview preview-wf/init-preview-wf!)
 
-                               ;:wf-IN-OUT                (init-alpha-wf! update? :wf-IN-OUT in-out-wf/initialize-in-out-wf)
-                               }
+     ;; car grouping ui
+     :wf-listings              (playground-wf!
+                                 {::wf-id    :wf-meta
+                                  ::init-fn  (fn [*swf] (listing-wf/initialize! *swf))
+                                  ::update?  update?
+                                  ::auto-run true
+                                  })
+
+
+     ;:wf-local-storage-post    (init-alpha-wf! update? :wf-local-storage-post post-wf/init-post-wf!)
+     ;:wf-local-storage-preview (init-alpha-wf! update? :wf-local-storage-preview preview-wf/init-preview-wf!)
+
+     ;:wf-IN-OUT                (init-alpha-wf! update? :wf-IN-OUT in-out-wf/initialize-in-out-wf)
+     }
+    )
+
   )
+
 
 (defn global-action []
   ;(prn "I am a configurable global action")
@@ -178,6 +260,7 @@
     )
 
   )
+
 
 (defonce *TREE (atom (merge
                        (init-test-wfs false)
@@ -216,7 +299,7 @@
 (defn ==>workflow-selected [*wf-state]
   ;; inits workflow:
   ;; - each wf contains both state map + behaviour
-  (st-wf/wf-init! *wf-state)
+  (state/wf-init! *wf-state)
   )
 
 
@@ -287,8 +370,8 @@
       )
     ))
 
-(defn update-current-wf! [tree curr]
 
+(defn update-current-wf! [tree curr]
   (let [[wf-id] curr
         updated-wfs (init-test-wfs true)
         updated-wf (get-in updated-wfs curr)
@@ -304,7 +387,7 @@
 
       (let [nu-wf-map @*dummy-state
 
-            _upd-map (select-keys nu-wf-map [:ui-fn :actions :title :wf-actions :explanation
+            ;; maybe ask workflow which keys to update for running wf?
 
             keys-for-update (get nu-wf-map :playground/keys-to-update-on-reload [:ui-fn :actions :title :wf-actions :explanation
                                                                                  :init-fns :steps-fns :opt-fns])
@@ -427,7 +510,9 @@
   )
 
 
-(defn do-js-reload []
+(defn do-js-reload
+  "update the running workflow if needed"
+  []
   (let [tree @*TREE
         curr (::current tree)]
 
@@ -445,12 +530,9 @@
       )
     ))
 
+
 (defn ^:after-load on-js-reload [d]
-
   (when (goog.object/get js/window "PLAYGROUND")
-    (do-js-reload)
-    )
-
-  )
+    (do-js-reload)))
 
 

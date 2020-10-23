@@ -3,14 +3,13 @@
     [rum.core :as rum]
 
     [woof.base :as base]
-
     [woof.utils :as u]
-
     )
-
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
+
+;; <?> is this used for both scraping and playground workflows, or only for playground
 
 
 ;; just storage
@@ -18,6 +17,7 @@
                      {
                       ::chans {}
                       }))
+
 
 (defonce channel-factory (base/chan-factory (rum/cursor-in *INTERNAL [::chans])))
 
@@ -195,11 +195,7 @@
       )))
 
 
-
-
-
-
-
+;;
 
 (defn &wf-init-wf [wf]
   (get wf ::init-wf))

@@ -1,4 +1,4 @@
-(ns woof.client.playground.streets.pg
+(ns woof.client.playground.streets.kga
   (:require
     [cljs.core.async :as async]
     [clojure.string :as str]
@@ -83,7 +83,7 @@
        [:span.tag.small-tag.idx idx]
        [:span.tag.small-tag.district district]
        #_[:span.districts
-        (map (fn [d] [:span.small-tag.district {:key (pr-str d)} d]) districts)]
+          (map (fn [d] [:span.small-tag.district {:key (pr-str d)} d]) districts)]
        [:span.aliaes
         (map (fn [d] [:span.tag.small-tag.alias {:key (pr-str d)} d]) alias)]
 
@@ -422,10 +422,10 @@
         has-matches? (> (count matching-perms) 0)
         ]
     [:div.extract-street  {:style {} #_{:color (if has-matches?
-                                 "grey"
-                                 "red"
-                                 )}
-           }
+                                                 "grey"
+                                                 "red"
+                                                 )}
+                           }
 
      [:header [:span.tag gt] (:str street) " " (:street street)]
 
@@ -441,24 +441,24 @@
      ;; (pr-str street)
 
      #_(if-not has-matches?
-       [:.html {:style {:color "red"}}
-        (d/pretty!
-          (reduce (fn [a s]
-                    (let [canonical (str  (str/join " " s) " " gt)]
-                      (if-let [link (get cstreet-map canonical)]
-                        (assoc a (:str street) link)
-                        (assoc a canonical false)
-                        ))) {} (combo/permutations parts))
-          )
-        ])
+         [:.html {:style {:color "red"}}
+          (d/pretty!
+            (reduce (fn [a s]
+                      (let [canonical (str  (str/join " " s) " " gt)]
+                        (if-let [link (get cstreet-map canonical)]
+                          (assoc a (:str street) link)
+                          (assoc a canonical false)
+                          ))) {} (combo/permutations parts))
+            )
+          ])
 
 
 
      #_(map (fn [[k v]]
-            [:div (pr-str k) " -> " (pr-str v)]
+              [:div (pr-str k) " -> " (pr-str v)]
+              )
+            matching-perms
             )
-          matching-perms
-          )
      #_(if multi-word?
          )
      ; (pr-str street)
@@ -630,7 +630,7 @@
   )
 
 (rum/defcs <drv-street> < rum/static
-                         {:key-fn (fn [[str]] str)}
+                          {:key-fn (fn [[str]] str)}
                           (rum/local false ::show-buildings?)
 
   [st [street buildings-list]]
@@ -673,16 +673,16 @@
 
 
 (defonce OPENING-BRACKETS
-  {"cljs.core/PersistentTreeSet" "#{"
-   "cljs.core/PersistentHashSet" "#{"
-   "cljs.core/PersistentHashMap" "{"
-   "cljs.core/List"              "["
-   "cljs.core/EmptyList"         "["
-   "cljs.core/LazySeq"           "("
-   "cljs.core/KeySeq"            "("
-   "cljs.core/IndexedSeq"        "("
-   "cljs.core/PersistentVector"  "["
-   })
+         {"cljs.core/PersistentTreeSet" "#{"
+          "cljs.core/PersistentHashSet" "#{"
+          "cljs.core/PersistentHashMap" "{"
+          "cljs.core/List"              "["
+          "cljs.core/EmptyList"         "["
+          "cljs.core/LazySeq"           "("
+          "cljs.core/KeySeq"            "("
+          "cljs.core/IndexedSeq"        "("
+          "cljs.core/PersistentVector"  "["
+          })
 
 (defonce CLOSING-BRACKETS
          {"cljs.core/PersistentTreeSet" "}"
@@ -727,20 +727,20 @@
                    }
 
         items (reduce
-          (fn [a [old nu ds]]
-            (into a (map (fn [_d]
-                           {:district (get d-mapping (str/trim _d) "")
-                            :ru nu :alias [old]}
+                (fn [a [old nu ds]]
+                  (into a (map (fn [_d]
+                                 {:district (get d-mapping (str/trim _d) "")
+                                  :ru nu :alias [old]}
 
-                           )(str/split ds ",")))
-            )
-          []
-          (partition-all 3
-                         (interleave
-                           old
-                           nu
-                           ds
-                           )))
+                                 )(str/split ds ",")))
+                  )
+                []
+                (partition-all 3
+                               (interleave
+                                 old
+                                 nu
+                                 ds
+                                 )))
         ]
 
     (swap! *dict assoc :renamed-ru-1 items)
@@ -771,7 +771,7 @@
 
 
     #_(.log js/console  (apply assoc {} (interleave (map wdom/txt c1)
-                                                     (map wdom/txt c2))))
+                                                    (map wdom/txt c2))))
 
     )
   )
@@ -787,11 +787,11 @@
    (let [_meta-results (transient []) ;; always use vector for meta log
 
          add-meta! (fn [input]
-           (let [_metas (v-xf input)
-                 metas (if (or (seq? _metas) (vector? _metas)) _metas
-                                                               [_metas])]
-             (apply conj! _meta-results
-                    (filter some? metas))))
+                     (let [_metas (v-xf input)
+                           metas (if (or (seq? _metas) (vector? _metas)) _metas
+                                                                         [_metas])]
+                       (apply conj! _meta-results
+                              (filter some? metas))))
 
          ]
      (fn [rf]
@@ -886,11 +886,11 @@
    (let [grouppings (volatile! {})
 
          group! (fn [x]
-           (let [k (g-f x)
-                 v (g-rf (get @grouppings k) x)]
+                  (let [k (g-f x)
+                        v (g-rf (get @grouppings k) x)]
 
-             (vswap! grouppings assoc k v)
-             ))
+                    (vswap! grouppings assoc k v)
+                    ))
          ]
 
      (fn [rf]
@@ -1036,104 +1036,104 @@
                                                    __no-idx)
                                       #(vswap! *asserts into %)
                                       #(assoc % :ID (:i %)
-                                                   ;(gen-street-id %)
+                                                ;(gen-street-id %)
                                                 ))
 
 
 
                                     #_(data/z-map-1
-                                      (juxt-mapper
-                                        (fn [item]
-                                          ;(not (empty? (:alias item)))
-                                          true
-                                          )
-                                        (fn [x]
-
-                                          (let [add-assert! #(vswap! *asserts conj {:ID (:ID x) :class %})]
-                                            (if (not (empty? (:alias x)))
-                                              (do
-                                                ;(.log js/console (:ID x) (:alias x))
-                                                (vswap! *all-renamings into (:alias x))
-                                                )
-                                              )
-                                            x
+                                        (juxt-mapper
+                                          (fn [item]
+                                            ;(not (empty? (:alias item)))
+                                            true
                                             )
-                                          #_(let [add-assert! #(vswap! *asserts conj {:ID (:ID x) :class %})
-                                                [t s] (ds/ua-geonim (:ua x))
-                                                [rt rs] (ds/ru-geonim (:ru x))
-                                                [et es] (ds/en-geonim (:en x))
+                                          (fn [x]
 
-                                                district (:district x)
-
-                                                nu-aliases (map (fn [a]
-
-                                                                  (let [
-                                                                        [at uas] (ds/ua-geonim a)
-                                                                        [rt rus] (ds/ru-geonim a)
-                                                                        [et ens] (ds/en-geonim a)
-                                                                        ]
-
-                                                                    (cond
-                                                                      ;; should try the other langs
-                                                                      (not= "" at)  (do
-                                                                                      (if (not= at t)
-                                                                                        (add-assert! #{"alias-different-street-type"}))
-                                                                                      uas)
-                                                                      (not= "" rt) (do
-                                                                                     (if (not= rt t)
-                                                                                       (add-assert! #{"alias-different-street-type"}))
-                                                                                     rus)
-                                                                      (not= "" et) (do
-                                                                                     (if (not= et t)
-                                                                                       (add-assert! #{"alias-different-street-type"}))
-                                                                                     ens)
-                                                                      :else a
-                                                                      )
-                                                                    )
-                                                                  ) (get x :alias))
-                                                ]
-
-
-                                            (if (not (empty? (:alias x)))
-                                              ;
-                                              (do
-                                                ;(.log js/console (:ID x) (:alias x))
-                                                (vswap! *all-renamings into (:alias x))
+                                            (let [add-assert! #(vswap! *asserts conj {:ID (:ID x) :class %})]
+                                              (if (not (empty? (:alias x)))
+                                                (do
+                                                  ;(.log js/console (:ID x) (:alias x))
+                                                  (vswap! *all-renamings into (:alias x))
+                                                  )
                                                 )
-
-                                              ;(add-assert! #{"ru-empty-street-type"})
+                                              x
                                               )
+                                            #_(let [add-assert! #(vswap! *asserts conj {:ID (:ID x) :class %})
+                                                    [t s] (ds/ua-geonim (:ua x))
+                                                    [rt rs] (ds/ru-geonim (:ru x))
+                                                    [et es] (ds/en-geonim (:en x))
+
+                                                    district (:district x)
+
+                                                    nu-aliases (map (fn [a]
+
+                                                                      (let [
+                                                                            [at uas] (ds/ua-geonim a)
+                                                                            [rt rus] (ds/ru-geonim a)
+                                                                            [et ens] (ds/en-geonim a)
+                                                                            ]
+
+                                                                        (cond
+                                                                          ;; should try the other langs
+                                                                          (not= "" at)  (do
+                                                                                          (if (not= at t)
+                                                                                            (add-assert! #{"alias-different-street-type"}))
+                                                                                          uas)
+                                                                          (not= "" rt) (do
+                                                                                         (if (not= rt t)
+                                                                                           (add-assert! #{"alias-different-street-type"}))
+                                                                                         rus)
+                                                                          (not= "" et) (do
+                                                                                         (if (not= et t)
+                                                                                           (add-assert! #{"alias-different-street-type"}))
+                                                                                         ens)
+                                                                          :else a
+                                                                          )
+                                                                        )
+                                                                      ) (get x :alias))
+                                                    ]
 
 
-                                            ;; todo: clean-up
-                                            #_(cond
-                                                (= "" t) (add-assert! #{"empty-street-type"})
-                                                (and (= "" rt) (not= "" (:ru x))) (add-assert! #{"ru-empty-street-type"})
-                                                (and (= "" et) (not= "" (:en x))) (add-assert! #{"en-empty-street-type"})
+                                                (if (not (empty? (:alias x)))
+                                                  ;
+                                                  (do
+                                                    ;(.log js/console (:ID x) (:alias x))
+                                                    (vswap! *all-renamings into (:alias x))
+                                                    )
 
-                                                (and (not= t rt) (not= "" (:ru x))) (add-assert! #{"different-steet-types"} )
-                                                (and (not= t et) (not= "" (:en x))) (add-assert! #{"different-steet-types"} )
+                                                  ;(add-assert! #{"ru-empty-street-type"})
+                                                  )
+
+
+                                                ;; todo: clean-up
+                                                #_(cond
+                                                    (= "" t) (add-assert! #{"empty-street-type"})
+                                                    (and (= "" rt) (not= "" (:ru x))) (add-assert! #{"ru-empty-street-type"})
+                                                    (and (= "" et) (not= "" (:en x))) (add-assert! #{"en-empty-street-type"})
+
+                                                    (and (not= t rt) (not= "" (:ru x))) (add-assert! #{"different-steet-types"} )
+                                                    (and (not= t et) (not= "" (:en x))) (add-assert! #{"different-steet-types"} )
+                                                    )
+
+
+                                                (array-map
+                                                  :t t
+                                                  :ua s
+                                                  :ru rs
+                                                  :en es
+
+                                                  :alias (vec nu-aliases)
+                                                  :idx (:idx x)
+                                                  :district district
+                                                  :districts (vec (filter #(not= district %) (:districts x)))
+                                                  :other (:other x)
+                                                  )
+
                                                 )
-
-
-                                            (array-map
-                                              :t t
-                                              :ua s
-                                              :ru rs
-                                              :en es
-
-                                              :alias (vec nu-aliases)
-                                              :idx (:idx x)
-                                              :district district
-                                              :districts (vec (filter #(not= district %) (:districts x)))
-                                              :other (:other x)
-                                              )
-
                                             )
                                           )
-                                        )
-                                      #(vswap! *grannular-streets into %)
-                                      identity)
+                                        #(vswap! *grannular-streets into %)
+                                        identity)
 
                                     ;; map-group-dupes
                                     ;(z-map-group *dups :ID (fn [a x] (if (nil? a) 1 (+ a 1))) identity)
@@ -1141,7 +1141,7 @@
                                     (z-map-group-1 *dups
                                                    (fn [groups x]
                                                      (let [z (get groups (:ua x) {:i 0
-                                                                                :IDs #{}})]
+                                                                                  :IDs #{}})]
 
                                                        [(:ua x) (-> z
                                                                     (update :i inc)
@@ -1187,44 +1187,44 @@
       #_[:div
          (pg-ui/<edn-list>  ;map <street>
            (sort (data/locale-comparator :district :ua) @*grannular-streets) "")
-       ]
+         ]
       ;(<edn-list> @*grannular-streets "extracted grannular streets")
 
       #_[:.html (pr-str
-                dup-markers
-                @*dups
-                )]
+                  dup-markers
+                  @*dups
+                  )]
 
       (pg-ui/<transform-list> <street> transduced-streets
-                        (group-by :ID (concat
-                                        deletion-markers
-                                        dup-markers
-                                        ; multi-idx-markers
-                                        @*asserts))
-                        :id-fn :ID
-                        :copy-fn #(street2export (dissoc % :ID :_rename :i))
-                        :sort-fn (data/locale-comparator :ua)
-                        :filter-map {
-                                     "dup" (partial pg-ui/_marker-class-filter "dup")
-                                     "to-be-deleted" (partial pg-ui/_marker-class-filter "to-be-deleted")
-                                     "all-except-deleted" (partial pg-ui/_marker-except-class-filter "to-be-deleted")
+                              (group-by :ID (concat
+                                              deletion-markers
+                                              dup-markers
+                                              ; multi-idx-markers
+                                              @*asserts))
+                              :id-fn :ID
+                              :copy-fn #(street2export (dissoc % :ID :_rename :i))
+                              :sort-fn (data/locale-comparator :ua)
+                              :filter-map {
+                                           "dup" (partial pg-ui/_marker-class-filter "dup")
+                                           "to-be-deleted" (partial pg-ui/_marker-class-filter "to-be-deleted")
+                                           "all-except-deleted" (partial pg-ui/_marker-except-class-filter "to-be-deleted")
 
-                                     }
-                        )
+                                           }
+                              )
 
 
       ;; example of simplest reduce
       (let [
-              reduced-districts (reduce
-                                  (fn [a x]
-                                    (conj a (:district x)))
-                                  #{} raw-streets
-                                  )
+            reduced-districts (reduce
+                                (fn [a x]
+                                  (conj a (:district x)))
+                                #{} raw-streets
+                                )
 
-              ;; reduce street names but for certain district
-              ]
-          (pg-ui/<edn-list> reduced-districts "REDUCED DISTRICTS")
-          )
+            ;; reduce street names but for certain district
+            ]
+        (pg-ui/<edn-list> reduced-districts "REDUCED DISTRICTS")
+        )
 
       ;; other assertions
       ;; - streets in several districts - "find streets that occur more than once in parsed list: streets that span to multiple districts, etc"
@@ -1307,13 +1307,13 @@
                   " ")
 
           perms (reduce #(if-let [m (get street-mapping [t (str/join " " %2 )])]
-                     (conj %1 m)
-                     %1)
-                  [] (combo/permutations words))
+                           (conj %1 m)
+                           %1)
+                        [] (combo/permutations words))
           ]
 
       #_(if (> (count perms) 0)
-        (.log js/console ua))
+          (.log js/console ua))
 
       (first perms)
       )
@@ -1378,8 +1378,8 @@
                                                (if (= "" t)
                                                  {:drv (:drv item) :class #{"not-guessed"}}
                                                  #_(if-not (get (:drv-idxs item) (:idx item))
-                                                   {:drv (:drv item) :class #{"wrong-idx"}}
-                                                   )
+                                                     {:drv (:drv item) :class #{"wrong-idx"}}
+                                                     )
                                                  )
                                                )
                                              )
@@ -1407,69 +1407,69 @@
                           (keys drv-street-map))
         ]
 
-      [:div
-       [:h3 "DRV"]
+    [:div
+     [:h3 "DRV"]
 
-       ;(pg-ui/<edn-list> street-mapping "index of all streets")
-       ;[:hr]
-       ;(pg-ui/<edn-list> [(first enriched-streets)] "enriched ex")
+     ;(pg-ui/<edn-list> street-mapping "index of all streets")
+     ;[:hr]
+     ;(pg-ui/<edn-list> [(first enriched-streets)] "enriched ex")
 
-       (pg-ui/<transform-list> (fn [x]
-                                 (let [houses-list (:v x)]
-                                   [:.html
+     (pg-ui/<transform-list> (fn [x]
+                               (let [houses-list (:v x)]
+                                 [:.html
 
-                                    #_(if (seq houses-list)
+                                  #_(if (seq houses-list)
                                       (d/pretty!
                                         (reduce (fn [a b] (conj a (:idx b))) #{} houses-list)
                                         ;(reduce #(into %1 (:idx %2)) {} houses-list)
                                         )
                                       )
 
-                                    [:span.old (:drv x)] " → " [:span.nu (str/join " " (:ua x))] " → " [:span.nu (pr-str (:x x))]
-                                    (map
-                                      (fn [street]
-                                        [:div
-                                         (<street> street)
-                                         ]
-                                        )
-                                        (map all-streets (get x :x []))
-                                        )
-                                    ;(pr-str (select-keys x [:drv :ua]))
-                                    ]
-                                   )
-
+                                  [:span.old (:drv x)] " → " [:span.nu (str/join " " (:ua x))] " → " [:span.nu (pr-str (:x x))]
+                                  (map
+                                    (fn [street]
+                                      [:div
+                                       (<street> street)
+                                       ]
+                                      )
+                                    (map all-streets (get x :x []))
+                                    )
+                                  ;(pr-str (select-keys x [:drv :ua]))
+                                  ]
                                  )
-                               drv-streets
-                               (group-by :drv @*asserts)
-                               :id-fn :drv
-                               :filter-map (array-map
-                                             ;"wrong idx" (partial pg-ui/_marker-class-filter "wrong-idx")
 
-                                             "geonim: not-guessed" (partial pg-ui/_marker-class-filter "not-guessed")
-                                             "geonim: guessed" (partial pg-ui/_marker-except-class-filter "not-guessed")
-
-                                             "streets: cant-match" (partial pg-ui/_marker-class-filter "cant-match")
-                                             "streets: matched" (partial pg-ui/_marker-except-class-filter "cant-match")
-
-                                             "streets: multi-match" (partial pg-ui/_marker-class-filter "multi-match")
-
-                                             )
                                )
-       ;
-       ;(pg-ui/<edn-list> (keys drv-street-map)  "___")
-       ;[:hr]
-       ;(<edn-list> drv-renamed-streets "___")
+                             drv-streets
+                             (group-by :drv @*asserts)
+                             :id-fn :drv
+                             :filter-map (array-map
+                                           ;"wrong idx" (partial pg-ui/_marker-class-filter "wrong-idx")
 
-       ;[:header "Convert DRV-street to canonical one"]
-       ;(<drv-extract-streets> drv-street-map canonical-streets-map)
+                                           "geonim: not-guessed" (partial pg-ui/_marker-class-filter "not-guessed")
+                                           "geonim: guessed" (partial pg-ui/_marker-except-class-filter "not-guessed")
 
-       ;[:header "List of all buildings per street"]
-       #_(<drv-buildings-list> canonical-streets-map
+                                           "streets: cant-match" (partial pg-ui/_marker-class-filter "cant-match")
+                                           "streets: matched" (partial pg-ui/_marker-except-class-filter "cant-match")
+
+                                           "streets: multi-match" (partial pg-ui/_marker-class-filter "multi-match")
+
+                                           )
+                             )
+     ;
+     ;(pg-ui/<edn-list> (keys drv-street-map)  "___")
+     ;[:hr]
+     ;(<edn-list> drv-renamed-streets "___")
+
+     ;[:header "Convert DRV-street to canonical one"]
+     ;(<drv-extract-streets> drv-street-map canonical-streets-map)
+
+     ;[:header "List of all buildings per street"]
+     #_(<drv-buildings-list> canonical-streets-map
                              (take 100 drv-street-map)
                              )
 
-       ]
-      )
+     ]
+    )
   )
 
 (rum/defc <RENAMING-UI> < rum/static
@@ -1484,23 +1484,23 @@
          ;; renamed-streets-list (get dict :renamed-streets-delta []) ;; -- loaded from file
          renamed-streets-list (reduce
 
-                                 (fn [a [k vs]]
-                                   (into a (map (fn [[old nu]]
-                                                  (let [[nu-t nu-short] (ds/ua-geonim nu)
-                                                        [old-t old-short] (ds/ua-geonim old)]
-                                                    (street2export {:t nu-t
-                                                                    :ua nu-short
-                                                                    :ru ""
-                                                                    :en ""
-                                                                    :alias [old-short]
-                                                                    :idx ""
-                                                                    :district k
-                                                                    :other (str "renamed from '" old "' to '" nu "'")})
-                                                    )
-                                                  ) vs))
-                                   )
-                                 [] (get dict :renamed-streets [])
-                                 )
+                                (fn [a [k vs]]
+                                  (into a (map (fn [[old nu]]
+                                                 (let [[nu-t nu-short] (ds/ua-geonim nu)
+                                                       [old-t old-short] (ds/ua-geonim old)]
+                                                   (street2export {:t nu-t
+                                                                   :ua nu-short
+                                                                   :ru ""
+                                                                   :en ""
+                                                                   :alias [old-short]
+                                                                   :idx ""
+                                                                   :district k
+                                                                   :other (str "renamed from '" old "' to '" nu "'")})
+                                                   )
+                                                 ) vs))
+                                  )
+                                [] (get dict :renamed-streets [])
+                                )
 
          ; get renaming from alias
          map--add-old (map #(let [cid (:ua %)
@@ -1523,27 +1523,27 @@
          i-rf (fn [a x] (if (nil? a) #{(:i x)} (conj a (:i x))))
 
          renamings (into []
-                        (comp
-                          map--add-old
+                         (comp
+                           map--add-old
 
-                          (map-indexed #(assoc %2 :i %1
-                                                  :ID (rename-id-fn %2)))
+                           (map-indexed #(assoc %2 :i %1
+                                                   :ID (rename-id-fn %2)))
 
-                          ;; build current/old mappings
-                          (z-map-group *prev-map prev-k-fn i-rf identity)
-                          (z-map-group *old->nu curr-k-fn i-rf identity)
-                          )
-                        renamed-streets-list)
+                           ;; build current/old mappings
+                           (z-map-group *prev-map prev-k-fn i-rf identity)
+                           (z-map-group *old->nu curr-k-fn i-rf identity)
+                           )
+                         renamed-streets-list)
 
          ;; note that we don't filter out data, so the number of items should stay consnant
 
          group-by-i-xs (fn [f]
-                (comp
-                  (mapcat second)
-                  (map (fn [i]
-                         (let [street (get-in renamings [i])]
-                           (f street))))
-                  ))
+                         (comp
+                           (mapcat second)
+                           (map (fn [i]
+                                  (let [street (get-in renamings [i])]
+                                    (f street))))
+                           ))
 
          renamed-streets-map @*prev-map
 
@@ -1587,24 +1587,24 @@
 
 
                                   #_(data/z-map-1 (fn
-                                                  ([] #{})
-                                                  ([input] (:ID input))
-                                                  ([trans-col input]
-                                                   (conj trans-col input)))
-                                                #(vswap! )
-                                                #(assoc % )
-                                                )
+                                                    ([] #{})
+                                                    ([input] (:ID input))
+                                                    ([trans-col input]
+                                                     (conj trans-col input)))
+                                                  #(vswap! )
+                                                  #(assoc % )
+                                                  )
 
                                   ;; for now only new-old-mapping
                                   (data/z-map-1 (fn
-                                             ([] #{})
-                                             ([input] (:ID input))
-                                             ([tran-col input]
-                                              (conj! tran-col input)))
-                                           #(vswap! *all-street-ids into %)
-                                           #(assoc %
-                                              :_rename (select-keys renamings (get renamed-streets-map (:ID %))))
-                                           )
+                                                  ([] #{})
+                                                  ([input] (:ID input))
+                                                  ([tran-col input]
+                                                   (conj! tran-col input)))
+                                                #(vswap! *all-street-ids into %)
+                                                #(assoc %
+                                                   :_rename (select-keys renamings (get renamed-streets-map (:ID %))))
+                                                )
                                   )
                                 all-streets)
 
@@ -1616,20 +1616,20 @@
          streets2add-ids (set/difference new-street-ids ALL-IDS)
 
          renamings-2-add (data/map-1-1 renamed-streets-list (select-keys renamed-streets-map streets2add-ids)
-                                  #(assoc % :ID (ref-id-fn %)))
+                                       #(assoc % :ID (ref-id-fn %)))
 
          ;; markers for newly added streets
          newly-added__m (into []
-                            (map (fn [[[d t _nu] v]]
-                                   {:ID [d t _nu] ;[d (first (:alias v))]
-                                    :class #{"to-be-added"}} ))
-                      renamings-2-add)
+                              (map (fn [[[d t _nu] v]]
+                                     {:ID [d t _nu] ;[d (first (:alias v))]
+                                      :class #{"to-be-added"}} ))
+                              renamings-2-add)
 
          should-be-renamed__m (into []
-                              (map (fn [[[d t _nu] v]]
-                                     {:ID [d t (first (:alias v))]
-                                      :class #{"should-be-renamed"} }))
-                              renamings-2-add)
+                                    (map (fn [[[d t _nu] v]]
+                                           {:ID [d t (first (:alias v))]
+                                            :class #{"should-be-renamed"} }))
+                                    renamings-2-add)
 
          curr-markers (into []
                             (group-by-i-xs #(hash-map
@@ -1678,12 +1678,12 @@
         ;(map <street> (sort (data/locale-comparator :district :ua) upd-no-idx-streets))
         ;(pg-ui/<edn-list> (sort (data/locale-comparator :district :ua) upd-no-idx-streets) " copied prev idx")
         (pg-ui/<transform-list> <street>
-                          upd-no-idx-streets
-                          {}
-                          :id-fn :ID
-                          :copy-fn #(dissoc % :ID :_rename)
-                          :sort-fn (data/locale-comparator :district :ua)
-                          )
+                                upd-no-idx-streets
+                                {}
+                                :id-fn :ID
+                                :copy-fn #(dissoc % :ID :_rename)
+                                :sort-fn (data/locale-comparator :district :ua)
+                                )
         ]
 
        ;; shows old street names present in
@@ -1724,8 +1724,8 @@
       ;(pg-ui/<edn-list> renamed-streets-list "generated street deltas")
 
       #_(pg-ui/<edn-list>  (concat enriched-streets
-                                 (vals renamings-2-add)
-                                 ) "enriched street deltas")
+                                   (vals renamings-2-add)
+                                   ) "enriched street deltas")
       ;(pg-ui/<edn-list> renamings "enriched street deltas")
 
       ;[:.html (d/pretty! renamed-streets-map)]
@@ -1738,37 +1738,37 @@
        [:header "MAIN DATA SOURCE (all streets)"]
        ;; show lit of streets linked with renamed
        (pg-ui/<transform-list> <street>
-                         (reduce (fn [all x]
-                                   (assoc all (:i x) x))
-                                 enriched-streets upd-no-idx-streets)
+                               (reduce (fn [all x]
+                                         (assoc all (:i x) x))
+                                       enriched-streets upd-no-idx-streets)
 
-                         (group-by :ID (concat
-                                         newly-added__m
-                                         should-be-renamed__m
-                                         @*asserts
-                                         ;;curr-markers
-                                         ))
-                         :id-fn :ID
-                         ;; ugly, but works
-                         :copy-fn #(street2export (dissoc % :ID :_rename :i))
-                         :sort-fn (data/locale-comparator :district :ua)
-                         :filter-map {"no-idx" (partial pg-ui/_marker-class-filter "no-idx")}
-                         )
+                               (group-by :ID (concat
+                                               newly-added__m
+                                               should-be-renamed__m
+                                               @*asserts
+                                               ;;curr-markers
+                                               ))
+                               :id-fn :ID
+                               ;; ugly, but works
+                               :copy-fn #(street2export (dissoc % :ID :_rename :i))
+                               :sort-fn (data/locale-comparator :district :ua)
+                               :filter-map {"no-idx" (partial pg-ui/_marker-class-filter "no-idx")}
+                               )
        ]
 
 
 
       #_[:.html
-       [:header "MAIN DATA SOURCE:"]
+         [:header "MAIN DATA SOURCE:"]
 
-       (<transform-list> #(do [:p (pr-str %)])
-                         ALL-IDS
-                         []
-                         :id-fn identity
-                         :sort-fn compare
-                         )
-       ;(<edn-list> (sort ALL-IDS) "all available IDS")
-       ]
+         (<transform-list> #(do [:p (pr-str %)])
+                           ALL-IDS
+                           []
+                           :id-fn identity
+                           :sort-fn compare
+                           )
+         ;(<edn-list> (sort ALL-IDS) "all available IDS")
+         ]
       ]
      )
 
@@ -1904,18 +1904,20 @@
 
 
 
-;;
-;; command centre
 
 (rum/defcs <streets-cc> < rum/reactive
                           (rum/local
-                                ;:RENAME
-                                :MASTER-DATA__FULL
-                                ; :DRV
+                            ;:RENAME
+                            :MASTER-DATA__FULL
+                            ; :DRV
                             :UI)
   [st *dict]
 
-  (let [dict @*dict
+  [:div
+   (pr-str @*dict)
+   ]
+
+  #_(let [dict @*dict
         *ui (:UI st)
         ui @*ui
         ]
@@ -1982,25 +1984,25 @@
 
 
       #_(when-let [raw-geonims (:ua-geonims dict)]
-        (let [canonical-streets-map (group-by :id raw-geonims)
-              find-str "Василя Стуса вулиця"
-              dist-map (reduce (fn [a n]
-                        (let [d (metrics/levenshtein-distance find-str n)]
-                          (if (>= d 80)
-                            (assoc a n d)
-                            a
-                            )
-                          )
-                        ) {} (keys canonical-streets-map))
-              ]
-          [:.html
+          (let [canonical-streets-map (group-by :id raw-geonims)
+                find-str "Василя Стуса вулиця"
+                dist-map (reduce (fn [a n]
+                                   (let [d (metrics/levenshtein-distance find-str n)]
+                                     (if (>= d 80)
+                                       (assoc a n d)
+                                       a
+                                       )
+                                     )
+                                   ) {} (keys canonical-streets-map))
+                ]
+            [:.html
 
-           (<rename> dist-map)
-           ;(count canonical-streets-map)
-           ;(<rename> (take 100 canonical-streets-map))
-           ]
+             (<rename> dist-map)
+             ;(count canonical-streets-map)
+             ;(<rename> (take 100 canonical-streets-map))
+             ]
+            )
           )
-        )
       ]
      ]
     )
@@ -2009,48 +2011,46 @@
 
 
 
-(rum/defcs <cc-root> < rum/reactive
-                       (rum/local {} ::inline-results?)
+(rum/defcs <WF> < rum/reactive
   [local *wf]
 
-  (let [wf @*wf]
-    [:div
-     (if (= :not-started (:status wf))
-       [:div "wf is not running"]
-       (let [*dict (rum/cursor-in *wf [:state ::dict])]
+  (let [wf @*wf
+        not-started? (= :not-started (:status wf))]
+    [:div.wf-root
+     (if not-started?
+       [:div "WF is not running."]
+       (let [*data (rum/cursor-in *wf [:state ::data])]
          (try
-           (<streets-cc> *dict)
-           (catch js/Error e
-             [:pre (pr-str e)]))))
+           ;; your wf is here
+           (<streets-cc> *data)
+           (catch js/Error e [:pre (pr-str e)]))))
      ]))
 
 
 ;;;;;;;;;;;;;;;;;;;;
-
-(defonce *styles-added? (atom false))
 
 ;;
 ;; WF definition
 (defn wf! [*SWF]
 
   (let [CHAN-FACTORY (base/chan-factory (atom {}))
-        *dict (rum/cursor-in *SWF [:state ::dict])]
+        *dict (rum/cursor-in *SWF [:state ::data])]
     {
 
-     :title       "Apartment command center"
+     :title       "kadastr"
      :explanation [:div.explanation
-                   ;[:p "Analyze scraped data here"]
+                   [:p "process data scraped from " [:a {:href "https://mkk.kga.gov.ua/map/" :target "_blank"} "kadastr"]]
                    ]
 
      ;; this state will be added to a wf?
      :state {
-
-             ;; just data for the ui
-             ::dict {}
+             ::data {
+                     ;; just pile of data
+                     }
              }
 
      :init-fns    [
-                   { ::*dict *dict }
+                   { ::*data *dict }
 
                    (base/build-init-chan-factory-fn CHAN-FACTORY)
                    (evt-loop/build-evt-loop-init-fn (base/make-chan CHAN-FACTORY (base/rand-sid "evt-")))
@@ -2058,20 +2058,14 @@
      ;;
      :ctx-fns     [
                    evt-loop/evt-loop-ctx-fn
-
-                   woof-browser/common-ctx ;; re-use common browser step handlers
+                   ;; re-use common browser step handlers
+                   woof-browser/common-ctx
                    woof-dom/dom-ctx
                    ]
-
      ;;
      :steps-fns   [
                    (fn [params] { ::#EVT-LOOP# [:evt-loop (evt-loop/&evt-loop params)]})
-
-                   (fn [params]   ;; add css styles only once
-                     (if-not @*styles-added?
-                       (do (reset! *styles-added? true)
-                         { :CSS/custom-css-file [:css-file "http://localhost:9500/css/apt.css"]})
-                       {}))
+                   (partial woof-browser/_add-style-once-steps-fn "http://localhost:9500/css/apt.css")
                    ]
 
      :opt-fns     [
@@ -2081,16 +2075,15 @@
                                              (.warn js/console params result)))
                    ]
 
-     :ui-fn       (partial wf-ui/<wf-UI> (partial <cc-root>))
+     :ui-fn       (partial wf-ui/<wf-UI> (partial <WF>))
+
 
      ;; dev stuff
      :playground/keys-to-update-on-reload [
-
                                            :actions
                                            :title
                                            :explanation
                                            :wf-actions
-
                                            ;; overwrite ui
                                            :ui-fn
 
