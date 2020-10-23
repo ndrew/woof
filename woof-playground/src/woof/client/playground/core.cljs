@@ -51,7 +51,7 @@
 
     [woof.client.playground.wf.multi.wf :as multi-wf]
     [woof.client.playground.wf.multi.templating-wf :as templating-wf]
-    [woof.client.playground.wf.multi.meta-wf :as meta-wf]
+    ; [woof.client.playground.wf.multi.meta-wf :as meta-wf]
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
