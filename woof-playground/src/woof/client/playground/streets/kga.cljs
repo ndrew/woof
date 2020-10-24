@@ -49,7 +49,12 @@
   (ws/GET url
           (fn [response]
             (let [edn (js->clj (.parse js/JSON response) :keywordize-keys true)]
-              (swap! *dict assoc k edn)))))
+              (swap! *dict update k
+                     (fn [a b]
+                       (if (seq a)
+                         (concat a (:features b))
+                         (:features b)))
+                     edn)))))
 
 
 
@@ -57,11 +62,9 @@
 
 
 (rum/defc <kga-streets> < rum/static
-  [streets]
+  [kga-streets]
 
-  (let [features (:features streets)
-        ;features (take 10 _features)
-
+  (let [
         streets (into []
                       (comp
                         (map-indexed (fn [i a]
@@ -82,12 +85,14 @@
 
                                            :ID (:StrCodeObj attr)
 
-                                           :district (&v :Districts)
+                                           :t (&v :TypeNameF)
 
                                            :cua (&v :LblStreetName)
                                            :ua (&v :UkrNameF)
                                            :ru (&v :RusNameF)
                                            :en (&v :LatNameF)
+
+                                           :district (&v :Districts)
 
                                            :other (&v :OpysRozt)
                                            :alias (vec (filter #(not (or (nil? %) (= "" %)))
@@ -99,7 +104,7 @@
                                        ))
 
                         )
-                  features
+                      kga-streets
                   )
         ]
     [:kga-streets.html
@@ -115,6 +120,9 @@
        s-ui/<street> streets {}
        :id-fn :ID
        :copy-fn #(dissoc % :i :_orig)
+       :sort-fn (fn [a b]
+                  (compare (:code a) (:code b))
+                  )
        )
 
      ]
@@ -129,13 +137,27 @@
     [:div.streets-pg
 
      [:.panel
-      (pg-ui/menubar "Kadastr Data   "
-                     [
-                      ["load :darnytskyi"    (fn [] (load-json *dict "/s/kga/district/darn-vul-only.json" :d1))]
-                      ;["load :ua-geonims"     (fn [] (load-json *dict "/s/streets/ua_geonims.edn" :ua-geonims))]
-                      ])
-      ]
+      (let [districts ["darnytskyi"
+                       "desnianskyi"
+                       "dniprovskyi"
+                       "holosiivskyi"
+                       "obolonskyi"
+                       "pecherskyi"
+                       "podilskyi"
+                       "shevchenkivskyi"
+                       "solomianskyi"
+                       "sviatoshynskyi"]]
 
+        (pg-ui/menubar "Kadastr Data   "
+
+                       (into []
+                             (map (fn [d]
+                                    [(str "load :" d) (fn [] (load-json *dict (str "/s/kga/district/" d ".json") :d1))]
+                                    ) districts)
+                             )
+                       )
+        )
+      ]
      [:hr]
      ;(pr-str @*dict)
 
