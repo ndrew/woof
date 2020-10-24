@@ -999,6 +999,9 @@
                          )
          __no-idx      (fn [item] (if (= "" (:idx item)) {:ID (:ID item) :class #{"no-idx"}}))
 
+
+         __by-district    (fn [item] {:ID (:ID item) :class #{(:district item)}})
+
          ;;__dummy-assert (fn [item] (if (= "11823" (:idx item)) {:ID (:ID item) :class "dummy-assert"}))
 
          ;; map transducer that checks for assertions also. checks can be combined via juxtaposition (not comp)
@@ -1033,7 +1036,9 @@
 
                                     (data/z-map-1
                                       (juxt-mapper __no-ru-label
-                                                   __no-idx)
+                                                   __no-idx
+                                                   __by-district
+                                                   )
                                       #(vswap! *asserts into %)
                                       #(assoc % :ID (:i %)
                                                    ;(gen-street-id %)
@@ -1204,12 +1209,18 @@
                         :id-fn :ID
                         :copy-fn #(street2export (dissoc % :ID :_rename :i))
                         :sort-fn (data/locale-comparator :ua)
-                        :filter-map {
+                        :filter-map (merge
+                                      {
+                                       "Подільський р-н" (partial pg-ui/_marker-class-filter "Подільський р-н")
+                                       "Дарницький р-н" (partial pg-ui/_marker-class-filter "Дарницький р-н")
+                                       }
+                                      {
+
                                      "dup" (partial pg-ui/_marker-class-filter "dup")
                                      "to-be-deleted" (partial pg-ui/_marker-class-filter "to-be-deleted")
                                      "all-except-deleted" (partial pg-ui/_marker-except-class-filter "to-be-deleted")
 
-                                     }
+                                     })
                         )
 
 
