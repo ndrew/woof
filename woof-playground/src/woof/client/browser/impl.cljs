@@ -12,6 +12,7 @@
     [woof.client.browser.scraper.test-wf :as test-scraper-wf]
 
     [woof.client.browser.yt.wf :as yt]
+    [woof.client.browser.kga.scraper :as kga]
     ))
 
 
@@ -27,8 +28,12 @@
     (clojure.string/starts-with? url "http://localhost:9500/example/scroll-inview.html") ex-scroll-wf/in-view-wf!
     (clojure.string/starts-with? url "http://localhost:9500/example/scroll-brute.html") ex-scroll-wf/brute-wf!
 
+    ;; yt
     (clojure.string/starts-with? url "http://localhost:9500/s/yt/y.html") yt/wf!
     (clojure.string/starts-with? url "https://www.youtube.com/playlist?list=WL") yt/wf!
+
+    ;; kga
+    (clojure.string/starts-with? url "https://mkk.kga.gov.ua/map/") kga/wf!
 
 
     )
