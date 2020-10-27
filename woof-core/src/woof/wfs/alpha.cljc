@@ -49,8 +49,12 @@
 
 
 (defn _seq-worker-expander
-  ""
-  [worker-chan-id shandler-fn params els]
+"partial initialization fn for sequential expand handler:
+  worker-chan-id - worker id from params
+  shandler-fn    - step handler for processing single item
+  params         - params passed to ctx
+  coll           - collection to expand upon"
+  [worker-chan-id shandler-fn params coll]
   (let [make-chan (fn []
                     (base/make-chan (base/&chan-factory params) (base/rand-sid)))
         worker-chan (if-let [v (get params worker-chan-id)]
@@ -82,7 +86,7 @@
 
                 (assoc a (base/rand-sid) [:v outbound-chan])
                 ))
-            (array-map) els)
+            (array-map) coll)
     )
   )
 
@@ -100,6 +104,7 @@
                       (let [c (make-chan)]
                         (go
                           (if-let [r (shandler-fn v)]
+                            ;; todo: handle channel
                             (async/put! c r)
                             ))
                         c))
