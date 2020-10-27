@@ -1,3 +1,25 @@
+/* custom styles for woof scraper */
+
+/* wf-ui panel styles */
+
+
+
+.woof-scraper-ui {
+    min-height: 100px;
+}
+
+.panel .menubar .header {
+    white-space: pre-wrap;
+}
+
+.panel .menubar {
+    margin-bottom: .333rem;
+}
+
+
+
+/* scraper styles */
+
 .woof-el {
     outline: 1px solid blue;
 }

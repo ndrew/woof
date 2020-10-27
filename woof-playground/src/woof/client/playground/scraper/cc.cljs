@@ -1144,7 +1144,7 @@
                    ["blago->json" (fn []
 
                                     (wdom/save-json
-
+                                          "blago.json"
                                           (map
                                             (fn [i]
                                               (dissoc i :region :photos)
@@ -1373,7 +1373,7 @@
          ]
 
         (pg-ui/menubar "" [["save edn" (fn []
-                                 (wdom/save-edn sorted-m)
+                                 (wdom/save-edn "sorted.edn" sorted-m)
                                  )]
                            ["save to ui" (fn []
                                            (swap! *dict assoc :yt-sorted sorted-m))]

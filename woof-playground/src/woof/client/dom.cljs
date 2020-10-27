@@ -558,7 +558,7 @@
   )
 
 
-(defn save-blob [s]
+(defn save-blob [filename s]
 
   (let [a (.createElement js/document "a")]
     (.appendChild (.-body js/document) a)
@@ -570,7 +570,7 @@
           url (.createObjectURL (.-URL js/window) blob)]
 
       (set! (.-href a) url)
-      (set! (.-download a) (str (u/now) ".json"))
+      (set! (.-download a) filename)
 
       (.click a)
       (.revokeObjectURL (.-URL js/window) url)
@@ -581,13 +581,13 @@
   )
 
 
-(defn save-edn [edn]
-  (save-blob (d/pretty! edn))
+(defn save-edn [filename edn]
+  (save-blob filename (d/pretty! edn))
   )
 
 
 (defn save-json [edn]
-  (save-blob (.stringify js/JSON (clj->js edn)))
+  (save-blob filename (.stringify js/JSON (clj->js edn)))
   )
 
 
