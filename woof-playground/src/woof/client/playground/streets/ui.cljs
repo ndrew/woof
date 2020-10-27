@@ -83,6 +83,12 @@
         (:test street)
         ]
        )
+
+     (if-let [houses (:houses street)]
+       [:span.houses
+        (map (fn [d] [:span.tag.small-tag.house {:key (pr-str d)} d]) (sort houses))]
+       )
+
      ]
     #_[:pre.street-row
        (d/pretty! street)

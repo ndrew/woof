@@ -5,6 +5,10 @@
     color: #fff;
 }
 
+.tag.house {
+    background-color: #f0808044;
+    margin-right: .1rem;
+}
 
 
 .drv-street {
