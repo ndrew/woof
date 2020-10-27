@@ -344,6 +344,10 @@
                                                    (get h-mapping (first (str/split k "/")))
                                                    (assoc a k (first (str/split k "/")))
 
+                                                   (get h-mapping (str/replace (first (str/split k "/")) #"[А-Я]" ""))
+                                                   (assoc a k (str/replace (first (str/split k "/")) #"[А-Я]" ""))
+
+
                                                    :else a
                                                    )
                                                  )
@@ -360,10 +364,6 @@
                                                                 (dissoc (first (get drv-hs k)) :n)
                                                                 )
                                                        ) {} common)
-                                             ;; kga has less data than drv
-
-
-                                             ;; kga has more data that drv
                                              (reduce (fn [a k]
                                                        (if-let [nu-k (get h-mapping k)]
                                                          (do
@@ -386,6 +386,15 @@
                                                          )
                                                        )
                                                      {} drv-diff)
+                                             (reduce (fn [a k]
+                                                       (assoc a k (assoc
+                                                                    (dissoc (first (get drv-hs k)) :n)
+                                                                    :drv-only? true
+                                                                    )
+                                                                    )
+                                                       )
+                                               {}
+                                                     @*no-matches)
 
                                              )
 
@@ -400,21 +409,27 @@
                                      )
                                )
 
-                             (assoc item
-                               :drv k
-                               :drv-h drv-ks
-                               :h h-ks
-                               ;; first set without elements of the remaining sets
-                               :test (str
-                                       (pr-str @*used)
-                                       "\n\n"
-                                       (pr-str drv-mapping)
-                                       "\n\n"
-                                       (d/pretty! nu-houses)
-                                       "\n\n"
-                                       (pr-str @*no-matches)
-                                       )
+                             (let [ret-item (assoc item
+                                              :drv k
+                                              ;:drv-h drv-ks
+                                              ;:h h-ks
+                                              :houses nu-houses
+                                              )]
+
+                               (if (empty? @*no-matches)
+                                 ret-item
+                                 (assoc ret-item
+                                   :test
+                                   (str
+                                     "not matched: "
+                                     (pr-str @*no-matches)
+                                     "\n\n"
+                                     (d/pretty! (sort h-ks))
+                                     )
+                                   )
+                                 )
                                )
+
                              )
 
                            )
@@ -424,6 +439,11 @@
              __drv-street (fn [item]
                             (if (:drv item)
                               {:ID (:ID item) :class #{"drv-street"}}))
+
+             __test-street (fn [item]
+                            (if (:test item)
+                              {:ID (:ID item) :class #{"test-street"}}))
+
 
              add-houses (fn [street]
                           (if-let [h (get house-map (:ID street))]
@@ -442,7 +462,8 @@
                   (data/z-map-1
                     (data/juxt-mapper
                       __no-houses
-                      __drv-street)
+                      __drv-street
+                      __test-street)
                     #(vswap! *asserts into %)
                     (comp ;; note that order is reversed here
                       add-drv
@@ -459,13 +480,14 @@
 
           (pg-ui/<transform-list>
             s-ui/<street>
-            (take 10 podil)
+            podil
             ;; filters
             (group-by :ID @*asserts)
             :id-fn :ID
-            ;:copy-fn #(dissoc % :i :_orig)
+            :copy-fn #(dissoc % :test)
             ;:sort-fn (fn [a b] (compare (:code a) (:code b)))
             :filter-map {
+                         "test-street" (partial pg-ui/_marker-class-filter "test-street")
                          "drv-street" (partial pg-ui/_marker-class-filter "drv-street")
                          "non drv-street" (partial pg-ui/_marker-except-class-filter "drv-street")
                          "no-house" (partial pg-ui/_marker-class-filter "no-house")
