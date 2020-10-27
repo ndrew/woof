@@ -186,6 +186,7 @@
 
   )
 
+
 (rum/defcs <streets-cc> < rum/reactive
   [st *dict]
 
@@ -210,8 +211,11 @@
                                           (load-edn *dict (str "/s/kga/streets.edn") :kga-streets)
                                           )]
 
-                        ["load house addrs (podil)" (fn []
+                        ["load house addrs (SAMPLE: podil)" (fn []
                                                       (load-edn *dict (str "/s/kga/district/kga-houses-" "podilskyi" ".edn") :house-map))]
+
+                        ["load :drv-buildings-per-street" (fn []
+                                                            (load-edn *dict "/s/drv/_buildings.edn" :drv-buildings-per-street))]
                         ]
 
 
@@ -231,6 +235,7 @@
      ;; preparing initial version of main street data source
      #_(when-let [kga-streets (:d1 dict)]
          (<raw-kga-streets> kga-streets))
+
 
      #_(when-let [kga-streets (:kga-streets dict)]
        (let [district "Шевченківський"
@@ -274,17 +279,158 @@
          )
 
 
+     ;; join houses to a street
      (when-let [house-map (:house-map dict)]
        (let [
-             ;;
+             drv-buildings (get dict :drv-buildings-per-street {})
+
+
              *asserts (volatile! [])
 
              __no-houses (fn [item]
                              (if (empty? (:houses item))  {:ID (:ID item) :class #{"no-house"}}))
 
+             ;; generate drv names
+             _t-mapping {"вулиця" "вул."
+                         "провулок" "пров."
+                         "проспект" "просп."
+                         "площа" "пл."
+                         "узвіз" "узвіз "
+                         "проїзд" "проїзд "}
+
+             add-drv (fn [item]
+                       (let [_t (get _t-mapping (:t item) "")
+                             ua (:ua item)
+                             words (str/split ua " ")
+                             s (str _t (:ua item))
+
+                             combs (into #{} (map #(str _t
+                                                        (str/join " " %))) (combo/permutations words))
+                             matches (select-keys drv-buildings combs)
+                             ]
+
+                         (if (empty? matches)
+                           item
+                           (let [k (first (keys matches))
+                                 drv-hs (group-by :n (get matches k))
+                                 hs (get item :houses {})
+                                 drv-ks (into #{} (keys drv-hs))
+                                 h-ks (into #{} (keys hs))
+
+                                 drv-diff (set/difference drv-ks h-ks)
+
+                                 common (set/intersection drv-ks h-ks)
+
+                                 h-mapping (reduce
+                                             (fn [a k]
+                                               (assoc a
+                                                 (str/upper-case k) k
+                                                 (str/replace k "-" "/") k
+                                                 (str/replace k "-" "") k
+                                                 (str/replace k "/" "-") k
+                                                 (str/replace k "/" "") k
+                                                 (first (str/split k "/")) k
+                                                 (first (str/split k "-")) k
+                                                 )
+                                               )
+                                             {} h-ks)
+
+                                 drv-mapping (reduce
+                                               (fn [a k]
+                                                 (cond
+                                                   (get h-mapping (str/replace k #"[А-Я]" ""))
+                                                   (assoc a k (str/replace k #"[А-Я]" "") )
+
+                                                   (get h-mapping (first (str/split k "/")))
+                                                   (assoc a k (first (str/split k "/")))
+
+                                                   :else a
+                                                   )
+                                                 )
+                                               {} drv-diff)
+
+                                 *no-matches (volatile! #{})
+                                 *used (volatile! #{})
+
+                                 nu-houses (merge
+                                             hs
+                                             ;; copy drv data for intersection
+                                             (reduce (fn [a k]
+                                                       (assoc a k
+                                                                (dissoc (first (get drv-hs k)) :n)
+                                                                )
+                                                       ) {} common)
+                                             ;; kga has less data than drv
+
+
+                                             ;; kga has more data that drv
+                                             (reduce (fn [a k]
+                                                       (if-let [nu-k (get h-mapping k)]
+                                                         (do
+                                                           (vswap! *used conj k)
+                                                           (assoc a nu-k
+                                                                    (dissoc (first (get drv-hs k)) :n))
+                                                           )
+
+                                                         (if-let [nu-k (get drv-mapping k)]
+                                                           (do
+                                                             (vswap! *used conj k)
+                                                             (assoc a nu-k (dissoc (first (get drv-hs k)) :n))
+                                                             )
+                                                           (do
+                                                             (vswap! *no-matches conj k)
+                                                             (assoc a k
+                                                                      {:no-match true}))
+                                                           )
+
+                                                         )
+                                                       )
+                                                     {} drv-diff)
+
+                                             )
+
+                                 ]
+
+
+                             #_(if-not (empty? @*no-matches)
+                               (.log js/console
+                                     k @*no-matches
+                                     drv-diff
+                                     h-ks
+                                     )
+                               )
+
+                             (assoc item
+                               :drv k
+                               :drv-h drv-ks
+                               :h h-ks
+                               ;; first set without elements of the remaining sets
+                               :test (str
+                                       (pr-str @*used)
+                                       "\n\n"
+                                       (pr-str drv-mapping)
+                                       "\n\n"
+                                       (d/pretty! nu-houses)
+                                       "\n\n"
+                                       (pr-str @*no-matches)
+                                       )
+                               )
+                             )
+
+                           )
+                         )
+                       )
+
+             __drv-street (fn [item]
+                            (if (:drv item)
+                              {:ID (:ID item) :class #{"drv-street"}}))
+
              add-houses (fn [street]
                           (if-let [h (get house-map (:ID street))]
-                            (assoc street :houses h)))
+                            (assoc street :houses (reduce (fn [a h]
+                                                            (assoc a h {}))
+                                                    {} h))
+                            street))
 
              kga-streets (:kga-streets dict)
              district "Подільський"
@@ -294,32 +440,50 @@
 
                   ;; enrich with houses + gather meta
                   (data/z-map-1
-                    (data/juxt-mapper __no-houses)
+                    (data/juxt-mapper
+                      __no-houses
+                      __drv-street)
                     #(vswap! *asserts into %)
-                    add-houses)
+                    (comp ;; note that order is reversed here
+                      add-drv
+                      add-houses
+                      )
+                    )
 
                   ;; enrich with house addrs
                   ; (map add-houses)
-
-                  )
+               )
              podil (into [] xs kga-streets )
              ]
-         [:.html
-
+         [:.flex
 
           (pg-ui/<transform-list>
             s-ui/<street>
-            podil
+            (take 10 podil)
             ;; filters
             (group-by :ID @*asserts)
             :id-fn :ID
             ;:copy-fn #(dissoc % :i :_orig)
             ;:sort-fn (fn [a b] (compare (:code a) (:code b)))
             :filter-map {
+                         "drv-street" (partial pg-ui/_marker-class-filter "drv-street")
+                         "non drv-street" (partial pg-ui/_marker-except-class-filter "drv-street")
                          "no-house" (partial pg-ui/_marker-class-filter "no-house")
-                         }
 
+                         }
             )
+          [:div
+
+           [:.html (d/pretty (get drv-buildings "вул.Андріївська"))]
+
+           [:hr]
+
+           (pg-ui/<transform-list>
+             #(vector :div (pr-str %))
+             (keys (get dict :drv-buildings-per-street {}))
+             {}
+             )
+           ]
           ]
          )
 

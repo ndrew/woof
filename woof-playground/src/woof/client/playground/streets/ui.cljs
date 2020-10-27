@@ -79,14 +79,17 @@
      [:.other other]
 
      (if (:test street)
-       [:div {:style {:outline "1px solid red"}}
+       [:.html {:style {:outline "1px solid red"}}
         (:test street)
         ]
        )
 
      (if-let [houses (:houses street)]
-       [:span.houses
-        (map (fn [d] [:span.tag.small-tag.house {:key (pr-str d)} d]) (sort houses))]
+       (let [hs (keys houses)
+             hs (if hs hs [])]
+         [:span.houses
+          (map (fn [d] [:span.tag.small-tag.house {:key (pr-str d)} d]) hs)]
+         )
        )
 
      ]
