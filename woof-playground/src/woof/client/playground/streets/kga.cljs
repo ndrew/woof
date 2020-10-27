@@ -275,14 +275,32 @@
 
 
      (when-let [house-map (:house-map dict)]
-       (let [kga-streets (:kga-streets dict)
+       (let [
+             ;;
+             *asserts (volatile! [])
+
+             __no-houses (fn [item]
+                             (if (empty? (:houses item))  {:ID (:ID item) :class #{"no-house"}}))
+
+             add-houses (fn [street]
+                          (if-let [h (get house-map (:ID street))]
+                            (assoc street :houses h)))
+
+             kga-streets (:kga-streets dict)
              district "Подільський"
              xs (comp
+                  ;;
                   (filter #(= (:district %) district))
-                  (map (fn [street]
-                         (if-let [h (get house-map (:ID street))]
-                           (assoc street :houses h))
-                         ))
+
+                  ;; enrich with houses + gather meta
+                  (data/z-map-1
+                    (data/juxt-mapper __no-houses)
+                    #(vswap! *asserts into %)
+                    add-houses)
+
+                  ;; enrich with house addrs
+                  ; (map add-houses)
+
                   )
              podil (into [] xs kga-streets )
              ]
@@ -291,19 +309,17 @@
 
           (pg-ui/<transform-list>
             s-ui/<street>
-            (take 10 podil)
-            {}
+            podil
+            ;; filters
+            (group-by :ID @*asserts)
             :id-fn :ID
             ;:copy-fn #(dissoc % :i :_orig)
             ;:sort-fn (fn [a b] (compare (:code a) (:code b)))
+            :filter-map {
+                         "no-house" (partial pg-ui/_marker-class-filter "no-house")
+                         }
+
             )
-
-          ;(d/pretty! house-map)
-          ;[:hr]
-          ;(d/pretty! (count podil))
-
-
-
           ]
          )
 

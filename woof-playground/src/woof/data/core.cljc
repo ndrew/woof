@@ -84,3 +84,34 @@
           ))))
    )
   )
+
+
+(defn juxt-mapper [& fns]
+  (fn
+    ([] [])
+    ([item]
+     (let [xf (apply juxt fns)]
+       (xf item))
+     )
+    ([trans-col _metas]
+     (let [metas (if (or (seq? _metas) (vector? _metas)) _metas
+                                                         [_metas])]
+       (apply conj! trans-col (filter some? metas))
+       ))
+    )
+  )
+
+(defn cond-juxt-mapper [cond? & fns]
+  (fn
+    ([] [])
+    ([item]
+     (let [xf (apply juxt fns)]
+       (xf item))
+     )
+    ([trans-col _metas]
+     (let [metas (if (or (seq? _metas) (vector? _metas)) _metas
+                                                         [_metas])]
+       (apply conj! trans-col (filter #(and (some? %) (cond? %)) metas))   ;; (comp some? )
+       ))
+    )
+  )
