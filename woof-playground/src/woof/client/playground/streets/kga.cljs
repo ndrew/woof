@@ -75,6 +75,7 @@
                                                   ;(get attr k "")
                                                   )
                                              ]
+
                                          (array-map
                                            :_orig attr
 
@@ -184,6 +185,66 @@
        ]
     )
 
+  )
+
+
+(defn street2export [street]
+  (let [{t :t
+         code :code
+         ID :ID
+         ua :ua
+         cua :cua
+         ru :ru
+         en :en
+         alias :alias
+         idx :idx
+         district :district
+         ; districts :districts
+         other :other
+         houses :houses
+         drv :drv
+         } street
+
+
+
+        ]
+
+    (if houses
+      (array-map
+        ; :oid (:OBJECTID attr)
+        :code code
+        :ID ID
+        :t t
+        :cua cua
+        :ua ua
+        :ru ru
+        :en en
+
+        :district district
+
+        :other other
+        :alias alias
+        :houses houses
+        :drv drv
+        )
+      (array-map
+        ; :oid (:OBJECTID attr)
+        :code code
+        :ID ID
+        :t t
+        :cua cua
+        :ua ua
+        :ru ru
+        :en en
+
+        :district district
+
+        :other other
+        :alias alias
+        )
+      )
+
+    )
   )
 
 
@@ -312,98 +373,24 @@
                          (if (empty? matches)
                            item
                            (let [k (first (keys matches))
-                                 drv-hs (group-by :n (get matches k))
+
                                  hs (get item :houses {})
-                                 drv-ks (into #{} (keys drv-hs))
+                                 drv-hs (group-by :n (get matches k))
+
                                  h-ks (into #{} (keys hs))
 
-                                 drv-diff (set/difference drv-ks h-ks)
-
-                                 common (set/intersection drv-ks h-ks)
-
-                                 h-mapping (reduce
-                                             (fn [a k]
-                                               (assoc a
-                                                 (str/upper-case k) k
-                                                 (str/replace k "-" "/") k
-                                                 (str/replace k "-" "") k
-                                                 (str/replace k "/" "-") k
-                                                 (str/replace k "/" "") k
-                                                 (first (str/split k "/")) k
-                                                 (first (str/split k "-")) k
-                                                 )
-                                               )
-                                             {} h-ks)
-
-                                 drv-mapping (reduce
-                                               (fn [a k]
-                                                 (cond
-                                                   (get h-mapping (str/replace k #"[А-Я]" ""))
-                                                   (assoc a k (str/replace k #"[А-Я]" "") )
-
-                                                   (get h-mapping (first (str/split k "/")))
-                                                   (assoc a k (first (str/split k "/")))
-
-                                                   (get h-mapping (str/replace (first (str/split k "/")) #"[А-Я]" ""))
-                                                   (assoc a k (str/replace (first (str/split k "/")) #"[А-Я]" ""))
-
-
-                                                   :else a
-                                                   )
-                                                 )
-                                               {} drv-diff)
-
-                                 *no-matches (volatile! #{})
-                                 *used (volatile! #{})
-
-                                 nu-houses (merge
-                                             hs
-                                             ;; copy drv data for intersection
-                                             (reduce (fn [a k]
-                                                       (assoc a k
-                                                                (dissoc (first (get drv-hs k)) :n)
-                                                                )
-                                                       ) {} common)
-                                             (reduce (fn [a k]
-                                                       (if-let [nu-k (get h-mapping k)]
-                                                         (do
-                                                           (vswap! *used conj k)
-                                                           (assoc a nu-k
-                                                                    (dissoc (first (get drv-hs k)) :n))
-                                                           )
-
-                                                         (if-let [nu-k (get drv-mapping k)]
-                                                           (do
-                                                             (vswap! *used conj k)
-                                                             (assoc a nu-k (dissoc (first (get drv-hs k)) :n))
-                                                             )
-                                                           (do
-                                                             (vswap! *no-matches conj k)
-                                                             (assoc a k
-                                                                      {:no-match true}))
-                                                           )
-
-                                                         )
-                                                       )
-                                                     {} drv-diff)
-                                             (reduce (fn [a k]
-                                                       (assoc a k (assoc
-                                                                    (dissoc (first (get drv-hs k)) :n)
-                                                                    :drv-only? true
-                                                                    )
-                                                                    )
-                                                       )
-                                               {}
-                                                     @*no-matches)
-
-                                             )
+                                 {
+                                  nu-houses :kga-houses
+                                  used :used
+                                  no-matches :no-matches
+                                  } (ds/enrich-kga-houses hs drv-hs)
 
                                  ]
 
 
-                             #_(if-not (empty? @*no-matches)
+                             #_(if-not (empty? no-matches)
                                (.log js/console
-                                     k @*no-matches
+                                     k no-matches
                                      drv-diff
                                      h-ks
                                      )
@@ -416,13 +403,13 @@
                                               :houses nu-houses
                                               )]
 
-                               (if (empty? @*no-matches)
+                               (if (empty? no-matches)
                                  ret-item
                                  (assoc ret-item
                                    :test
                                    (str
                                      "not matched: "
-                                     (pr-str @*no-matches)
+                                     (pr-str no-matches)
                                      "\n\n"
                                      (d/pretty! (sort h-ks))
                                      )
@@ -475,10 +462,32 @@
                   ; (map add-houses)
                )
              podil (into [] xs kga-streets )
-             ]
-         [:.flex
 
-          (pg-ui/<transform-list>
+             ]
+
+
+         [:.flex
+          (let [podil-map (group-by :ID podil)]
+
+          [:div
+             [:header "All streets enriched with " district "district houses. "]
+
+             (pg-ui/<transform-list>
+               s-ui/<street>
+               (map (fn [a]
+                      (if-let [nu (get podil-map (:ID a))]
+                        (first nu)
+                        a
+                        )
+                      ) kga-streets)
+               {}
+               :copy-fn #(street2export (dissoc % :test :oid))
+               :sort-fn :code
+               )
+           ]
+          )
+
+          #_(pg-ui/<transform-list>
             s-ui/<street>
             podil
             ;; filters
@@ -496,9 +505,8 @@
             )
           [:div
 
-           [:.html (d/pretty (get drv-buildings "вул.Андріївська"))]
-
-           [:hr]
+           ;;[:.html (d/pretty (get drv-buildings "вул.Андріївська"))]
+           ;;[:hr]
 
            (pg-ui/<transform-list>
              #(vector :div (pr-str %))

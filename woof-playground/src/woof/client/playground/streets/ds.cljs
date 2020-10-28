@@ -32,8 +32,129 @@
     [cljs.core.async.macros :refer [go go-loop]]))
 
 
-;; street processing
 
+
+(defonce
+  DISTRICTS-DEFS
+  [
+   [:fs :kga :drv]
+   ["darnytskyi"]
+   ["desnianskyi"]
+   ["dniprovskyi"]
+   ["holosiivskyi"]
+   ["obolonskyi"]
+   ["pecherskyi"]
+   ["podilskyi"       "Подільський"]
+   ["shevchenkivskyi" "Шевченківський"]
+   ["solomianskyi"]
+   ["sviatoshynskyi"]
+   ])
+
+
+;; kga->drv
+
+
+(defn kga-house-n-alts [h-ks] ;; set of house number
+  (reduce (fn [a k]
+      (assoc a
+        (str/upper-case k) k
+        (str/replace k "-" "/") k
+        (str/replace k "-" "") k
+        (str/replace k "/" "-") k
+        (str/replace k "/" "") k
+        (first (str/split k "/")) k
+        (first (str/split k "-")) k
+        )
+      )
+    {} h-ks)
+  )
+
+
+(defn drv-house-n-alts [kga-mapping drv-diff]
+  (reduce
+    (fn [a k]
+      (cond
+        (get kga-mapping (str/replace k #"[А-Я]" ""))
+        (assoc a k (str/replace k #"[А-Я]" "") )
+
+        (get kga-mapping (first (str/split k "/")))
+        (assoc a k (first (str/split k "/")))
+
+        (get kga-mapping (str/replace (first (str/split k "/")) #"[А-Я]" ""))
+        (assoc a k (str/replace (first (str/split k "/")) #"[А-Я]" ""))
+
+        :else a
+        )
+      )
+    {} drv-diff)
+  )
+
+(defn enrich-kga-houses [kga-hs drv-hs]
+  (let [kga-ks (into #{} (keys kga-hs))
+        drv-ks (into #{} (keys drv-hs))
+
+        drv-diff (set/difference drv-ks kga-ks)
+
+        h-mapping (kga-house-n-alts kga-ks)
+        drv-mapping  (drv-house-n-alts h-mapping drv-diff)
+
+        common (set/intersection drv-ks kga-ks)
+
+        *no-matches (volatile! #{})
+        *used (volatile! #{})
+        ]
+
+    {
+     :kga-houses (merge
+                   kga-hs
+                   ;; copy drv data for intersection
+                   (reduce (fn [a k]
+                             (assoc a k
+                                      (dissoc (first (get drv-hs k)) :n)
+                                      )
+                             ) {} common)
+                   (reduce (fn [a k]
+                             (if-let [nu-k (get h-mapping k)]
+                               (do
+                                 (vswap! *used conj k)
+                                 (assoc a nu-k
+                                          (dissoc (first (get drv-hs k)) :n))
+                                 )
+
+                               (if-let [nu-k (get drv-mapping k)]
+                                 (do
+                                   (vswap! *used conj k)
+                                   (assoc a nu-k (dissoc (first (get drv-hs k)) :n))
+                                   )
+                                 (do
+                                   (vswap! *no-matches conj k)
+                                   (assoc a k
+                                            {:no-match true}))
+                                 )
+
+                               )
+                             )
+                           {} drv-diff)
+                   (reduce (fn [a k]
+                             (assoc a k (assoc
+                                          (dissoc (first (get drv-hs k)) :n)
+                                          :drv-only? true
+                                          )
+                                      )
+                             )
+                           {} @*no-matches)
+                   )
+     :used @*used
+     :no-matches @*no-matches
+     }
+    )
+
+  )
+
+;;
+
+
+;; street processing
 
 (def vul-regex #"вул\.\s" )
 (def vul-regex-1 #"вулиця\s" )
