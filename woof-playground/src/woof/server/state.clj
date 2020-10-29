@@ -5,7 +5,10 @@
     [clojure.core.async :as async :refer [go go-loop]]
 
     [woof.base :as base]
-    [woof.utils :as u])
+    [woof.utils :as u]
+
+    [taoensso.timbre :as timbre :refer [log trace debug info warn error fatal report logf tracef debugf infof warnf errorf fatalf reportf spy get-env]]
+    )
   )
 
 ;; backend state, for now in-memory
@@ -20,6 +23,12 @@
 (defonce ws-cfg { :port 8081 })
 
 (defonce *server-wf (atom nil)) ;; move this to separate ns
+
+(add-watch *server-wf :server
+           (fn [key atom old-state new-state]
+             (info "[SRV] update: \t" key)
+
+             ))
 
 ;; todo: routing of which backend wf to run
 
@@ -40,3 +49,10 @@
                                        })
     )
  )
+
+
+;; ------------ global kv storage atom -------
+
+(defonce *kv (atom {
+                    :dummy "dummy"
+                    }))

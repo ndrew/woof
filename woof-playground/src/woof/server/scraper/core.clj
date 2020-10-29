@@ -15,6 +15,8 @@
 
     [ring.util.response :as response]
     [ring.middleware.cors :refer [wrap-cors]]
+    [ring.middleware.multipart-params :refer [multipart-params-request]]
+    [ring.middleware.params :refer [params-request]]
 
     [woof.base :as base]
     [woof.data :as d]
@@ -213,7 +215,8 @@
     {
      ;; define routes for scraping workflow
      ::server {
-               :routes (wrap-cors
+               :routes
+                     (wrap-cors
                          (compojure/routes
                            ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
                            (route/resources "/" {:root "public"})
@@ -246,10 +249,52 @@
                                (pr-str msg)
                                ))
 
+
                            ;; ws handler
                            (compojure/GET "/scraper-ws" [:as request]
                              (info "[SRV] /scraper-ws" request "params" params)
                              (server-ws-fn params request)
+                             )
+
+                           ;;
+                           ;; kv handler
+                           ;;
+
+                           (compojure/GET "/kv/list" [:as request]
+                             (info "[KV] /kv/list")
+                             (pr-str (keys @state/*kv)))
+
+                           (compojure/GET "/kv/all" [:as request]
+                             (info "[KV] /kv/all")
+
+                             (d/pretty! @state/*kv)
+                             )
+
+                           (compojure/GET "/kv/get/:k" [k :as request]
+                             ;(info "[SRV] /scraper-ws" request "params" params)
+                             ;(server-ws-fn params request)
+                             (let [key (read-string k)]
+                               (info "[KV] " (pr-str key))
+
+                               (pr-str (get @state/*kv key))))
+
+
+                           (compojure/POST "/kv/put" [:as request]
+
+                             (let [edn (-> request :body slurp read-string)
+                                   {k :k v :v} edn
+                                   ]
+                               (info "[KV] /kv/put" k v )
+
+                               (swap! state/*kv assoc k v)
+                               {:status  200
+                                :headers {
+                                          "Content-Type" "application/edn; charset=utf-8"
+                                          "Access-Control-Allow-Headers" "Content-Type"
+                                          "Access-Control-Allow-Origin" "*"
+                                          }
+                                :body (pr-str :ok)}
+                               )
                              )
                            )
                          ;; todo: add other CORS domains
@@ -333,21 +378,49 @@
   )
 
 
+;; kv
+
+(defn kv-ctx-fn [params]
+  (let [chan-factory (base/&chan-factory params)
+        *state (base/&state params)]
+    {
+     :kv-get {
+              :fn (fn [k]
+                    (get @state/*kv k))
+              }
+
+     :kv-keys {
+               :fn (fn [_]
+                     (keys @state/*kv)
+                     )
+               }
+
+     :kv-put {
+              :fn (fn [[k v]]
+                    (swap! state/*kv assoc k v)
+                    v
+                    )
+              }
+
+     }
+    )
+  )
+
+
 ;;
 ;; wf implementation
 ;;
-(defn scraper-wf! [cfg & {:keys [on-stop] :or {on-stop (fn [stop-chan]
+(defn server-wf! [cfg & {:keys [on-stop] :or {on-stop (fn [stop-chan]
                                                          (info ::wf-stopped))}}]
 
   (info "[WF] initializing...\t" (System/currentTimeMillis))
   ;; build-... vs
   (let [
 
+        ;; internal state
         *CHAN-STORAGE (atom {})
         CHAN-FACTORY (base/chan-factory *CHAN-STORAGE)
-
         EVT-LOOP (base/make-chan CHAN-FACTORY (base/rand-sid "server-loop"))
-
         STOP-CHAN (async/chan) ;; do not use chan factory - as it will be closed
         ;; _ (info "[STOP-CHAN]\t" STOP-CHAN)
 
@@ -381,6 +454,8 @@
              evt-loop/evt-loop-ctx-fn
              server-ctx-fn
              ws-broadcast-ctx
+
+             kv-ctx-fn
              ]
 
         STEPS [
@@ -446,6 +521,7 @@
       ;; <?>: should workflow expose api?
       :api {
 
+            ;; todo: where will these be used?
             :send-msg!  (fn [msg]
                           (go
                             (async/put! EVT-LOOP {(base/rand-sid) [:test msg]})
@@ -462,25 +538,42 @@
 ;; ----------------- reloadable wf here --------------------
 
 
-
-
-;; try with simpler workflow
-
-
-
-(info "\n\n[RELOAD] \t" (System/currentTimeMillis) "\n") ;; why this happens after :start-server
-
 ;(reset! state/*server-wf nil)
+
+(defn reloadable-wf []
+
+  (info "\n[RELOAD] \t"
+        (System/currentTimeMillis) "\n"
+        ;(pr-str @state/*server-wf)
+        "\n\n"
+        )
+
+  (base/auto-run-wf! state/*server-wf
+                     (fn [prev-state]
+                       (info "CORE: [RELOAD]\tre-runing wf\n")
+                       (server-wf! state/ws-cfg))
+
+                     :on-stop (fn [state]
+                                ;; why this in not always called?
+                                ;; state/*server-wf
+                                (info "[STOP] wf\n")
+                                :ok
+                                )
+                     )
+
+  )
 
 
 (when state/AUTO-RUN-WF?
-  (base/auto-run-wf! state/*server-wf
-                (fn [prev-state]
-                  (info "[RELOAD] re-runing wf\n" prev-state)
-
-                  (scraper-wf! state/ws-cfg)
-                  )
-                    ;; TODO: provide :on-stop
-                     ))
-
+  (try
+    (reloadable-wf)
+    (catch Exception e
+      (do
+        (reset! state/*server-wf nil)
+        (reloadable-wf)
+        )
+      )
+    )
+  ;; (reloadable-wf)
+  )
 ;; ---------------------------------------------------------

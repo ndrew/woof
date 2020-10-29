@@ -18,7 +18,7 @@
     [woof.server.log :refer [init-logging!]]
     [woof.server.transport :as tr]
 
-    [woof.server.scraper.core :as scraper-wf]
+    [woof.server.scraper.core :as server-scraper]
     [woof.server.state :as state]
 
     [woof.base :as base])
@@ -47,9 +47,16 @@
 
 
 (defn run-server [port]
-  (base/auto-run-wf! state/*server-wf #(scraper-wf/scraper-wf! (merge state/ws-cfg
-                                                                      {:port port})))
+  (base/auto-run-wf! state/*server-wf #(server-scraper/server-wf! (merge state/ws-cfg
+                                                                         {:port port}))
+                     :on-stop (fn [state]
+                                (println "on reload")
+                                )
+                     )
   )
+
+
+
 
 
 ;; server entry point, for standalone running

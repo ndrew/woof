@@ -6,7 +6,9 @@
     [woof.data :as d]
     [woof.utils :as u]
     [woof.base :as base]
+
     [goog.net.XhrIo :as xhrio]
+    [cljs-http.client :as http]
     )
 
   (:import
@@ -111,6 +113,19 @@
                     (let [response (.-target event)]
                       (handler (.getResponseText response)))
                     ))
+  )
+
+(defn POST [url handler data]
+
+  (http/post url
+             {:edn-params data
+              ; :with-credentials? true
+              }
+             )
+  #_(xhrio/send url (fn [event]
+                    (.log js/console event)
+                    ;;
+                    ) "POST" (pr-str data))
   )
 
 
