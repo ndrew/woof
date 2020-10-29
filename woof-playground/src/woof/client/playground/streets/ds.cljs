@@ -50,6 +50,27 @@
    ["sviatoshynskyi"]
    ])
 
+(defn index-of [s v]
+  (loop [idx 0 items s]
+    (cond
+      (empty? items) nil
+      (= v (first items)) idx
+      :else (recur (inc idx) (rest items)))))
+
+(defn district-k [k-from k-to district]
+
+  (let [ks (first DISTRICTS-DEFS)
+        i-from (index-of ks k-from)
+        i-to (index-of ks k-to)]
+
+    (loop [items (rest DISTRICTS-DEFS)]
+      (cond
+        (empty? items) nil
+        (= district (get (first items) i-from)) (get (first items) i-to)
+        :else (recur (rest items)))
+    )
+  )
+  )
 
 ;; kga->drv
 
@@ -149,6 +170,64 @@
      }
     )
 
+  )
+
+
+(defn street2export [street]
+  (let [{t :t
+         code :code
+         ID :ID
+         ua :ua
+         cua :cua
+         ru :ru
+         en :en
+         alias :alias
+         ;; idx :idx
+         district :district
+         ; districts :districts
+         other :other
+         houses :houses
+         drv :drv
+         } street
+
+        ]
+
+    (if houses
+      (array-map
+        ; :oid (:OBJECTID attr)
+        :code code
+        :ID ID
+        :t t
+        :cua cua
+        :ua ua
+        :ru ru
+        :en en
+
+        :district district
+
+        :other other
+        :alias alias
+        :houses houses
+        :drv drv
+        )
+      (array-map
+        ; :oid (:OBJECTID attr)
+        :code code
+        :ID ID
+        :t t
+        :cua cua
+        :ua ua
+        :ru ru
+        :en en
+
+        :district district
+
+        :other other
+        :alias alias
+        )
+      )
+
+    )
   )
 
 ;;

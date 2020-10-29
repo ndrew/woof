@@ -188,106 +188,40 @@
   )
 
 
-(defn street2export [street]
-  (let [{t :t
-         code :code
-         ID :ID
-         ua :ua
-         cua :cua
-         ru :ru
-         en :en
-         alias :alias
-         idx :idx
-         district :district
-         ; districts :districts
-         other :other
-         houses :houses
-         drv :drv
-         } street
 
-
-
-        ]
-
-    (if houses
-      (array-map
-        ; :oid (:OBJECTID attr)
-        :code code
-        :ID ID
-        :t t
-        :cua cua
-        :ua ua
-        :ru ru
-        :en en
-
-        :district district
-
-        :other other
-        :alias alias
-        :houses houses
-        :drv drv
-        )
-      (array-map
-        ; :oid (:OBJECTID attr)
-        :code code
-        :ID ID
-        :t t
-        :cua cua
-        :ua ua
-        :ru ru
-        :en en
-
-        :district district
-
-        :other other
-        :alias alias
-        )
-      )
-
-    )
-  )
 
 
 (rum/defcs <streets-cc> < rum/reactive
   [st *dict]
 
-  (let [dict @*dict]
+  (let [dict @*dict
+        ;;
+        enrich-district "shevchenkivskyi"
+        ]
     [:div.streets-pg
 
      [:.panel
-      (let [districts ["darnytskyi"
-                       "desnianskyi"
-                       "dniprovskyi"
-                       "holosiivskyi"
-                       "obolonskyi"
-                       "pecherskyi"
-                       "podilskyi"
-                       "shevchenkivskyi"
-                       "solomianskyi"
-                       "sviatoshynskyi"]]
+      (pg-ui/menubar "Kadastr Data   "
 
-        (pg-ui/menubar "Kadastr Data   "
+                     [["load streets (MAIN DS)" (fn []
+                                                  (load-edn *dict (str "/s/kga/streets.edn") :kga-streets)
+                                                  )]
 
-                       [["load streets (MAIN DS)" (fn []
-                                          (load-edn *dict (str "/s/kga/streets.edn") :kga-streets)
-                                          )]
+                      [(str "load house addrs (" enrich-district ")") (fn []
+                                                                        (load-edn *dict (str "/s/kga/district/kga-houses-" enrich-district ".edn") :house-map))]
 
-                        ["load house addrs (SAMPLE: podil)" (fn []
-                                                      (load-edn *dict (str "/s/kga/district/kga-houses-" "podilskyi" ".edn") :house-map))]
-
-                        ["load :drv-buildings-per-street" (fn []
-                                                            (load-edn *dict "/s/drv/_buildings.edn" :drv-buildings-per-street))]
-                        ]
+                      ["load :drv-buildings-per-street" (fn []
+                                                          (load-edn *dict "/s/drv/_buildings.edn" :drv-buildings-per-street))]
+                      ]
 
 
-                       ;; uncomment to
-                       #_(into []
-                               (map (fn [d]
-                                      [(str "load :" d) (fn [] (load-json *dict (str "/s/kga/district/" d ".json") :d1))]
-                                      ) districts)
-                               )
-                       )
-        )
+                     ;; uncomment to
+                     #_(into []
+                             (map (fn [d]
+                                    [(str "load :" d) (fn [] (load-json *dict (str "/s/kga/district/" d ".json") :d1))]
+                                    ) districts)
+                             )
+                     )
       ]
 
 
@@ -298,17 +232,17 @@
          (<raw-kga-streets> kga-streets))
 
 
-     #_(when-let [kga-streets (:kga-streets dict)]
-       (let [district "Шевченківський"
+     (when-let [kga-streets (:kga-streets dict)]
+       (let [district (ds/district-k :fs :kga enrich-district)
              xs (comp
                   (filter #(= (:district %) district))
                   (map :ID)
                   )
-             podil (into [] xs kga-streets )]
+             district-ids (into [] xs kga-streets )]
          [:.html
           [:header "List all street ids for district=" district]
           "\n"
-          (pr-str podil)
+          (pr-str district-ids)
           ]
          )
        )
@@ -340,16 +274,15 @@
          )
 
 
+
      ;; join houses to a street
      (when-let [house-map (:house-map dict)]
        (let [
              drv-buildings (get dict :drv-buildings-per-street {})
 
-
              *asserts (volatile! [])
 
-             __no-houses (fn [item]
-                             (if (empty? (:houses item))  {:ID (:ID item) :class #{"no-house"}}))
+             __no-houses (fn [item] (if (empty? (:houses item))  {:ID (:ID item) :class #{"no-house"}}))
 
              ;; generate drv names
              _t-mapping {"вулиця" "вул."
@@ -370,6 +303,8 @@
                              matches (select-keys drv-buildings combs)
                              ]
 
+                         ;;(.log js/console (keys drv-buildings) combs matches)
+
                          (if (empty? matches)
                            item
                            (let [k (first (keys matches))
@@ -387,11 +322,10 @@
 
                                  ]
 
-
                              #_(if-not (empty? no-matches)
                                (.log js/console
                                      k no-matches
-                                     drv-diff
+                                     ;;drv-diff
                                      h-ks
                                      )
                                )
@@ -440,7 +374,7 @@
                             street))
 
              kga-streets (:kga-streets dict)
-             district "Подільський"
+             district (ds/district-k :fs :kga enrich-district)
              xs (comp
                   ;;
                   (filter #(= (:district %) district))
@@ -461,35 +395,42 @@
                   ;; enrich with house addrs
                   ; (map add-houses)
                )
-             podil (into [] xs kga-streets )
+             districts (into [] xs kga-streets )
 
              ]
 
-
          [:.flex
-          (let [podil-map (group-by :ID podil)]
 
-          [:div
+          ;;
+          ;; uncomment this to export enriched streets
+          #_(let [district-map (group-by :ID districts)]
+
+            [:div
+
+             ;[:.html (d/pretty! drv-buildings)]
+
              [:header "All streets enriched with " district "district houses. "]
 
              (pg-ui/<transform-list>
                s-ui/<street>
                (map (fn [a]
-                      (if-let [nu (get podil-map (:ID a))]
+                      (if-let [nu (get district-map (:ID a))]
                         (first nu)
                         a
                         )
                       ) kga-streets)
                {}
-               :copy-fn #(street2export (dissoc % :test :oid))
+               :copy-fn #(ds/street2export (dissoc % :test :oid))
                :sort-fn :code
                )
-           ]
-          )
+             ]
+            )
 
-          #_(pg-ui/<transform-list>
+          ;;
+          ;; kga to drv mapping
+          (pg-ui/<transform-list>
             s-ui/<street>
-            podil
+            districts
             ;; filters
             (group-by :ID @*asserts)
             :id-fn :ID
@@ -500,7 +441,6 @@
                          "drv-street" (partial pg-ui/_marker-class-filter "drv-street")
                          "non drv-street" (partial pg-ui/_marker-except-class-filter "drv-street")
                          "no-house" (partial pg-ui/_marker-class-filter "no-house")
-
                          }
             )
           [:div
