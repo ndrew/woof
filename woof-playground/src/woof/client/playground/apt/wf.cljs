@@ -16,10 +16,12 @@
     [woof.client.dom :as woof-dom]
     [woof.client.playground.ui :as pg-ui]
     [woof.client.playground.ui.wf :as wf-ui]
+    [woof.client.ws :as ws]
 
     [woof.wfs.evt-loop :as evt-loop]
 
-    [clojure.set :as set])
+    [clojure.set :as set]
+    )
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -36,7 +38,25 @@
                 (let [*data (rum/cursor-in *wf [:state ::data])]
                   (try
                     ;; your wf is here
-                    [:div "APT"]
+                    [:div
+                     (pg-ui/menubar "KV"
+                                    [["post" (fn []
+
+                                               (let [k (d/to-primitive (js/prompt "k=" "k"))
+                                                     v (d/to-primitive (js/prompt "v=" "v"))
+                                                     ]
+                                                 (ws/POST "http://localhost:8081/kv/put" (fn [])
+                                                          {:k k
+                                                           :v v
+                                                           }
+                                                          )
+
+                                                 )
+
+
+                                               )]]
+                                    )
+                     ]
                     (catch js/Error e [:pre (pr-str e)]))))
               ]))
 

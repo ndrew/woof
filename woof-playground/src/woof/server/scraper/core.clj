@@ -3,7 +3,7 @@
   (:require
     [clojure.core.async :as async :refer [go go-loop]]
     [clojure.java.io :as io]
-    [clojure.string :as str]
+    [clojure.string :as str :refer [join]]
 
     [taoensso.timbre :as timbre :refer [log trace debug info warn error fatal report logf tracef debugf infof warnf errorf fatalf reportf spy get-env]]
 
@@ -14,7 +14,9 @@
     [org.httpkit.server :as httpkit]
 
     [ring.util.response :as response]
-    [ring.middleware.cors :refer [wrap-cors]]
+
+    [jumblerg.middleware.cors :refer [wrap-cors]]
+
     [ring.middleware.multipart-params :refer [multipart-params-request]]
     [ring.middleware.params :refer [params-request]]
 
@@ -297,9 +299,7 @@
                                )
                              )
                            )
-                         ;; todo: add other CORS domains
-                         :access-control-allow-origin [#"http://localhost:9500"]
-                         :access-control-allow-methods [:get :put :post :delete]
+                         #".*"
                          )
                :port PORT
                }
@@ -569,11 +569,11 @@
     (reloadable-wf)
     (catch Exception e
       (do
+        (warn "[SRV] error during reload" e )
         (reset! state/*server-wf nil)
         (reloadable-wf)
         )
       )
     )
-  ;; (reloadable-wf)
   )
 ;; ---------------------------------------------------------

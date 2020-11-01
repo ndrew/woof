@@ -19,7 +19,9 @@
   http-kit                   {:mvn/version "2.3.0"},
 
   compojure                  {:mvn/version "1.6.1", :exclusions [commos-codec]},
-  ring-cors                  {:mvn/version "0.1.13"}
+
+  jumblerg/ring-cors        {:mvn/version "2.0.0"}
+
   com.cognitect/transit-clj  {:mvn/version "0.8.313"},
   com.cognitect/transit-cljs {:mvn/version "0.8.256"},
 
