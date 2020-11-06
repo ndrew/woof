@@ -1571,3 +1571,15 @@ pre {
     opacity: .5;
 }
 
+
+#test-html-container {
+    visibility: hidden;
+    height: 0
+}
+
+#test-html-container.visible {
+    visibility: initial;
+    height: auto;
+
+    outline: 1px solid crimson;
+}

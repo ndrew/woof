@@ -115,17 +115,16 @@
                     ))
   )
 
-(defn POST [url handler data]
 
-  (http/post url
-             {:edn-params data
-              ; :with-credentials? true
-              }
-             )
-  #_(xhrio/send url (fn [event]
-                    (.log js/console event)
-                    ;;
-                    ) "POST" (pr-str data))
+
+(defn POST [url handler data]
+  (go
+    (let [response (async/<! (http/post url {:edn-params data}))]
+      (.log js/console response)
+
+      (handler response)
+      )
+    )
   )
 
 

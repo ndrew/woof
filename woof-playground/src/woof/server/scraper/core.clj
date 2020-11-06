@@ -272,11 +272,13 @@
                              (d/pretty! @state/*kv)
                              )
 
+
+
                            (compojure/GET "/kv/get/:k" [k :as request]
                              ;(info "[SRV] /scraper-ws" request "params" params)
                              ;(server-ws-fn params request)
                              (let [key (read-string k)]
-                               (info "[KV] " (pr-str key))
+                               (info "[KV] " [k "vs" key])
 
                                (pr-str (get @state/*kv key))))
 
@@ -286,9 +288,10 @@
                              (let [edn (-> request :body slurp read-string)
                                    {k :k v :v} edn
                                    ]
-                               (info "[KV] /kv/put" k v )
+                               (info "[KV] /kv/put" [k v])
 
                                (swap! state/*kv assoc k v)
+
                                {:status  200
                                 :headers {
                                           "Content-Type" "application/edn; charset=utf-8"

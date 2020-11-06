@@ -21,9 +21,22 @@
     [woof.client.browser.scraper.session :as ss]
     [woof.client.browser.scraper.scraping-ui :as sui]
 
-    [cljs.core.async :refer [go] :as async]
+    [cljs.core.async :refer [go go-loop] :as async]
     [cljs.core.async.interop :refer-macros [<p!]]
-    [clojure.string :as str]))
+
+    ;[cljsjs.react.dom.server]
+
+
+    [clojure.string :as str]
+    [rum.core :as rum]
+
+    ;; provide react directly
+    [cljsjs.react]
+    [cljsjs.react.dom]
+    [cljsjs.react.dom.server]
+
+    ))
+
 
 ;; GENERIC SCRAPING WORKFLOW
 ;;
@@ -43,6 +56,7 @@
     )
 
   )
+
 
 (defn- traverse-up [el pred additional-map]
 
@@ -79,12 +93,8 @@
         ]
 
     (merge additional-map
-           parent-nfo
-           )
-
-
+           parent-nfo)
     )
-
   )
 
 
@@ -168,10 +178,36 @@
   )
 
 
+
+(rum/defc <test-ui> < rum/static
+  [*state STATE]
+
+  [:div
+   (map
+     (fn [[selector els]]
+       [:div
+        [:header
+         [:button#save-els selector]
+         ]
+        (map (fn [x] [:span "<el>"]) els)
+        ])
+     (get-in STATE [::s] (array-map))
+     )
+
+   [:hr]
+   [:div ".. selectors .."]
+   [:button#add-selector "add!"]
+
+   [:hr]
+   (pr-str STATE)
+   ]
+  )
+
+
 (defn <ui>
   ([]
    (let [$panel (dom/createDom "div" "panel woof-scrape-panel")
-         $pre  (dom/createDom "pre" "woof-scrape-pre" "")]
+         $pre  (dom/createDom "div" "woof-scrape-pre" "")]
      (dom/appendChild $panel (dom/createDom "header" "" "SCRAPER"))
      (dom/appendChild $panel $pre)
 
@@ -181,11 +217,41 @@
   ([*state STATE]
    (let [$panel (q ".woof-scrape-panel")
          $pre (q ".woof-scrape-pre")
+
+
+         actions {"#add-selector" (fn []
+                                    (let [selector (js/prompt "provide selector" ".index-list-container > .catalog-item" )]
+                                      (.log js/console "#add-selector" selector)
+                                      (swap! *state update-in [::s] assoc selector (woof-dom/q* selector))
+                                      )
+                                    )
+                  "#save-els" (fn [e]
+                                (let [btn (.. e -currentTarget)
+                                      selector (dom/getTextContent btn) ;; ugly
+                                      html (reduce (fn [s el]
+                                                     (str s (. el -outerHTML))) "" (get-in STATE [::s selector] []))
+                                      ]
+
+                                  (ws/POST "http://localhost:8081/kv/put" (fn [])
+                                           {:k :html
+                                            :v html}
+                                           )
+                                  )
+
+
+                                )}
          ]
 
-     (html! $pre (d/pretty! STATE))
+     ;; todo: implement nice ui
 
-     ;; (html! root "")
+     (html! $pre
+            (rum/render-static-markup (<test-ui> *state STATE)))
+
+     (doseq [[k v] actions]
+       (if-let [btn-el (woof-dom/q k)]
+         (goog.events.listen btn-el goog.events.EventType.CLICK v)
+         )
+       )
      )
      )
   )
@@ -449,35 +515,6 @@
 
 
 
-(defn extract-renamed-lists [raw-district el]
-
-  (let [r1 (woof-dom/query-selector* el "tr > td:nth-child(2)")
-        r2 (woof-dom/query-selector* el "tr > td:nth-child(3)")
-
-        els (partition 2 (interleave r1 r2))
-
-        district (str/replace (str/capitalize raw-district) #"район" "р-н")
-        ]
-
-
-
-    {district
-     (reduce (fn [a [old nu]]
-               (let [old-text (.-innerText old)
-                     nu-text (.-innerText nu)
-                     ]
-                 (if (not= ["Стара назва" "Нова назва"] [old-text nu-text])
-                   (assoc a (.-innerText old)
-                            (.-innerText nu))
-                   a
-                   )
-                 )
-               ) {} els)
-     }
-    )
-
-
-  )
 
 
 (defn wf! [*wf-state meta-info]
@@ -485,6 +522,8 @@
   (let [WATCHER-ID :state
         *state (atom {
                       ;; :level 1
+
+                      ::s (array-map)
 
                       })
 
@@ -540,8 +579,13 @@
                   })
 
                (fn [params]
-                 ;; add ui for scraping
-                 (<ui>)
+
+                 (<ui>) ;; add ui for scraping
+                 {}
+                 )
+
+               (fn [params]
+                 (.log js/console "INIT-2")
                  {}
                  )
 
@@ -590,28 +634,6 @@
                (fn [params]
                  (let [*i (atom 0)]
                    {
-                    :process-renamed*      (base/expand-into :process-renamed-table)
-
-                    :process-renamed-table {
-                                            :fn (fn [el]
-                                                  (let [i (swap! *i inc)]
-                                                    ;; (.log js/console "i=" i)
-                                                    (classes/add el (str "marker-" i))
-
-                                                    (if-let [first-row-el (woof-dom/query-selector el "tr:nth-child(1) > td strong ")]
-                                                      (if-let [text (.-innerText first-row-el)]
-                                                        (if (re-find #"РАЙОН" text)
-                                                          (do
-                                                            (extract-renamed-lists text el)
-
-                                                            ; (str i "\t" text)
-                                                            )
-                                                          )
-                                                        )
-                                                      )
-                                                    )
-                                                  )
-                                            }
                     :filter-nil? {
                                   :fn (fn [vs]
                                         (filter #(not= :nil %) vs))
@@ -628,6 +650,37 @@
                     })
                  )
 
+               (fn [params]
+
+
+                 {
+
+                  :wait-react {:fn (fn [_]
+                                     (let [cf (base/&chan-factory params)
+                                           ch (base/make-chan cf (base/rand-sid))]
+
+                                       (let [t (volatile! 25)]
+                                         (go-loop []
+                                           (if (or (. js/window -ReactDOMServer)
+                                                   (> @t 5000))
+                                             (async/put! ch :loaded)
+                                             (let [ms (* 2 @t)]
+                                               (.log js/console "WATING " ms " FOR REACT " )
+                                               (vreset! t ms)
+                                               (async/<! (u/timeout ms))
+                                               (recur)
+                                               )
+                                             )
+                                           )
+                                         )
+
+                                       ch
+
+                                       )
+
+                                     )}
+                  }
+                 )
                ]
 
      :steps   [
@@ -675,15 +728,22 @@
                  {
 
                   :UI/state  [:watch WATCHER-ID]
-                  :UI/render [:ui :UI/state]
+
+
+                  :UI/load-react [:wait-react nil]
+
+                  :UI/state-to-render [:wait-rest [:UI/state :UI/load-react]]
+                  :UI/render [:ui :UI/state-to-render]
+
 
                   ::hello    [:prn (u/now)]
-
                   ;; recurring parse
                   }
                  )]
      :opts    [
                watcher/watcher-opts
+
+
                ]
 
      :api     {}
@@ -752,7 +812,6 @@
                       )
                     )
          )
-
 
 
 

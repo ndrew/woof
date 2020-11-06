@@ -586,7 +586,7 @@
   )
 
 
-(defn save-json [edn]
+(defn save-json [filename edn]
   (save-blob filename (.stringify js/JSON (clj->js edn)))
   )
 

@@ -71,10 +71,9 @@
         *dict (rum/cursor-in *SWF [:state ::data])]
     {
 
-     :title       "kadastr"
+     :title       "apartment dashboard"
      :explanation [:div.explanation
-                   [:p "process data scraped from " [:a {:href "https://mkk.kga.gov.ua/map/" :target "_blank"} "kadastr"]]
-                   ]
+                   [:p "apartment dashbord"]]
 
      ;; this state will be added to a wf?
      :state {
