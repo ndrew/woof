@@ -23,28 +23,15 @@
     [woof.client.playground.ui :as pg-ui]
     [woof.client.playground.ui.wf :as wf-ui]
     [woof.client.ws :as ws]
+    [woof.client.playground.ui.html :as html-ui]
 
     [woof.wfs.evt-loop :as evt-loop]
-
     [woof.client.playground.scraper.tw :as dashboard]
     )
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
-
-;;
-;; UI
-
-
-(defn- load-edn [*dict url k]
-  (ws/GET url
-          (fn [response]
-            (let [edn (cljs.reader/read-string response)]
-              (swap! *dict assoc k edn)
-              )))
-
-  )
 
 
 
@@ -61,10 +48,7 @@
 
        ;; for now hadcode actions for ::current
 
-       (let [*dict (rum/cursor-in *wf [:state ::dict])
-
-
-             ]
+       (let [*dict (rum/cursor-in *wf [:state ::dict])]
          [:div {:style {:padding "1rem"}}
 
           (pg-ui/menubar "KV"
@@ -105,6 +89,53 @@
                                   ) (get-in @*dict [:kv-ks] []))
                            ))
           (pr-str @*dict)
+
+          (let [$listings "#test-html > .catalog-item"
+                skip-fn (fn [$el $]
+                          (#{; "SVG"
+                             "G" "PATH"} (str/upper-case (.-tagName $el))))
+
+                els (wdom/q* $listings)]
+
+            (if els
+              (let [id-1 (rand-int (count els))
+
+                    el-map-1 (wdom/el-map (nth els id-1)
+                                          :skip-fn skip-fn
+                                          :node-fn wdom/enrich-node
+                                          :top-selector-fn (fn [base el] { :nth-child (:i base)}))
+
+                    el-1 (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-1)
+
+                    id-2 (rand-int (count els)) ;
+
+                    ]
+
+                [:div
+                 [:header "ELS:"]
+
+                 (html-ui/<dashboard>
+                   [
+                    {:id id-1
+
+                     :el-map el-map-1
+                     :nodes el-1
+                     }
+                    #_{
+                     :id id-2
+
+                     :el-map el-map-2
+                     :nodes el-2
+                     }
+                    ])
+                 ]
+                )
+              )
+
+
+            )
+
+          ;;html-ui/<plan>
 
           ;; streets
 

@@ -60,7 +60,6 @@
   (select-keys n #{:text}))
 
 
-;; todo:
 (def filter-scraping-rules
   {
    :img? img-scrape
