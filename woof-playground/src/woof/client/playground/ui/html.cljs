@@ -21,7 +21,8 @@
     [woof.client.ws :as ws]
 
     [woof.wfs.evt-loop :as evt-loop]
-    [clojure.string :as str])
+    [clojure.string :as str]
+    [clojure.set :as set])
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -51,7 +52,10 @@
     :img? #(= "IMG" (:tag %))
     :link? #(= "A" (:tag %))
     :text? #(not= "" (str/trim (:text %)))
-    :leaf? #(= (:child-count %) 0))
+    :leaf? #(= (:child-count %) 0)
+    :root? #(> (:child-count %) 0)
+    )
+
   )
 
 
@@ -204,7 +208,12 @@
                                        )))]]
         ]
 
-    [:div.plan-header
+    [:div.plan-header {
+                       :class (cond
+                                analyzed? "analyzed"
+                                :else ""
+                                )
+                       }
      (pg-ui/menubar "" [[(if details? "▿" "▹") (fn [] (swap! *details? not))]]
                     :class "minimal" )
 
@@ -580,8 +589,9 @@
    (map <html-node> nodes)])
 
 
-(rum/defcs <dashboard>
-  < rum/static
+
+;; dashboard
+(rum/defcs <dashboard> < rum/static
     (rum/local {
                 ;; generic cfg
                 ::ids                []
@@ -614,8 +624,7 @@
         _cfg  @(::cfg st)
 
         upd! (fn [k v]
-               (swap! *cfg assoc k v)
-               )
+               (swap! *cfg assoc k v))
 
         ;; { k #{a b c d e f}}, where a b c - are node ids
         selector-usage-map (selector-usage nodes)
@@ -673,25 +682,31 @@
               )
             (keys filters-map))
        ]
-      [:.exclusions.menubar
+      [:.exclusions.menubar.html
        [:header "exclusions"]
        (pr-str (get cfg :filter/exclusions))
        ]
-      [:.aliases.menubar
+      [:.aliases.menubar.html
        [:header "aliases"]
        (pr-str (get cfg :selector/aliases))
+       ;[:hr]
+       ;(pr-str (set/map-invert (get cfg :selector/aliases)))
        ]
       ]
 
      (let [analysis-map (get cfg :selector/analysis)]
-
        [:div.analysis
         [:header "ANALYSIS"]
+
+        ;; [:.html (d/pretty! selector-usage-map)]
+        ;; [:hr]
         (map
           (fn [[k v]]
             [:div (pr-str k)
-             [:div ; (pr-str v)
-              ]
+
+             [:div.html (pr-str v)]
+             ;[:hr]
+             ;[:div (pr-str (get selector-usage-map k))]
              ]
             )
           analysis-map

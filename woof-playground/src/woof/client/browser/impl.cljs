@@ -13,6 +13,11 @@
 
     [woof.client.browser.yt.wf :as yt]
     [woof.client.browser.kga.scraper :as kga]
+
+
+    [woof.client.browser.rieltor.wf :as riel]
+
+
     ))
 
 
@@ -34,6 +39,8 @@
 
     ;; kga
     (clojure.string/starts-with? url "https://mkk.kga.gov.ua/map/") kga/wf!
+
+    (clojure.string/starts-with? url "http://localhost:9500/r.html") riel/wf!
 
 
     )

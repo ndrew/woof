@@ -1290,6 +1290,12 @@ pre {
     align-items: center;
 }
 
+.plan-header.analyzed {
+    padding: 3px;
+    outline: 3px solid crimson;
+
+}
+
 .node-group {
     border-left: 3px solid transparent;
 }

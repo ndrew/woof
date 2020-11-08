@@ -27,7 +27,7 @@
 
     [woof.wfs.evt-loop :as evt-loop]
     [woof.client.playground.scraper.tw :as dashboard]
-    )
+    [woof.utils :as u])
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -62,33 +62,45 @@
                             ["load keys" (fn []
                                               (ws/GET "http://localhost:8081/kv/list" (fn [ks]
                                                                                         (swap! *dict assoc-in [:kv-ks] (d/to-primitive ks) )
-                                                                                        (.log js/console ks)
+                                                                                        ;; (.log js/console ks)
                                                                                         )
                                                        )
                                               )]
                                []]
                            (map (fn [x]
                                   [(pr-str x) (fn []
+                                                (let [t0 (u/now)]
+                                                  (ws/GET (str "http://localhost:8081/kv/get/" x)
+                                                          (fn [_data]
+                                                            (let [t1 (u/now)
+                                                                  data (d/to-primitive _data)]
+                                                              ;; (.log js/console data)
 
-                                                (ws/GET (str "http://localhost:8081/kv/get/" x)
-                                                        (fn [_data]
+                                                              (wdom/html!
+                                                                (wdom/q "#test-html")
+                                                                data)
 
-                                                          (let [data (d/to-primitive _data)]
-                                                            (.log js/console data)
+                                                              (let [now (u/now)]
+                                                                (.log js/console
 
-                                                            (wdom/html!
-                                                              (wdom/q "#test-html")
-                                                              data
+                                                                      "total: " (- now t0)
+                                                                      "parse: " (- now t1)
+                                                                      "request: " (- t1 t0))
+
+                                                                ;; TODO: for now, hardcode the selector
+                                                                (swap! *dict assoc-in [:curr-selector] "#test-html > .catalog-item" )
+                                                                )
+
+                                                              ;;
                                                               )
                                                             )
-
-
                                                           )
-                                                        )
+                                                  )
+
                                                 )]
                                   ) (get-in @*dict [:kv-ks] []))
                            ))
-          (pr-str @*dict)
+          ;; (pr-str @*dict)
 
           (let [$listings "#test-html > .catalog-item"
                 skip-fn (fn [$el $]
@@ -98,16 +110,23 @@
                 els (wdom/q* $listings)]
 
             (if els
-              (let [id-1 (rand-int (count els))
+              (let [make-el-map (fn [el]
+                                  (wdom/el-map el
+                                               :skip-fn skip-fn
+                                               :node-fn wdom/enrich-node
+                                               :top-selector-fn (fn [base el] { :nth-child (:i base)})))
 
-                    el-map-1 (wdom/el-map (nth els id-1)
-                                          :skip-fn skip-fn
-                                          :node-fn wdom/enrich-node
-                                          :top-selector-fn (fn [base el] { :nth-child (:i base)}))
+                    el-map->nodes (fn [el-map-1]
+                                    (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-1))
 
-                    el-1 (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-1)
+                    id-1     (rand-int (count els))
+                    el-map-1 (make-el-map (nth els id-1))
+                    el-1     (el-map->nodes el-map-1)
 
-                    id-2 (rand-int (count els)) ;
+
+                    id-2     (rand-int (count els))
+                    el-map-2 (make-el-map (nth els id-2))
+                    el-2     (el-map->nodes el-map-2)
 
                     ]
 
@@ -121,7 +140,7 @@
                      :el-map el-map-1
                      :nodes el-1
                      }
-                    #_{
+                    {
                      :id id-2
 
                      :el-map el-map-2

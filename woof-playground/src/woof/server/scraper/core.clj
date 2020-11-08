@@ -286,9 +286,9 @@
                            (compojure/POST "/kv/put" [:as request]
 
                              (let [edn (-> request :body slurp read-string)
-                                   {k :k v :v} edn
-                                   ]
-                               (info "[KV] /kv/put" [k v])
+                                   {k :k v :v} edn]
+
+                               (info "[KV] /kv/put" k )
 
                                (swap! state/*kv assoc k v)
 
@@ -416,10 +416,10 @@
 (defn server-wf! [cfg & {:keys [on-stop] :or {on-stop (fn [stop-chan]
                                                          (info ::wf-stopped))}}]
 
-  (info "[WF] initializing...\t" (System/currentTimeMillis))
-  ;; build-... vs
-  (let [
 
+  ;; build-... vs
+  (let [t0 (System/currentTimeMillis)
+        _ (info "[WF] server-wf!\t initializing...\t" t0)
         ;; internal state
         *CHAN-STORAGE (atom {})
         CHAN-FACTORY (base/chan-factory *CHAN-STORAGE)
@@ -509,7 +509,6 @@
                                         result
                                         ))
 
-
               ]
 
         WF (base/wf! :init  INIT
@@ -569,6 +568,7 @@
 
 (when state/AUTO-RUN-WF?
   (try
+    (info "[SRV] running reloadable WF" )
     (reloadable-wf)
     (catch Exception e
       (do
