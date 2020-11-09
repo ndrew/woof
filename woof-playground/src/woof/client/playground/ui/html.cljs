@@ -180,7 +180,10 @@
   [cfg *details? node]
   (let [parent-selector (get cfg :node/parent-selector "")
         selector (:_$ node)
-        partial-selector (wdom/shorten-selector-string selector parent-selector)
+
+        shorten-selector? (get cfg :node/shorten-selector? true)
+        partial-selector (if shorten-selector? (wdom/shorten-selector-string selector parent-selector) selector)
+
         details? @*details?
         idx (:idx node)
         exclusions      (get cfg :filter/exclusions #{})
@@ -191,15 +194,7 @@
 
         upd! (:cfg/upd! cfg)
 
-        quick-menu [(if analyzed?
-                      ["cancel analysis" (fn [] (upd! :selector/analysis (dissoc analysis-nodes selector)))]
-                      ["analysis"          (fn [] (upd! :selector/analysis (assoc analysis-nodes selector {
-                                                                                                           :parent-selector parent-selector
-                                                                                                           :node node
-                                                                                                           })))])
-                    (if excluded?
-                      ["cancel exclusion" (fn [] (upd! :filter/exclusions (disj exclusions selector)))]
-                      ["exclude"          (fn [] (upd! :filter/exclusions (conj exclusions selector)))])
+        quick-menu [
                     ["alias" (fn []
                                (upd! :selector/aliases
                                      (assoc aliases
@@ -223,12 +218,32 @@
 
      [:span.small-tag.tag.selector partial-selector]
 
+     (if-let [class (get-in node [:attrs "class"])]
+       [:span.small-tag.tag.css (pr-str class)]
+       )
+
+
      (if details?
        (pg-ui/menubar ""
                       (conj quick-menu
                             []
+
                             ["📋full $"    (fn [] (wdom/copy-to-clipboard selector))]
-                            ["📋partial $" (fn [] (wdom/copy-to-clipboard partial-selector))] ))
+                            ["📋partial $" (fn [] (wdom/copy-to-clipboard partial-selector))]
+
+
+                            (if excluded?
+                              ["cancel exclusion" (fn [] (upd! :filter/exclusions (disj exclusions selector)))]
+                              ["exclude"          (fn [] (upd! :filter/exclusions (conj exclusions selector)))])
+
+                            (if analyzed?
+                              ["cancel analysis" (fn [] (upd! :selector/analysis (dissoc analysis-nodes selector)))]
+                              ["analysis"          (fn [] (upd! :selector/analysis (assoc analysis-nodes selector {
+                                                                                                                   :parent-selector parent-selector
+                                                                                                                   :node node
+                                                                                                                   })))])
+
+                            ))
        (pg-ui/menubar "" quick-menu))
 
      [:.tags (map #(<tag> (assoc cfg
@@ -265,13 +280,19 @@
 
         used-by (get (::usage cfg) selector #{})
         node-id (first (::ids cfg))
-        used-by-others (disj used-by node-id)]
+
+        used-by-others (disj used-by node-id)
+
+        ]
 
     [:div.plan
      {:class (str/join " " (concat (if (empty? applied-filters) #{"not-matched"} )
                                    (if excluded? #{"excluded"})
                                    (if (empty? used-by-others) #{"unique"})))}
 
+
+
+     ;; if (:parent-idx node) is less then previous
 
      (<plan-header> (assoc cfg
                       :node/prefix "pl_header_")
@@ -466,6 +487,7 @@
                     {:key-fn (fn [cfg _ _ parent-idx]
                                (str (first (::ids cfg)) "_" "group_"  parent-idx))}
   [cfg plan gr parent-idx]
+
   (let [parent-node (get plan parent-idx)
         parent-selector (if parent-node (:_$ parent-node) "")
         nodes (get gr parent-idx)
@@ -477,11 +499,13 @@
     [:.node-group
      (if (empty? all-applied-filters) {:class "not-matched"})
 
-     #_(if (::debugger? cfg)
+
+     (if (::debugger? cfg)
          [:div.html (d/pretty! cfg) ])
 
      [:.plan-header
-      [:.tag.small-tag.parent-selector parent-selector] "[" (pr-str (inc parent-idx)) "]"]
+      [:.tag.small-tag.parent-selector parent-selector]
+      "[" (pr-str (inc parent-idx)) "]"]
 
      (map (partial <node> (assoc cfg
                             :node/prefix "group_"
@@ -492,6 +516,116 @@
 
   )
 
+
+(rum/defcs <v2-node-list> < rum/static
+  [st cfg gr node-list]
+
+  ;; gr list of all nodes grouped by
+  (let [*parent-selector (volatile! "")
+        ;; *parent-idx (volatile! 0)
+        ]
+    [:.node-group
+     (map
+       (fn [node]
+         (let [parent-selector @*parent-selector]
+           (vreset! *parent-selector (:_$ node))
+
+           ;; what to pass to node to
+
+           (<node> (assoc cfg
+                     :node/prefix "group_"
+                     :node/shorten-selector? true
+                     :node/parent-selector parent-selector
+                     ) node)
+           )
+
+         )
+        node-list)
+     ]
+    )
+  )
+
+
+(rum/defcs <plan-v2> < rum/static
+  [st cfg plan]
+
+  ;; group parsing plan by top level components
+
+  (let [gr (wdom/parent-group plan)
+
+        ;; start with elements with parent-idx 0
+        tree (map (fn [el-plan]
+                    (tree-seq
+                      (fn [node] (not (empty? (get gr (dec (:idx node)))))) ; branch
+                      #(get gr (dec (:idx %)) []) ; vals
+                    el-plan))
+                  (get gr -1) )
+        ]
+
+    [:div
+     [:header "PLAN TREE (v2):"]
+
+     ;; first nodes are displayed horizontally
+     [:.flex
+
+      (map #(<v2-node-list> cfg gr (vec %)) tree)
+
+
+      ;;
+      #_(map (fn [x]
+             (let [gr (wdom/parent-group x)
+                   roots (sort (keys gr))
+                   plan (vec x)
+
+                   *prev-selector (volatile! "")
+                   *prev-margin (volatile! 0)
+                   ]
+
+               [:.html.root-node
+                (map
+                  (fn [level]
+
+                    (let [parent-node (get plan level)
+                          parent-selector (if parent-node (:_$ parent-node) "")
+                          prev-parent-selector @*prev-selector
+                          ]
+
+                      [:.child-node
+
+                       (if-not (str/starts-with? parent-selector prev-parent-selector)
+                         (do
+                           {:style {:margin-left (str (vswap! *prev-margin + 25) "px")}})
+                         (let [_ (vreset! *prev-margin 0)]
+                           {:style {:margin-left 0}}
+                           )
+                         )
+
+                       (let [_ (vreset! *prev-selector parent-selector)]
+
+                         [:.html
+                          parent-selector "\t" prev-parent-selector
+
+                          ]
+
+
+
+                         ;(<group> cfg plan gr level)
+                         )
+
+                       ]
+
+                      )
+                    )
+                  roots)
+                ]
+               )
+             )
+           tree
+           )
+      ]
+     ]
+    )
+  )
 
 (rum/defcs <full-plan> < rum/static
                          (rum/local true ::hide-not-matched?)
@@ -514,9 +648,20 @@
                          ])
       ]
 
-     (let [gr (wdom/parent-group plan)
+
+
+
+     ;; tree starting from top level elements
+     (<plan-v2> cfg plan)
+
+     [:hr]
+     ;; linear list todo: this confusing as it is a list not a tree
+     #_(let [gr (wdom/parent-group plan)
            roots (sort (keys gr))]
-       (map (partial <group> cfg plan gr) roots))
+       (map (partial <group> cfg plan gr) roots)
+       )
+
+
      ]
     )
   )
