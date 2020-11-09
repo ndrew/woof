@@ -517,32 +517,27 @@
   )
 
 
-(rum/defcs <v2-node-list> < rum/static
-  [st cfg gr node-list]
 
-  ;; gr list of all nodes grouped by
-  (let [*parent-selector (volatile! "")
-        ;; *parent-idx (volatile! 0)
-        ]
-    [:.node-group
-     (map
-       (fn [node]
-         (let [parent-selector @*parent-selector]
-           (vreset! *parent-selector (:_$ node))
+(rum/defcs <another-tree> < rum/static
+  [st cfg node]
 
-           ;; what to pass to node to
+  [:.tree
+   (merge {:style {:border "1px solid #000"}}
+          (if (:tree-UI/horizontal? cfg ) {:class "horizontal"})
+          )
 
-           (<node> (assoc cfg
-                     :node/prefix "group_"
-                     :node/shorten-selector? true
-                     :node/parent-selector parent-selector
-                     ) node)
-           )
+   ;; todo: add menu
 
-         )
-        node-list)
-     ]
-    )
+   (<node> cfg node)
+
+   [:.flex
+    (map
+      (partial <another-tree>
+               (assoc cfg :node/parent-selector (:_$ node)))
+      (get node ::children []))
+    ]
+   ]
+
   )
 
 
@@ -550,7 +545,6 @@
   [st cfg plan]
 
   ;; group parsing plan by top level components
-
   (let [gr (wdom/parent-group plan)
 
         ;; start with elements with parent-idx 0
@@ -560,69 +554,50 @@
                       #(get gr (dec (:idx %)) []) ; vals
                     el-plan))
                   (get gr -1) )
+
+        ;; enrich tree with children nodes
+        r' (reduce
+             (fn [result
+                  node]
+
+               (let [p-idx (dec (:parent-idx node))
+                     idx (dec (:idx node))
+                     enriched-node (get result idx)
+                     ]
+
+                 (if (>= p-idx 0)
+                   (update-in result [p-idx ::children]
+                              (fnil #(conj % enriched-node) '()))
+                   result
+                   )
+                 )
+               )
+             plan
+             (reverse plan)
+             )
+
+        root-idx (map #(dec (:idx %)) (get gr -1))
+
         ]
 
     [:div
      [:header "PLAN TREE (v2):"]
 
-     ;; first nodes are displayed horizontally
-     [:.flex
 
-      (map #(<v2-node-list> cfg gr (vec %)) tree)
+     (let [cfg' (assoc cfg
+                    :node/parent-selector ""
+                    :node/prefix "a_tree_"
+                    :node/shorten-selector? true)]
+       [:.flex
+        (if (:tree-UI/horizontal? cfg ) {:class "horizontal"})
 
+        (map
+          (fn [n] (<another-tree> cfg' (nth r' n)))
+          root-idx
+          )
+        ]
+       )
 
-      ;;
-      #_(map (fn [x]
-             (let [gr (wdom/parent-group x)
-                   roots (sort (keys gr))
-                   plan (vec x)
-
-                   *prev-selector (volatile! "")
-                   *prev-margin (volatile! 0)
-                   ]
-
-               [:.html.root-node
-                (map
-                  (fn [level]
-
-                    (let [parent-node (get plan level)
-                          parent-selector (if parent-node (:_$ parent-node) "")
-                          prev-parent-selector @*prev-selector
-                          ]
-
-                      [:.child-node
-
-                       (if-not (str/starts-with? parent-selector prev-parent-selector)
-                         (do
-                           {:style {:margin-left (str (vswap! *prev-margin + 25) "px")}})
-                         (let [_ (vreset! *prev-margin 0)]
-                           {:style {:margin-left 0}}
-                           )
-                         )
-
-                       (let [_ (vreset! *prev-selector parent-selector)]
-
-                         [:.html
-                          parent-selector "\t" prev-parent-selector
-
-                          ]
-
-
-
-                         ;(<group> cfg plan gr level)
-                         )
-
-                       ]
-
-                      )
-                    )
-                  roots)
-                ]
-               )
-             )
-           tree
-           )
-      ]
      ]
     )
   )
@@ -654,7 +629,7 @@
      ;; tree starting from top level elements
      (<plan-v2> cfg plan)
 
-     [:hr]
+     ;; [:hr]
      ;; linear list todo: this confusing as it is a list not a tree
      #_(let [gr (wdom/parent-group plan)
            roots (sort (keys gr))]
@@ -862,7 +837,9 @@
 
      ;[:.html (d/pretty! selected-filters)]
 
-     [:div.flex.plans {:class (if (cfg-v st :root-UI/overflow?) "overflow-x" "")}
+     [;:div.flex.plans
+      :div.plans
+      {:class (if (cfg-v st :root-UI/overflow?) "overflow-x" "")}
       (map #(<plan>
               (update-in cfg [::ids] conj (:id %))
               (assoc %

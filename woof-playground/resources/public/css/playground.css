@@ -1573,6 +1573,13 @@ pre {
     border-radius: 0
 }
 
+.tag.css {
+    background-color: rgba(246, 54, 31, 0.46);
+    font-weight: normal;
+    border-radius: 1px;
+}
+
+
 .excluded {
     opacity: .5;
 }
