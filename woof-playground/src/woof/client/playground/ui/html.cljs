@@ -53,7 +53,7 @@
     :link? #(= "A" (:tag %))
     :text? #(not= "" (str/trim (:text %)))
     :leaf? #(= (:child-count %) 0)
-    :root? #(> (:child-count %) 0)
+    ;; :root? #(> (:child-count %) 0)
     )
 
   )
@@ -317,7 +317,7 @@
           [:.el-value t]))
 
       ;; todo: data attributes
-      (if details? [:.html (d/pretty! node)])
+      (if details? [:.html (d/pretty! (dissoc node ::children))])
       ]
      ]
     )
