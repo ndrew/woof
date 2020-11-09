@@ -1579,6 +1579,14 @@ pre {
     border-radius: 1px;
 }
 
+.tag.alias {
+    border-radius: 3px;
+    padding: 2px;
+    background-color: rgb(255, 35, 100);
+    color: #fff;
+    font-weight: normal;
+}
+
 
 .excluded {
     opacity: .5;

@@ -195,12 +195,16 @@
         upd! (:cfg/upd! cfg)
 
         quick-menu [
+                    ["📋$"    (fn [] (wdom/copy-to-clipboard selector))]
+                    ["p 📋$" (fn [] (wdom/copy-to-clipboard partial-selector))]
+                    []
                     ["alias" (fn []
                                (upd! :selector/aliases
                                      (assoc aliases
                                        selector
                                        (js/prompt "provide an alias" "")
-                                       )))]]
+                                       )))]
+                    ]
         ]
 
     [:div.plan-header {
@@ -227,10 +231,6 @@
        (pg-ui/menubar ""
                       (conj quick-menu
                             []
-
-                            ["📋full $"    (fn [] (wdom/copy-to-clipboard selector))]
-                            ["📋partial $" (fn [] (wdom/copy-to-clipboard partial-selector))]
-
 
                             (if excluded?
                               ["cancel exclusion" (fn [] (upd! :filter/exclusions (disj exclusions selector)))]
@@ -583,7 +583,6 @@
     [:div
      [:header "PLAN TREE (v2):"]
 
-
      (let [cfg' (assoc cfg
                     :node/parent-selector ""
                     :node/prefix "a_tree_"
@@ -822,9 +821,12 @@
         ;; [:hr]
         (map
           (fn [[k v]]
-            [:div (pr-str k)
+            [:div.html
+             (pr-str k) "\n\n"
 
-             [:div.html (pr-str v)]
+             [:div.html (d/pretty! v)
+              "\n"
+              ]
              ;[:hr]
              ;[:div (pr-str (get selector-usage-map k))]
              ]
