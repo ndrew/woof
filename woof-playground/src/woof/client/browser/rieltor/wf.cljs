@@ -1,28 +1,28 @@
 (ns woof.client.browser.rieltor.wf
   (:require
 
-    [woof.base :as base]
-    [woof.client.dom :as wdom]
-    [woof.client.dbg :as dbg :refer [__log]]
-    [woof.data :as d]
-    [woof.utils :as u]
-
     [goog.dom :as dom]
     [goog.dom.classes :as classes]
-
     [goog.dom.dataset :as dataset]
-    ;; common wf
-
-    [woof.wfs.evt-loop :as evt-loop]
-    [woof.wfs.watcher :as watcher]
-
-    [woof.utils :as u]
 
     [cljs.core.async :refer [go go-loop] :as async]
     [cljs.core.async.interop :refer-macros [<p!]]
     [clojure.string :as str]
 
-    [rum.core :as rum]
+    [woof.base :as base]
+    [woof.data :as d]
+
+    [woof.client.dom :as wdom]
+    [woof.client.dbg :as dbg :refer [__log]]
+    [woof.client.ws :as ws]
+
+    [woof.utils :as u]
+
+    [woof.wfs.evt-loop :as evt-loop]
+    [woof.wfs.watcher :as watcher]
+
+    [cljs-time.core :as time]
+    [cljs-time.format :as time-fmt]
     ))
 
 
@@ -83,6 +83,131 @@
     ))
 
 
+
+(defn ->price [$PRICE $PRICE-M2]
+  (let [usd-price-text (wdom/txt $PRICE)       ;; "250 000 $"
+        usd-price-m2-text (wdom/txt $PRICE-M2) ;; "2 326 $/м²"
+
+        price-text (wdom/attr $PRICE "title")  ;; " По курсу НБУ - 3 291 123 грн / 65 977 грн/м²"
+        [uah uah-m2] (-> price-text
+            (str/trim)
+            (str/replace "По курсу НБУ - " "")
+            (str/split "/"))]
+    {
+
+
+     :USD  (-> usd-price-text
+               (str/replace "$" "")
+               (str/replace " " "")
+               (d/to-primitive))
+
+
+     :USD_M2  (-> usd-price-m2-text
+               (str/replace "$/м²" "")
+               (str/replace " " "")
+               (d/to-primitive))
+
+
+     :UAH (-> uah
+              (str/replace "грн" "")
+              (str/replace " " "")
+              (d/to-primitive))
+
+     :UAH_M2 (-> uah-m2
+                 (str/replace "грн" "")
+                 (str/replace " " "")
+                 (d/to-primitive))
+
+     ;; raw values
+     :_UAH uah
+     :_UAH_M2 uah-m2
+     :_USD usd-price-text
+     :_USD_M2 usd-price-m2-text
+
+     }
+    )
+
+  )
+
+(defn ->house [$HOUSE]
+  (let [t (wdom/txt $HOUSE)
+        [_rooms _area] (str/split t "·")
+
+        [_total _living _kitchen] (map d/to-primitive (-> _area
+            (str/replace " " "")
+            (str/replace "м²" "")
+            (str/split "/")))
+
+
+        [_room_n _floor _material] (str/split _rooms ",")
+
+        [floor floor-total] (map d/to-primitive (re-seq #"\d+" _floor))
+
+        rooms-n (d/to-primitive (re-find #"\d+" _room_n))
+
+        walls ((fnil str/trim "") _material)
+        ]
+
+    {
+     :house_walls walls
+
+     :area_total   _total
+     :area_living  _living
+     :area_kitchen _kitchen
+
+     :floor       floor
+     :floor_total floor-total
+
+     :rooms rooms-n
+
+     ;; " 66.7 / 32 / 10 м² " total bedrooms kitchen
+     :_floor _floor
+     :_rooms _room_n
+     :_area _area
+     }
+    )
+  )
+
+
+(def custom-formatter (time-fmt/formatter "yyyy.MM.dd"))
+
+(defn- ua->date [s]
+  (let [t (cond
+            (= "сьогодні" s) (time/today)
+            (= "вчора" s) (time/yesterday)
+
+            ;;
+            :else (let [[_ _n unit] (re-find #"(\d+)(.+)тому" s)
+                        n (d/to-primitive _n)]
+                    (time/minus
+                      (time/today) (cond
+                                     (#{"дні" "днів"} unit) (time/days n)
+                                     (= "тиж." unit) (time/weeks n)
+                                     (= "міс." unit) (time/months n)))
+                    )
+            )]
+
+    (time-fmt/unparse custom-formatter t)
+    )
+
+  )
+
+(defn ->upd [$UPD]
+  (let [t (-> $UPD
+              (wdom/txt)
+              (js/decodeURI)
+              (str/replace " " "")
+              )
+        [_ _upd _added] (re-find #"^Онов:(.+)\sДод:(.+)$" t)
+        ]
+
+    {
+     :upd   (ua->date (str/trim _upd))
+     :added (ua->date (str/trim _added))
+     }
+    )
+  )
+
 ;; element scraping function
 (defn scrape-element [el]
   ; (.warn js/console el (d/pretty! (wdom/dataset el)))
@@ -97,138 +222,86 @@
   (classes/add el "parsed")
 
   ;; *PROCESSING-MAP
+  (if-let [id (safe-href el ".catalog-item__img A")]
+    (let [$ID (wdom/q el ".catalog-item__img A")     ; "DIV:nth-child(1) > DIV > A:nth-child(1)" -> ".catalog-item__img A"
+          $IMG (wdom/q el ".catalog-item__img IMG")  ; "DIV:nth-child(1) > DIV > A:nth-child(1) > IMG"
 
-  ;; DIV:nth-child(2) -> catalog-item__info
+          $ADDR (wdom/q el ".catalog-item__general-info > H2:nth-child(1) > A:nth-child(1)") ; "DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > H2:nth-child(1) > A:nth-child(1)"
+          $HOUSE (wdom/q el ".catalog-item__general-info .catalog-item_info-item-row")       ; "DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(2)"
 
-  ;; classes => label label_no_commission
-  ;; classes => label label_new-building
-  ;; paid
+          $LABELS (wdom/q el ".catalog-item__general-info > H2:nth-child(1) > DIV .label")
 
+          $DESCR (wdom/q el ".catalog-item__info .catalog-item_info-description") ;;
 
-  ;; .catalog-item__info .catalog-item__title -> .catalog-item__title
+          $PRICE (wdom/q el ".catalog-item__price-column .catalog-item__price")   ; "DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(2) > STRONG:nth-child(1)"
+          $PRICE-M2 (wdom/q el ".catalog-item__price-column .catalog-item__price-per-sqm")
 
-  ;; label_new-building
-  ".catalog-item__info .catalog-item__title > DIV:nth-child(2) > SPAN:nth-child(2)" "commission",
-  ".catalog-item__info .catalog-item__title > DIV:nth-child(2) > SPAN:nth-child(3)" "commission"
-  ".catalog-item__info .catalog-item__title > A:nth-child(1)" "address",
+          $UPD (wdom/q el ".catalog-item__additional-info-container .catalog-item__additional-info")
 
-  ".catalog-item__info > DIV:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(2)" "house-params",  ;; catalog-item_info-item-row
+          $AGENT (wdom/q el ".ov-author__info .ov-author__name A")
+          ]
+      ;; ID
+      ; (mark! $ID "ID")
+      ;; image
+      (mark! $IMG "IMG")
+      ;; addr
+      (mark! $ADDR "ADDR")
+      ;; all labels
 
-  ".catalog-item__info .catalog-item_info-item-row > STRONG:nth-child(1)" "price-usd",
-  ".catalog-item__info .catalog-item_info-item-row > DIV:nth-child(2)" "price-per-m",
-
-  ".catalog-item__info > DIV:nth-child(2) > EM:nth-child(1)" "listing-date", ;; catalog-item__additional-info
-
-  ".catalog-item__info > DIV:nth-child(3) > DIV:nth-child(1) > A" "agent-url",
-  ".catalog-item__info > DIV:nth-child(3) > DIV:nth-child(2) > DIV:nth-child(1) > A",
-
-  ;; "DIV:nth-child(1)" -> catalog-item__img-col [paid]
-  ".catalog-item__img-col > DIV > A:nth-child(1) > IMG" "listing-image",
-  ".catalog-item__img-col > DIV > A:nth-child(1)" "listing-url"
-
-
-
-  (if-let [id (safe-href el ".catalog-item__img-col > DIV > A:nth-child(1)")]
-    (do
+        ;; label_location
+        ;; label_no_commission
+        ;; label_location_subway
 
 
-      (mark! (wdom/q ".catalog-item__img-col > DIV > A:nth-child(1)") "ID")
+      ;"DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > H2:nth-child(1) > DIV:nth-child(2) > A:nth-child(1)"
 
-      (mark! (wdom/q ".catalog-item__info .catalog-item__title") "TITLE-BLOCK")
+      ;;(mark! (wdom/q el ".catalog-item__general-info H2 DIV A.label") "LBL")
 
-      (mark! (wdom/q ".catalog-item__info .catalog-item_info-item-row") "PRICE-BLOCK" )
+      ;; paid
 
-      ;;
+
+      ;; house info
+      ;
+      ;(mark! $HOUSE "HOUSE-DETAILS")
+
+      ;; descr
+      ;; (mark! $DESCR "DESCR")
+
+
+      ;; price
+
+      ;(mark! $PRICE "PRICE USD")
+      ;(mark! $PRICE-M2 "PRICE M^2")
+
+      ;; upd
+      ;;(mark! $UPD "UPD")
+
+      ;; rieltor
+
+      (mark! $AGENT "RIELTOR")
+      ;
+
+      ;; $LABELS
 
       (swap! *SCRAPED-DATA conj
-             (merge {:id id})
-             )
+             (merge {:id id}
+                    (->price $PRICE $PRICE-M2) ;; todo: commision
+                    (->house $HOUSE)
+                    (->upd   $UPD)
+                    {:descr (-> $DESCR
+                        (wdom/txt)
+                        ;; (js/decodeURI)
+                        (str/replace "... далі" "…")
+                        (str/trim)
+                        )}
+                    ))
 
 
       ;
       )
     )
-
-  ;; :ok
-
-
-  #_(let [
-
-
-        ]
-
-    (if-let [id (safe-href el id_$)]
-      (do
-
-        (swap! *SCRAPED-DATA conj
-               (merge
-
-                 {
-                  :id id
-
-                  ;; todo: exctract WL index from the URL
-
-                  ;:channel (safe-href el channel_$)
-                  ;:title (safe-txt el title_$)
-
-
-                  ;; :el-map (map #(dissoc % :el) (wdom/el-map el :top-selector-fn (fn [base el] { :nth-child (:i base)})))
-                  }
-
-                 (if-let [n (wdom/q el "YTD-CHANNEL-NAME YT-FORMATTED-STRING > A")]
-                   {:channel-href (wdom/attr n "href")  }
-                   {"YTD-CHANNEL-NAME YT-FORMATTED-STRING > A" false
-                    :html (.-outerHTML el)
-                    })
-
-                 (if-let [n (wdom/q el "A YT-IMG-SHADOW:nth-child(1) IMG")]
-                   {:img-src (wdom/attr n "src")  }
-                   {"A YT-IMG-SHADOW:nth-child(1) IMG" false
-                    :html (.-outerHTML el)
-                    })
-
-                 (if-let [n (wdom/q el "#channel-name #text a")]
-                   {:channel-title (.-innerText n)  }
-                   {"#channel-name #text a" false
-                    :html (.-outerHTML el)
-                    })
-
-                 (if-let [n (wdom/q el "DIV:nth-child(3)  H3:nth-child(1)  SPAN:nth-child(2)")]
-                   {:title (.-innerText n)}
-                   {
-                    "DIV:nth-child(3)  H3:nth-child(1)  SPAN:nth-child(2)" false
-                    :html (.-outerHTML el)
-                    })
-
-                 (if-let [n (wdom/q el "YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER > SPAN:nth-child(2)")]
-                   {:duration (.-innerText n)}
-                   {
-                    "YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER > SPAN:nth-child(2)" false
-                    :html (.-outerHTML el)
-                    })
-
-
-
-
-                 #_(if-let [n (wdom/q el "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A")]
-                     {:innerText (.-innerText n)}
-                     {"DIV:nth-child(3) > H3:nth-child(1) > SPAN:nth-child(2)" false})
-
-
-                 )
-               )
-        )
-
-      (do
-        (.warn js/console "cannot find the id for element " el)
-        )
-      )
-
-
-    )
-
-
   )
+
 
 (defn is-scraped? [el]
   (dataset/has el "woof_id"))
@@ -481,7 +554,8 @@
               :css/a2   [:css-rule (str SCRAPE-SELECTOR " { outline: 1px solid red; }")]
 
 
-              :css/c4   [:css-rule ".parsed { opacity: .6; }"]
+              ;; :css/c4   [:css-rule ".parsed { opacity: .6; }"]
+
               :css/c4_1 [:css-rule ".parsed-twice { background-color: red; }"]
               :css/c4_2 [:css-rule ".parsed-error { background-color: red; outline: 5px solid crimson; }"]
               :css/c5   [:css-rule ".parsed-red { outline: 5px solid red; }"]
@@ -493,8 +567,10 @@
 
 
 
-              :css/attr-0 [:css-rules* [".DDD:hover" "outline: 1px solid crimson;"]]
-              :css/attr-1 [:css-rules* [".DDD:before" "content: attr(data-parse-id); b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+              :css/attr-0 [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
+              :css/attr-1 [:css-rules* [".DDD > *" "z-index: 100;"]]
+              :css/attr-2 [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+              :css/attr-3 [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
 
               }
 
@@ -513,6 +589,23 @@
 
      :api   (let [trigger-event (fn [steps] (_trigger-event (get @*wf-state :WF/params {}) steps))]
               (array-map
+
+                "debug" (fn []
+                          (classes/toggle (.-body js/document) "woof-debug")
+                          )
+
+                "save HTML" (fn []
+                              (let [els (wdom/q* SCRAPE-SELECTOR)
+                                    html (reduce (fn [s el]
+                                                   (str s (. el -outerHTML))) "" els)
+                                    ]
+
+                                (ws/POST "http://localhost:8081/kv/put" (fn [])
+                                         {:k :html
+                                          :v html}
+                                         )
+                                )
+                              )
 
                 "A) trigger scraping: simple" #(trigger-event {(base/rand-sid) [:brute-force-simple SCRAPE-SELECTOR]})
                 "B) trigger scraping: brute"  #(trigger-event
@@ -547,6 +640,13 @@
                                ;(wdom/save-edn (str "rieltor-" (u/now) ".edn") data)
                                ))
 
+                "SAVE-EDN" (fn []
+                             (let [data @*SCRAPED-DATA]
+                               (ws/POST "http://localhost:8081/kv/put" (fn [])
+                                        {:k :listings
+                                         :v data})
+                               )
+                     )
 
 
 
