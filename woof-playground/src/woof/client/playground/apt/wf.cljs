@@ -4,6 +4,10 @@
     [clojure.string :as str]
     [clojure.set :as set]
 
+
+    [goog.string :as gstring]
+    [cljs.pprint :as pprint]
+
     [rum.core :as rum]
 
     [woof.base :as base]
@@ -44,39 +48,104 @@
 
 
 
+(def js_USD-fmt (clj->js {:style   "currency"
+                         :currency "USD"
+                         }))
+
+(def js_UAH-fmt (clj->js {:style   "currency"
+                          :currency "UAH"
+                          }))
+
+(defn usd-fmt [usd] (.toLocaleString usd "uk-UA" js_USD-fmt))
+(defn uah-fmt [uah] (.toLocaleString uah "uk-UA" js_UAH-fmt))
+
+
+(defn lpad [count s]
+  (pprint/cl-format nil (str "~" count ",'" " " "d") s))
+
+
+(defn listing-url [source id]
+  (cond
+    (= source :riel) (str "https://rieltor.ua" id)
+    :else id
+    )
+  )
+
 (rum/defc <listing> < rum/static {
                                  :key-fn (fn [x] (str (:id x)))}
   [x]
-
   (let [{
          id :id
-
          } x]
 
     [:div.listing-row.html
      {:on-click (fn[e] (.log js/console x))
       ;:class (get x :css "")
       }
-     [:div
-      [:div
 
 
-       ;[:span.tag.small-tag.i (get x :i -1)]
+     [:div.flex
+      ; header
 
-       (if id [:span.tag.small-tag.id "id " id])
-       ; [:span.tag.small-tag.idx idx]
+      (let [usd (usd-fmt (get x :USD 0))
+            uah (uah-fmt (get x :UAH 0))
+            usd-m2 (usd-fmt (get x :USD_M2 0))
+            uah-m2 (uah-fmt (get x :UAH_M2 0))
+            padded-usd-m2 (lpad (count usd) usd-m2)
+            padded-uah-m2 (lpad (count uah) uah-m2)]
+        [:div.prices-block.html
+         [:span.tag.small-tag usd " / " uah] "\n"
+         [:span.tag.small-tag padded-usd-m2 " / " padded-uah-m2 " м²"]
+         ]
+        )
 
-       [:span.tag.small-tag (str (get x :USD "") "$")]
+
+
+      [:span.tag.small-tag.html
+       [:a {:href (listing-url (:source x) id)} id]
+
+       "\n"
+       (:upd x) " (" (:added x) ")"
        ]
 
       ]
 
-     [:p (get x :descr "")]
+     [:div.flex
+      [:div.addr-block.html
+       "\n" (:addr_street x) " " (:addr_house x) "\t" (:addr_district x)
+       "\n\n"
+       "Поверх: \t" (str (:floor x)) " / " (str (:floor_total x))
+       (str "\nПлоща (разом/житл/кухня):\t" (:area_total x) " / " (:area_living x) " / " (:area_kitchen x))
 
-     ;;
-     [:.html (pr-str (keys x))]
+       (if-let [walls (:house_walls x)]
+         (str "\nСтіни:\t" walls))
 
-     ;[:.other other]
+       [:p (get x :descr "")]
+       ]
+      [:.imgs-block
+       (pr-str (:img-n x))
+       (map (fn [url]
+              [:img {:src url}]
+              ) (get x :imgs []))
+       ]
+
+      ]
+
+
+
+
+
+
+     ;[:span.tag.small-tag.i (get x :i -1)]
+     ; [:span.tag.small-tag.idx idx]
+
+
+
+
+
+     [:.other
+      (pr-str (sort (keys x)))
+      ]
 
      #_(if (:test x)
        [:.html {:style {:outline "1px solid red"}}
@@ -150,6 +219,8 @@
 
            xs (comp
                 ;identity
+                (map-indexed #(assoc %2 :i %1))
+
                 (data/z-map-1
                   (data/juxt-mapper
                     __cheap
@@ -227,7 +298,6 @@
 ;;
 ;; WF definition
 (defn wf! [*SWF]
-
   (let [CHAN-FACTORY (base/chan-factory (atom {}))
         *dict (rum/cursor-in *SWF [:state ::data])]
     {

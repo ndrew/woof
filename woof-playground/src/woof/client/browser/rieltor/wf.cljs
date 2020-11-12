@@ -33,6 +33,10 @@
 ;; and to iterate through all article elements manually
 
 
+(def ALLOW-DOUBLE-PARSE true)
+(def SCRAPE-SELECTOR ".index-list-container > .catalog-item")
+
+
 ;;
 ;; parsing implementation
 
@@ -43,7 +47,6 @@
 
 (defonce *FAILED (atom []))
 
-(def SCRAPE-SELECTOR ".index-list-container > .catalog-item")
 
 
 (defn safe-href [el selector]
@@ -208,6 +211,54 @@
     )
   )
 
+(defn ->addr [$ADDR]
+
+  (let [t (-> $ADDR
+              (wdom/txt)
+              ;(js/decodeURI)
+              ;(str/replace " " "")
+              )
+        [_str _house-n _district] (str/split t ",")
+
+        ;;[_ _upd _added] (re-find #"^Онов:(.+)\sДод:(.+)$" t)
+        ]
+    {
+     :_ADDR t
+
+     :addr_street (str/trim _str)
+     :addr_house (str/trim _house-n)
+     :addr_district (str/trim _district)
+     }
+    )
+  )
+
+
+(defn ->img [$IMG $IMG-NUM]
+
+  (let [src (wdom/attr $IMG "src")
+        src-set (wdom/attr $IMG "srcset")
+        alt (wdom/attr $IMG "alt")
+
+        img-n (-> $IMG-NUM
+            (wdom/txt-only)
+            (str/trim)
+            (d/to-primitive)
+            )
+
+
+        ]
+
+    {
+     :imgs [src
+            ; src-set
+            ]
+     :img-n img-n
+     :img-alt alt
+     }
+    )
+  )
+
+
 ;; element scraping function
 (defn scrape-element [el]
   ; (.warn js/console el (d/pretty! (wdom/dataset el)))
@@ -215,16 +266,23 @@
   ;; (swap! *SCRAPED-DATA conj (. (. el -parentElement) -innerHTML))
 
   ;; saving parsing status in dom
-  (when (classes/has el "parsed")
-    (.warn js/console "PARSE WAS CALLED TWICE")
-    (classes/add el "parsed-twice"))
+
+  (if-not ALLOW-DOUBLE-PARSE
+    (when (classes/has el "parsed")
+      (.warn js/console "PARSE WAS CALLED TWICE")
+      (classes/add el "parsed-twice"))
+    )
 
   (classes/add el "parsed")
 
   ;; *PROCESSING-MAP
   (if-let [id (safe-href el ".catalog-item__img A")]
     (let [$ID (wdom/q el ".catalog-item__img A")     ; "DIV:nth-child(1) > DIV > A:nth-child(1)" -> ".catalog-item__img A"
+
+
           $IMG (wdom/q el ".catalog-item__img IMG")  ; "DIV:nth-child(1) > DIV > A:nth-child(1) > IMG"
+          $IMG-NUM (wdom/q el ".catalog-item__img .catalog-item__img-num")
+
 
           $ADDR (wdom/q el ".catalog-item__general-info > H2:nth-child(1) > A:nth-child(1)") ; "DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > H2:nth-child(1) > A:nth-child(1)"
           $HOUSE (wdom/q el ".catalog-item__general-info .catalog-item_info-item-row")       ; "DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(2)"
@@ -243,9 +301,9 @@
       ;; ID
       ; (mark! $ID "ID")
       ;; image
-      (mark! $IMG "IMG")
+      ;; (mark! $IMG "IMG")
       ;; addr
-      (mark! $ADDR "ADDR")
+      ;; (mark! $ADDR "ADDR")
       ;; all labels
 
         ;; label_location
@@ -284,8 +342,17 @@
       ;; $LABELS
 
       (swap! *SCRAPED-DATA conj
-             (merge {:id id}
-                    (->price $PRICE $PRICE-M2) ;; todo: commision
+             (merge {
+                     :source :riel
+                     :id id
+                    }
+
+                    (->addr $ADDR)
+                    (->price $PRICE $PRICE-M2)
+
+                    ;; todo: commision
+                    (->img $IMG $IMG-NUM)
+
                     (->house $HOUSE)
                     (->upd   $UPD)
                     {:descr (-> $DESCR
@@ -294,6 +361,7 @@
                         (str/replace "... далі" "…")
                         (str/trim)
                         )}
+
                     ))
 
 
@@ -303,13 +371,17 @@
   )
 
 
+
 (defn is-scraped? [el]
-  (dataset/has el "woof_id"))
+  (dataset/has el "woof_id")
+  )
 
 (defn mark-scraped! [el]
   (let [sid (base/rand-sid)]
     ;; mark element as processed
-    (dataset/set el "woof_id" sid)
+    (if-not ALLOW-DOUBLE-PARSE
+      (dataset/set el "woof_id" sid)
+      )
     ))
 
 
@@ -362,6 +434,10 @@
 
 (defn wf! [*wf-state meta-info]
 
+ ;; (wf-clean-up-css)
+
+  (.clear js/console)
+  (reset! *SCRAPED-DATA [])
   (wf-clean-up-css)
 
   ;; for now go with local scope, instead of init fn
@@ -372,6 +448,7 @@
                               ;; try to find elements to be processed, but skip already processed
                               (let [els (filter (fn [el] (not (is-scraped? el)))
                                                 (wdom/q* selector))]
+
                                 (.log js/console "els" els (wdom/q* selector))
 
                                 (reduce (fn [a el]
@@ -470,8 +547,6 @@
                                    )
         ]
 
-    ;; (.clear js/console)
-    (wf-clean-up-css)
     {
      :init  []
 
@@ -665,3 +740,8 @@
     )
 
   )
+
+
+
+;; call this on refresh
+;; (wf-clean-up-css)

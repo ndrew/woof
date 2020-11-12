@@ -129,7 +129,20 @@
 (defn txt [el]
   (dom/getTextContent el))
 
+
+(defn txt-only [el]
+  (let [ch (array-seq (.-childNodes el))]
+    (reduce (fn [s el']
+              (if (= "#text" (.-nodeName el'))
+                (str s (.-textContent el'))
+                s)
+              ) "" ch)
+    )
+  )
+
+
 (defn tag-only [el]
+  ;; todo: brutal
   (str/replace (.-outerHTML el)
                (.-innerHTML el)
                ""
