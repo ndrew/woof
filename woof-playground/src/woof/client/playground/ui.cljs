@@ -243,10 +243,13 @@
 
 (rum/defcs <transform-list> < rum/static
                               (rum/local nil ::filter)
-  [st <item> items markers-map & {:keys [id-fn sort-fn copy-fn filter-map]
+  [st <item> items markers-map & {:keys [id-fn sort-fn copy-fn filter-map api-fns]
                                   :or  {id-fn identity
                                         copy-fn identity
-                                        filter-map {}}}]
+                                        filter-map {}
+                                        api-fns []
+                                        }
+                                  }]
 
   (let [&markers    (fn [item] (get markers-map (id-fn item)))
 
@@ -272,7 +275,7 @@
                        items)
 
 
-        display-items (into [] filter-rule sorted-items)
+        display-items (into [] filter-rule sorted-items )
         ]
 
     [:div.list
@@ -292,11 +295,14 @@
                  []
                  ["all" (fn [] (reset! *filter :all))] []]
 
-                (map #(do [(if (= filter-id %)
-                             (str "✅️" (pr-str %))
-                             (pr-str %)
-                             )
-                            (fn [] (reset! *filter %))]) filter-ids)
+                (concat
+                  (map #(do [(if (= filter-id %)
+                               (str "✅️" (pr-str %))
+                               (pr-str %)
+                               )
+                             (fn [] (reset! *filter %))]) filter-ids)
+                  api-fns
+                  )
                 )
               )
 

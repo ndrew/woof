@@ -71,9 +71,10 @@
     )
   )
 
-(rum/defc <listing> < rum/static {
-                                 :key-fn (fn [x] (str (:id x)))}
-  [x]
+(rum/defcs <listing> < rum/static
+                       (rum/local false ::details?)
+                       {:key-fn (fn [x] (str (:id x)))}
+  [st x]
   (let [{
          id :id
          } x]
@@ -98,7 +99,6 @@
          [:span.tag.small-tag padded-usd-m2 " / " padded-uah-m2 " м²"]
          ]
         )
-
 
 
       [:span.tag.small-tag.html
@@ -128,12 +128,7 @@
               [:img {:src url}]
               ) (get x :imgs []))
        ]
-
       ]
-
-
-
-
 
 
      ;[:span.tag.small-tag.i (get x :i -1)]
@@ -142,10 +137,21 @@
 
 
 
+     (let [*details? (::details? st)]
 
-     [:.other
-      (pr-str (sort (keys x)))
-      ]
+       [:.other
+        (pg-ui/menubar "" [
+                           [(pg-ui/shorten-bool @*details?) (fn [] (swap! *details? not))]
+                           ])
+
+        (if @*details?
+          [:.html
+           (d/pretty! (into (sorted-map) x))]
+          )
+        ]
+       )
+
+
 
      #_(if (:test x)
        [:.html {:style {:outline "1px solid red"}}
@@ -169,7 +175,10 @@
 
   )
 
-(rum/defcs <apt> < rum/reactive
+(rum/defcs <apt> <
+  (rum/local nil ::sort-key)
+  rum/reactive
+
   [st *data]
   [:div
    (pg-ui/menubar "KV"
@@ -209,6 +218,18 @@
                                          :area_total
                                          ]})
 
+           sort-fns (array-map
+                      :upd↓ (fn [a b] (compare (:upd a) (:upd b)))
+                      :upd↑ (fn [a b] (compare (:upd b) (:upd a)))
+                      :USD↓ (fn [a b] (compare (:USD a) (:USD b)))
+                      :USD↑ (fn [a b] (compare (:USD b) (:USD a)))
+                      )
+
+
+           sorters (into #{} (keys sort-fns))
+
+           sort-fn (get sort-fns @(::sort-key st)
+                (get sort-fns :USD↓))
 
            *asserts (volatile! [])
 
@@ -241,11 +262,17 @@
          (group-by :id @*asserts)
          :id-fn :id
 
-         :sort-fn (fn [a b] (compare (:upd a) (:upd b)))
+         :sort-fn sort-fn
 
          :filter-map {
                       "cheap" (partial pg-ui/_marker-class-filter "cheap")
                       }
+         :api-fns (concat [[]]
+                          (map (fn [sk]
+                                 [(name sk) (fn []
+                                              (reset! (::sort-key st) sk)
+                                              )]
+                                 ) (sort sorters)))
          )
 
        )
