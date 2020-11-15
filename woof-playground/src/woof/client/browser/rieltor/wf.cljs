@@ -86,48 +86,36 @@
     ))
 
 
-
 (defn ->price [$PRICE $PRICE-M2]
-  (let [usd-price-text (wdom/txt $PRICE)       ;; "250 000 $"
-        usd-price-m2-text (wdom/txt $PRICE-M2) ;; "2 326 $/м²"
+  ;; "250 000 $" or hrn
+  (let [price-text (-> $PRICE
+                       (wdom/txt)
+                       (str/replace " " ""))
+        price-m2-text (-> $PRICE-M2
+                          (wdom/txt)
+                          (str/replace " " "")
+                          ) ;; "2 326 $/м²"
 
-        price-text (wdom/attr $PRICE "title")  ;; " По курсу НБУ - 3 291 123 грн / 65 977 грн/м²"
-        [uah uah-m2] (-> price-text
-            (str/trim)
-            (str/replace "По курсу НБУ - " "")
-            (str/split "/"))]
-    {
+        xchange-price-text (wdom/attr $PRICE "title")  ;; " По курсу НБУ - 3 291 123 грн / 65 977 грн/м²"
+        [xchange-price xchange-price-m2] (-> xchange-price-text
+                                             (str/trim)
+                                             (str/replace "По курсу НБУ - " "")
+                                             (str/replace " " "")
+                                             (str/split "/"))
 
+        price->curr (partial re-find #"^(\d+)(.+)$")
+        ]
 
-     :USD  (-> usd-price-text
-               (str/replace "$" "")
-               (str/replace " " "")
-               (d/to-primitive))
-
-
-     :USD_M2  (-> usd-price-m2-text
-               (str/replace "$/м²" "")
-               (str/replace " " "")
-               (d/to-primitive))
-
-
-     :UAH (-> uah
-              (str/replace "грн" "")
-              (str/replace " " "")
-              (d/to-primitive))
-
-     :UAH_M2 (-> uah-m2
-                 (str/replace "грн" "")
-                 (str/replace " " "")
-                 (d/to-primitive))
-
-     ;; raw values
-     :_UAH uah
-     :_UAH_M2 uah-m2
-     :_USD usd-price-text
-     :_USD_M2 usd-price-m2-text
-
-     }
+    (merge
+      (let [[_ p c] (price->curr price-text)]
+        {(if (= "$" c) :USD :UAH) (d/to-primitive p)})
+      (let [[_ p c] (price->curr xchange-price)]
+        {(if (= "$" c) :USD :UAH) (d/to-primitive p)})
+      (let [[_ p c] (price->curr price-m2-text)]
+        {(if (= "$/м²" c) :USD_M2 :UAH_M2) (d/to-primitive p)})
+      (let [[_ p c] (price->curr xchange-price-m2)]
+        {(if (= "$/м²" c) :USD_M2 :UAH_M2) (d/to-primitive p)})
+      )
     )
 
   )
@@ -211,6 +199,22 @@
     )
   )
 
+(defn ->agent [$AGENT]
+  (let [n (wdom/txt $AGENT)
+        tel (-> (wdom/attr $AGENT "href"))
+
+        [_ _tel] (re-seq #"(\d+)\.rieltor.ua" tel)
+        ]
+
+    {
+      :agent-id _tel
+      :agent-name n
+     }
+    )
+
+
+  )
+
 (defn ->addr [$ADDR]
 
   (let [t (-> $ADDR
@@ -244,8 +248,6 @@
             (str/trim)
             (d/to-primitive)
             )
-
-
         ]
 
     {
@@ -287,7 +289,7 @@
           $ADDR (wdom/q el ".catalog-item__general-info > H2:nth-child(1) > A:nth-child(1)") ; "DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > H2:nth-child(1) > A:nth-child(1)"
           $HOUSE (wdom/q el ".catalog-item__general-info .catalog-item_info-item-row")       ; "DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(2)"
 
-          $LABELS (wdom/q el ".catalog-item__general-info > H2:nth-child(1) > DIV .label")
+          $LABELS (wdom/q* el ".catalog-item__general-info > H2:nth-child(1) > DIV .label")
 
           $DESCR (wdom/q el ".catalog-item__info .catalog-item_info-description") ;;
 
@@ -298,6 +300,11 @@
 
           $AGENT (wdom/q el ".ov-author__info .ov-author__name A")
           ]
+
+
+
+      ;(.log js/console (map #(wdom/attr % "class") $LABELS) $LABELS)
+
       ;; ID
       ; (mark! $ID "ID")
       ;; image
@@ -315,7 +322,6 @@
 
       ;;(mark! (wdom/q el ".catalog-item__general-info H2 DIV A.label") "LBL")
 
-      ;; paid
 
 
       ;; house info
@@ -336,7 +342,7 @@
 
       ;; rieltor
 
-      (mark! $AGENT "RIELTOR")
+      ;;(mark! $AGENT "RIELTOR")
       ;
 
       ;; $LABELS
@@ -347,6 +353,44 @@
                      :id id
                     }
 
+                    ;; meta info block
+                    (reduce (fn [m $lbl]
+                              (let [classes' (wdom/attr $lbl "class")
+                                    classes (into #{} (str/split classes' #"\s"))
+                                    ]
+
+                                ;(.log js/console classes $lbl)
+                                (merge
+                                  m
+                                  (if (classes "label_no_commission") {:no_commission true})
+
+                                  (if (classes "label_attention")
+                                    {
+                                     :paid true
+                                     :paid_info (str/trim (wdom/txt $lbl))
+                                     })
+
+                                  (if (or (classes "label_location")
+                                          (classes "label_location_subway"))
+                                    (let [distr-url (wdom/attr $lbl "href")
+                                          distr   (wdom/txt $lbl)]
+                                      (merge
+                                        {
+                                          :district_1 distr
+                                          :district_1_url distr-url
+                                        }
+                                        (if (classes "label_location_subway")
+                                          {:subway distr}))))
+                                  (if (classes "label_new-building") {:house_new true})
+
+                                  )
+                                )
+                              )
+                            (if (wdom/q el ".paid")
+                                  {:paid true}
+                                  {})
+                            $LABELS)
+
                     (->addr $ADDR)
                     (->price $PRICE $PRICE-M2)
 
@@ -354,6 +398,8 @@
                     (->img $IMG $IMG-NUM)
 
                     (->house $HOUSE)
+
+                    (->agent $AGENT)
                     (->upd   $UPD)
                     {:descr (-> $DESCR
                         (wdom/txt)
@@ -449,7 +495,7 @@
                               (let [els (filter (fn [el] (not (is-scraped? el)))
                                                 (wdom/q* selector))]
 
-                                (.log js/console "els" els (wdom/q* selector))
+                                ;;(.log js/console "els" els (wdom/q* selector))
 
                                 (reduce (fn [a el]
                                           (let [_sid (mark-scraped! el)
@@ -574,6 +620,8 @@
                                              (scrape-element el)
                                              (catch js/Error e
                                                (do
+                                                 (classes/add el "parsed-error")
+
                                                  (.error js/console e)
 
                                                  (swap! *FAILED conj
@@ -636,6 +684,7 @@
               :css/c5   [:css-rule ".parsed-red { outline: 5px solid red; }"]
               :css/c6   [:css-rule ".parsed-magenta { outline: 5px solid magenta; }"]
               :css/c7   [:css-rule ".parsed-brown { outline: 5px solid brown; }"]
+              :css/c8   [:css-rule ".parsed-error { outline: 5px solid brown; }"]
 
 
               ;; :css/attr-0 [:css-rule ".DDD { outline: 5px solid blue; }"]
