@@ -587,6 +587,18 @@
    }
   )
 
+
+(defn expand-limited [step-id n]
+  {
+   :fn (fn [els]
+         (reduce (fn [a e] (assoc a (rand-sid) [step-id e]))
+                 {}
+                 (take n els)))
+   :expands? true
+   }
+  )
+
+
 #_(defn chain-expanded-ctx-cfg [wrapper-step]
   {
    :fn       (fn [sid-list]
