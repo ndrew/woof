@@ -199,13 +199,13 @@
     )
   )
 
+
 (defn ->agent [$AGENT]
   (let [n (wdom/txt $AGENT)
         tel (-> (wdom/attr $AGENT "href"))
 
-        [_ _tel] (re-seq #"(\d+)\.rieltor.ua" tel)
+        [_ _tel] (re-find #"(\d+)\.rieltor.ua" tel)
         ]
-
     {
       :agent-id _tel
       :agent-name n
@@ -366,7 +366,7 @@
 
                                   (if (classes "label_attention")
                                     {
-                                     :paid true
+                                     ;:paid true
                                      :paid_info (str/trim (wdom/txt $lbl))
                                      })
 

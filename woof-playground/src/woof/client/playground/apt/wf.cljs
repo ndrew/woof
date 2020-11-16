@@ -101,21 +101,52 @@
         )
 
 
-      [:span.tag.small-tag.html
-       [:a {:href (listing-url (:source x) id)} id]
+      [:div.html
+       (:agent-name x) "\t"
+       (pr-str (get x :agent-id))
 
-       "\n"
-       (:upd x) " (" (:added x) ")"
+       ]
+
+      [:span.tag.small-tag.html
+       (:upd x) " (" (:added x) ")\n"
+
+       [:div.flex
+
+        (if (or
+              (get x :paid true)
+              (get x :paid_info))
+          [:.tag.small-tag.paid (get x :paid_info "PAID")])
+
+        (if (get x :no_commission false)
+          [:.tag.small-tag.no-commission "NO COMMISSION"])
+
+        [:span.small-tag.tag.css (name (:source x))]
+
+        ]
+
+       [:a {:href (listing-url (:source x) id)} id]
        ]
 
       ]
 
      [:div.flex
       [:div.addr-block.html
-       "\n" (:addr_street x) " " (:addr_house x) "\t" (:addr_district x)
+      [:div
+
+       [:span.small-tag.tag.district
+        (if-let [d1 (get x :district_1)]
+          (str d1 " (" (:addr_district x) ")")
+          (:addr_district x))]
+
+       ]
+
+       "\n" (:addr_street x) " " (:addr_house x) ""
+
+
        "\n\n"
-       "Поверх: \t" (str (:floor x)) " / " (str (:floor_total x))
-       (str "\nПлоща (разом/житл/кухня):\t" (:area_total x) " / " (:area_living x) " / " (:area_kitchen x))
+
+       "Поверх: " (str (:floor x)) " / " (str (:floor_total x))
+       (str "\nПлоща:\t" (:area_total x) " / " (:area_living x) " / " (:area_kitchen x) "\t(разом/житл/кухня)" )
 
        (if-let [walls (:house_walls x)]
          (str "\nСтіни:\t" walls))
