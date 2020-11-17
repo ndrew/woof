@@ -25,6 +25,9 @@
     [woof.wfs.evt-loop :as evt-loop]
 
     [clojure.set :as set]
+
+    [cljs-time.core :as time]
+    [cljs-time.format :as time-fmt]
     )
 
   (:require-macros
@@ -71,6 +74,23 @@
     )
   )
 
+
+(defn interval-str [interval]
+  (if interval
+    (str (time/in-days interval) " days")
+    "!!!!!!!!!!"
+    )
+  )
+
+(defn safe-interval [start end]
+  (if (> (.getTime start) (.getTime end))
+    (time/days 0)
+    (time/interval start end)
+    )
+  )
+
+
+
 (rum/defcs <listing> < rum/static
                        (rum/local false ::details?)
                        {:key-fn (fn [x] (str (:id x)))}
@@ -102,41 +122,62 @@
 
 
       [:div.html
-       (:agent-name x) "\t"
+       (:agent-name x) "\n"
        (pr-str (get x :agent-id))
 
        ]
 
-      [:span.tag.small-tag.html
-       (:upd x) " (" (:added x) ")\n"
+      (try
+        [:span.tag.small-tag.html
 
-       [:div.flex
+         "days after addition: " (interval-str (:d/between-add-and-update x))
+         "\nupdated days ago: " (interval-str (:d/updated-ago x))
+         "\nadded days ago: " (interval-str (:d/added-ago x))
 
-        (if (or
-              (get x :paid true)
-              (get x :paid_info))
-          [:.tag.small-tag.paid (get x :paid_info "PAID")])
+         #_(pr-str (time/in-days
+                     (time/interval (:added' x)  (:upd' x) ))) "\n\n"
 
-        (if (get x :no_commission false)
-          [:.tag.small-tag.no-commission "NO COMMISSION"])
+         (:upd x) " (" (:added x) ")\n"
 
-        [:span.small-tag.tag.css (name (:source x))]
+         [:div.flex
 
-        ]
+          (if (or
+                (get x :paid true)
+                (get x :paid_info))
+            [:.tag.small-tag.paid (get x :paid_info "PAID")])
 
-       [:a {:href (listing-url (:source x) id)} id]
-       ]
+          (if (get x :no_commission false)
+            [:.tag.small-tag.no-commission "NO COMMISSION"])
+
+          [:span.small-tag.tag.css (name (:source x))]
+
+          ]
+
+         [:a {:href (listing-url (:source x) id)} id]
+         ]
+        (catch js/Error e
+          [:.html
+           (pr-str e)
+           ]
+          )
+        )
+
 
       ]
 
      [:div.flex
       [:div.addr-block.html
-      [:div
+
+       [:div
 
        [:span.small-tag.tag.district
         (if-let [d1 (get x :district_1)]
           (str d1 " (" (:addr_district x) ")")
           (:addr_district x))]
+
+        #_(if-let [subway (:subway x)]
+          [:span.small-tag.tag.district subway]
+          )
 
        ]
 
@@ -206,6 +247,8 @@
 
   )
 
+
+
 (rum/defcs <apt> <
   (rum/local nil ::sort-key)
   rum/reactive
@@ -249,11 +292,26 @@
                                          :area_total
                                          ]})
 
+
+
+           date-fmt (time-fmt/formatter "yyyy.MM.dd")
+           to-time (partial time-fmt/parse date-fmt)
+
            sort-fns (array-map
-                      :upd↓ (fn [a b] (compare (:upd a) (:upd b)))
-                      :upd↑ (fn [a b] (compare (:upd b) (:upd a)))
                       :USD↓ (fn [a b] (compare (:USD a) (:USD b)))
                       :USD↑ (fn [a b] (compare (:USD b) (:USD a)))
+                      :upd↑ (fn [a b]
+                               #_(compare
+                                        (.getTime (:d/upd b))
+                                        (.getTime (:d/upd a)))
+                              0
+                              )
+                      :upd↓ (fn [a b]
+                              #_(compare
+                                (.getTime (:d/upd a))
+                                (.getTime (:d/upd b)))
+                              0
+                              )
                       )
 
 
@@ -267,7 +325,17 @@
            __cheap (fn [item]
                           (if (< (:USD item) 80000)
                             {:id (:id item) :class #{"cheap"}}))
+           __recent (fn [item]
+                          (if (< (time/in-days (:d/added-ago item)) 10)
+                            {:id (:id item) :class #{"recent"}}))
 
+
+           date-fmt (time-fmt/formatter "yyyy.MM.dd")
+           to-time (partial time-fmt/parse date-fmt)
+
+
+
+           curr-t (time/now)
 
            xs (comp
                 ;identity
@@ -276,11 +344,30 @@
                 (data/z-map-1
                   (data/juxt-mapper
                     __cheap
+                    __recent
                     ;;__drv-street
                     ;;__test-street
                     )
                   #(vswap! *asserts into %)
-                  identity
+                  (fn [x]
+                    (let [upd (to-time (get x :upd))
+                          added (to-time (get x :added))]
+
+                      ;(.log js/console (- (.getTime curr-t) (.getTime added)))
+
+                      (-> x
+                          (assoc :d/upd upd
+                                 :d/added added
+                                 :d/between-add-and-update (safe-interval added upd )
+                                 :d/updated-ago (safe-interval upd curr-t   )
+                                 :d/added-ago (safe-interval added curr-t  )
+                                 )
+
+                          )
+                      )
+
+
+                    )
                   )
                 )
            ui-listings (into []
@@ -296,6 +383,8 @@
          :sort-fn sort-fn
 
          :filter-map {
+                      "recent" (partial pg-ui/_marker-class-filter "recent")
+
                       "cheap" (partial pg-ui/_marker-class-filter "cheap")
                       }
          :api-fns (concat [[]]
@@ -303,7 +392,7 @@
                                  [(name sk) (fn []
                                               (reset! (::sort-key st) sk)
                                               )]
-                                 ) (sort sorters)))
+                                 ) sorters))
          )
 
        )
