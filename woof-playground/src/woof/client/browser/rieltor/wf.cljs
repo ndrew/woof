@@ -766,7 +766,7 @@
 
                 "SAVE-EDN" (fn []
                              (let [data @*SCRAPED-DATA]
-                               (ws/POST "http://localhost:8081/kv/put" (fn [])
+                               (ws/POST "http://localhost:8081/kv/append" (fn [])
                                         {:k :listings
                                          :v data})
                                )

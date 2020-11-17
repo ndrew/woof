@@ -301,6 +301,26 @@
                                 :body (pr-str :ok)}
                                )
                              )
+
+                           (compojure/POST "/kv/append" [:as request]
+
+                             (let [edn (-> request :body slurp read-string)
+                                   {k :k v :v} edn]
+
+                               (info "[KV] /kv/append" k )
+
+                               (swap! state/*kv update k concat v)
+
+                               {:status  200
+                                :headers {
+                                          "Content-Type" "application/edn; charset=utf-8"
+                                          "Access-Control-Allow-Headers" "Content-Type"
+                                          "Access-Control-Allow-Origin" "*"
+                                          }
+                                :body (pr-str :ok)}
+                               )
+                             )
+
                            )
                          #".*"
                          )
