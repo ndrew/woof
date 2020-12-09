@@ -1,12 +1,60 @@
 
+function autoRunOn() {
+    return {
+        url: [
+            {urlMatches : 'https://site-you-want-2-scrape'}
+            ]
+    }
+}
+
+
 // Called when the user clicks on the browser action or via shortcut.
 chrome.browserAction.onClicked.addListener(function(tab) {
   // No tabs or host permissions needed!
 
-  // chrome.tabs.executeScript({
-  //   code: '(function() { var $script = document.createElement(\'script\'); $script.setAttribute("type","text/javascript"); $script.setAttribute("src", "http://localhost:8081/scraper/scraper.js"); document.body.appendChild($script); })()'
-  // });
-
-	chrome.tabs.executeScript(tab.id, {file:"scraper.js"});
+	chrome.tabs.executeScript(tab.id, {
+	    file:"scraper.js"
+	});
 
 });
+
+
+
+//
+// comment this out if scraper auto-running is not required
+chrome.webNavigation.onCompleted.addListener(function (details) {
+        // console.log("This is my favorite website!");
+        if (details.frameId === 0) {
+
+            // see extensionTypes.InjectDetails
+            var injectDetails = {
+                file: "scraper.js"
+            };
+
+            var resultCb = function (result) {
+                // console.log("result")
+            };
+
+            chrome.tabs.executeScript(
+                details.tabId,
+                injectDetails,
+                resultCb);
+        }
+    },
+    autoRunOn()
+);
+
+
+// if something needs to be done on chrome startup
+chrome.runtime.onStartup.addListener(function() {
+    // nav.resetDataStorage();
+});
+
+// webNavigation: API to receive notifications about the status of navigation requests in-flight.
+
+// webNavigation events:
+//
+// onBeforeNavigate -> onCommitted -> onDOMContentLoaded -> onCompleted
+// onErrorOccurred
+// onTabReplaced
+
