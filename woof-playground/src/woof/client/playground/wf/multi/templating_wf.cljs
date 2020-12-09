@@ -20,7 +20,7 @@
 
 
     ;; for now use the simplest markdown processor
-    [markdown.core :refer [md->html]]
+    ;[markdown.core :refer [md->html]]
     )
 
   (:require-macros
@@ -296,7 +296,8 @@
 
    :md {
         :fn (fn [md]
-              (md->html md)
+              ;; todo: add markdown-clj dependency
+              ;;(md->html md)
               )
         }
 

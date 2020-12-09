@@ -13,7 +13,8 @@
     [woof.data :as d]
 
     [woof.playground.v1.utils :refer [dstr kstr vstr]]
-    [viz.core :as viz])
+    ;; [viz.core :as viz]
+    )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
@@ -149,7 +150,10 @@
 
 (defn graph-to-svg [steps rfn]
   (let [graphviz-edges (reduce rfn "" steps)]
-    (viz/image (str "digraph { " graphviz-edges " }")))
+
+    ;; todo: add viz-cljc dependency
+    ;;(viz/image (str "digraph { " graphviz-edges " }"))
+    )
   )
 
 

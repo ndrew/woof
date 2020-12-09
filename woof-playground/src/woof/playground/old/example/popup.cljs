@@ -10,7 +10,8 @@
 
     [woof.client.playground.ui :as new-ui]
 
-    [markdown.core :refer [md->html]]
+    ; [markdown.core :refer [md->html]]
+
     )
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -47,9 +48,11 @@
 
     :text {:fn (fn [x] (:text x))}
 
-    :md {:fn (fn [x] (md->html x))}
-
-
+    :md {:fn (fn [x]
+               ;; todo: add markdown-clj library
+               ;;(md->html x)
+               (str x)
+               )}
 
   }
   )
