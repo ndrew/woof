@@ -2,7 +2,8 @@
 function autoRunOn() {
     return {
         url: [
-            {urlMatches : 'https://site-you-want-2-scrape'}
+            // specify a sub-set of events, see https://developer.chrome.com/docs/extensions/reference/events/#type-UrlFilter
+            {hostSuffix: "site-you-want-to-scrape"}
             ]
     }
 }
@@ -23,9 +24,8 @@ chrome.browserAction.onClicked.addListener(function(tab) {
 //
 // comment this out if scraper auto-running is not required
 chrome.webNavigation.onCompleted.addListener(function (details) {
-        // console.log("This is my favorite website!");
-        if (details.frameId === 0) {
 
+        if (details.frameId === 0) {
             // see extensionTypes.InjectDetails
             var injectDetails = {
                 file: "scraper.js"
@@ -34,6 +34,7 @@ chrome.webNavigation.onCompleted.addListener(function (details) {
             var resultCb = function (result) {
                 // console.log("result")
             };
+
 
             chrome.tabs.executeScript(
                 details.tabId,
