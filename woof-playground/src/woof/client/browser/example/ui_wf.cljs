@@ -17,6 +17,10 @@
     ;; common wf
     [woof.wfs.evt-loop :as evt-loop]
     [woof.wfs.watcher :as watcher]
+
+    ;;
+    [rum.core :as rum]
+
     )
   )
 
@@ -24,16 +28,17 @@
 ;; http://localhost:9500/example/ui.html
 
 
-(defn <ui>
+
+;; vanilla UI component, jquery style
+
+(defn <vanilla-ui>
   ([]
-   ;; init UI
    (let [$panel (dom/createDom "div" "panel woof-scrape-panel")
          $pre  (dom/createDom "pre" "woof-scrape-pre" "")]
      (dom/appendChild $panel (dom/createDom "header" "" "SCRAPER STATE:"))
      (dom/appendChild $panel $pre)
 
-     (woof-dom/ui-add-el! $panel)
-     )
+     (woof-dom/ui-add-el! $panel))
    )
   ([*state STATE]
    ;; update UI on state change
@@ -49,6 +54,47 @@
 
 
 
+(rum/defc <test-ui> < rum/static
+   [*state STATE]
+
+    [:div
+           [:header "some ui here. Unfortunately, evt handlers should be set separately"]
+           [:button {:on-click (fn [e]
+                                 (.log js/console e)
+                                 (swap! *state assoc :now (u/now))
+                                 )} "foo"]
+
+           [:hr]
+           (pr-str STATE)
+           ])
+
+
+(defn <rum-ui>
+  ([]
+   ;; init UI
+   (let [$panel (dom/createDom "div" "panel woof-scrape-panel ui-container")]
+     (woof-dom/ui-add-el! $panel))
+   )
+  ([*state STATE]
+   (let [container-el (woof-dom/q ".ui-container")]
+     ;; react UI
+     (rum/mount (<test-ui> *state STATE)
+                container-el)
+
+     ;; or static markup if needed
+     #_(let [h (rum/render-static-markup (<test-ui>
+                                         *state STATE))]
+
+       (woof-dom/html! container-el h)
+     )
+   )))
+
+
+;;
+;; USE either rum based rendering, or vanilla approach
+(def <ui> <rum-ui>)
+
+;; (def <ui> <vanilla-ui>)
 
 (defn wf! [*wf-state meta-info]
 
@@ -143,14 +189,12 @@
      :api     {
                "change state" (fn []
                                      (swap! *state assoc :t (u/now))
-                                           )
+                                )
 
                }
 
      :on-stop (fn [state]
                 (__log "GENERIC: ON STOP")
-
-
 
                 #_(when-let [*old-state (get-in state [:WF/params ::state])]
                     (.log js/console "OLD STATE:" @*old-state)
