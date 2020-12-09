@@ -4,14 +4,13 @@
                ]
 
   :css-dirs ["resources/public/css"]
-
   :auto-testing false
 
   ;; open current wf
-  ;; :open-url "http://localhost:8081/scraper.html"
+  ; :open-url "http://localhost:9500/s/twitter/t.html"
 
   ;; use dummy ring handler for handling reload
-  :ring-handler woof.server.core/ring-handler
+  ;; :ring-handler woof.server.core/ring-handler
 
   ;; :connect-url "ws://localhost:8081/figwheel-connect"
   }

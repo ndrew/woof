@@ -59,8 +59,4 @@ launch server workflows from REPL
 
 http://localhost:9500/figwheel-extra-main/auto-testing
 
-## devcards 
-
-http://localhost:9500/figwheel-extra-main/devcards
-
 
