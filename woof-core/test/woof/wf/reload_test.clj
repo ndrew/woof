@@ -107,7 +107,7 @@
                                ]
                        :opts [
 
-                              (base/build-opt-state-fn *STATE)
+                              (base/build-opt-save-wf-fn *STATE)
 
                               ;; provide a stop signal channel in the workflow state atom
                               (fn [params]

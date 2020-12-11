@@ -269,7 +269,7 @@
 
 ;; shortest version of defining workflow
 (defn wf!
-  "main way of defing a woof workflow
+  "main way of defining a woof workflow
   required parameters are
    :ctx - context map, e.g {:s-handler-id <shandler-body>, ...}
         | context map constructor, e.g. (fn [params] => {:s-handler-id <shandler-body>, ...})
@@ -643,13 +643,18 @@
 
 
 
+
+
 (defn build-init-state-fn [*STATE]
   (fn [_] {::state *STATE}))
+
 
 ;; state accessor
 (defn &state [params]
   ;; todo: throw if no state is provided
   (::state params))
+
+
 
 ;; xtor accessor
 (defn state-get-xtor [*state]
@@ -657,7 +662,7 @@
 
 
 ;; keep xtor in state as ::xtor
-(defn build-opt-state-fn [*state] ;;  & {:keys [remove-state-key] :or {state-key :STATE}}
+(defn build-opt-save-wf-fn [*state] ;;  & {:keys [remove-state-key] :or {state-key :STATE}}
   (fn [params]
     {:before-process  (fn [wf-chan xtor]
                         (swap! *state assoc ::xtor xtor)

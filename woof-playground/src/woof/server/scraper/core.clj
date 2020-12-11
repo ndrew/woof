@@ -490,7 +490,7 @@
                   })
                ]
         OPTS [
-              (base/build-opt-state-fn *STATE)
+              (base/build-opt-save-wf-fn *STATE)
               (base/build-opts-chan-factory-fn CHAN-FACTORY)
               (fn [params]
                 {

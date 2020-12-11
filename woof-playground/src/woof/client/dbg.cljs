@@ -40,9 +40,12 @@
 (defn __log [& args]
   (apply (.-log js/console) args))
 
-(defn __log-start []
-  (.groupEnd js/console)
-  (.group js/console (str "dbg-" (u/now))))
+(defn __log-start
+  ([] (__log-start (str "dbg-" (u/now))))
+  ([group-name]
+   (.groupEnd js/console)
+   (.group js/console group-name)
+   ))
 
 (defn __log-end []
   (.groupEnd js/console)
