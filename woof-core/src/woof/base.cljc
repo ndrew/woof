@@ -669,7 +669,7 @@
 
 
 ;;
-;; TODO: find ways of notifying that workflow had ended and implement them in base
+;; TODO: find ways of notifying that workflow had ended and implement them in base - see (auto-run-wf! ...)
 ;;
 (defn stateful-wf
   "build a stateful workflow map with :start-wf! and :stop-wf! 'methods' to start and stop workflow. Providing :api allows to have other user 'methods' or data "
