@@ -21,7 +21,7 @@
      (with-out-str (clj-pprint/pprint data))))
 
 
-(def pretty (memoize pretty!))
+(def pretty pretty!) ;; temporary - should be removed in future
 
 
 (defn to-primitive [s]     ;; FIXME: provide proper implementation
