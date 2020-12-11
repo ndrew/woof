@@ -791,6 +791,12 @@
 
 (defn _timed-execute-fn [t executor]
   (let [exec-chann-0 (protocols/execute! executor)
+
+       ; "Takes elements from the from channel and supplies them to the to
+       ;  channel. By default, the to channel will be closed when the from
+       ;  channel closes, but can be determined by the close?  parameter. Will
+       ;  stop consuming the from channel if the to channel closes"
+
         exec-chann (async/pipe
                      exec-chann-0
                      (async/chan 1 (wf/time-update-xf t)))]
