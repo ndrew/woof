@@ -192,6 +192,7 @@
   )
 
 
+;; FIXME: remove wf-params-fn - as it's not used anywhere
 (defn parametrized-wf!
   "defines maximally parametrized woof workflow
 
@@ -220,9 +221,10 @@
      opts-fn        ;; provides opts map via opt params
      context-map-fn ;; provides context map from wf params
      steps-fn       ;; provides steps map from wf params
-     workflow-fn    ;; provides a WoofWorkflow protocol funtion
+     workflow-fn    ;; provides a WoofWorkflow protocol function
      ]
     (let [wf-fn (fn [params]
+                  ;;
                   (let [nu-params (wf-params-fn params)]
                     {
                      :params nu-params

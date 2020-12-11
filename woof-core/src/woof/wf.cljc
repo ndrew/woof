@@ -421,8 +421,7 @@
   (process-results!
     [this]
 
-    (let [op-handlers-map (get options :op-handlers-map {}) ;; FIXME: add :def handler as in cond
-
+    (let [op-handlers-map (get options :op-handlers-map {})
           ;; FIXME: find proper names for these keys
 
           {execute-fn! :execute
@@ -437,7 +436,7 @@
              execute-fn! (fn [executor]
                            (execute! executor))
 
-             before-processing! (fn[exec-chan executor])
+             before-processing! (fn [exec-chan executor])
 
              ;; redefine this with caution
              process-loop-handler (fn[msg]
@@ -488,44 +487,10 @@
 
 
 
-
-
-
-
-
-;; deprecated processor
-(defrecord AsyncWFProcessor [executor options]
-  WoofResultProcessor
-
-  (process-results! [this]
-    (let [exec-chan (get options :channel (u/make-channel))
-
-          ;; todo: pass here the tick interval or other channel piping options
-
-          t (get this ::timeout)
-          op-handler (get options :op-handler
-                          (fn [[status data]]
-                            (condp = status
-                               :error (u/throw! data) ;; re-throw it, so wf will stop
-                               :done true
-
-                                false
-                              )
-                            ))]
-      (if t
-        (process-wf-loop exec-chan op-handler t (partial end! executor))
-        (process-wf-loop exec-chan op-handler))
-
-      exec-chan
-    )
-  )
-)
-
-
 ;; TODO: add workflow merging
 
-
 ;; TODO: handle stuck workflows after certain timeout
+
 ;; TODO: parametrize backpressure handling
 ;;          Assert failed: No more than 1024 pending puts are allowed on a single channel. Consider using a windowed buffer.
 
@@ -534,12 +499,9 @@
 ;; TODO: counting puts
 
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; public interface
-
-
 
 
 (defn default-context-impl [context-map]
