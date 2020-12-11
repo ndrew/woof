@@ -23,6 +23,10 @@
 
 ;; note: :after-process handler in opts IS NOT ABOUT ending workflow
 
+
+;; SOLUTION: base/auto-run-wf!
+
+
 (defn dbg
   "debug println, with thread name"
   [& args]

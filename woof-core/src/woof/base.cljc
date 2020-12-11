@@ -136,6 +136,8 @@
         op-b (get b :op-handlers-map {})
         op-a (get a :op-handlers-map {})
 
+        ;; todo: merging :execute
+
         ]
 
     (merge

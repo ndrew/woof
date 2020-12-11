@@ -1,4 +1,4 @@
-(ns woof.intro-test
+(ns woof.wf-impl.intro-test
   (:require
     [clojure.test :refer :all]
 
@@ -37,7 +37,7 @@
 
 
 
-;; intro to woof workflows:
+;; technical intro to woof workflows:
 
 ; wf is way of representing an async computation
 ; basically it's a way of doing work and sending messages about computation progress
@@ -169,7 +169,7 @@
 ;; opts-fn — returns initial properties further (maybe modifying it)
 ;; along with opts map, where opts map describes how executor should
 ;; handle its messages, like wf is completed, etc.
-;;   TODO: maybe it should be executor-opts?
+;; TODO: maybe it should be executor-opts?
 
 
 (deftest parametrized-wf-test
