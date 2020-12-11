@@ -7,9 +7,12 @@
     ))
 
 
+;; regression tests for discovered errors
+
 
 ;; composing steps of maps was not working properly
-(deftest as-fn-list-bug
+(deftest ^:bug base__as-fn-list__bug
+
   (let [v (base/as-fn-list [{
                      ::hello [:value "woof"]
                      }])]
@@ -20,30 +23,12 @@
       (is (= {
               ::hello [:value "woof"]
               } (f {})))
-      )
-    )
-
-  )
-
-(deftest proper-sid-list-implementation
-
-  (is (= false (u/sid-list? {})))
-  (is (= false (u/sid-list? #{})))
-
-  (is (= true (u/sid-list? '())))
-  (is (= true (u/sid-list? [])))
-
-  (is (= true (u/sid-list? '(::foo))))
-  (is (= true (u/sid-list? [::bar ::baz])))
-
-  (is (= false (u/sid-list? [::bar ::baz [] ])))
-  (is (= false (u/sid-list? [::bar {} ::baz ])))
+      )))
 
 
-  )
+
 
 (deftest ^:bug collecting-empty-map-via-collect-step
-
 
   (let [wf-impl (base/wf!
                   :ctx {
@@ -70,43 +55,38 @@
 
 (deftest ^:bug kv-zip
 
-  ;; FIXME
+  (let [kv-ctx {
+                :mem-k*             {
+                                     :fn       (fn [o]
+                                                 {(base/rand-sid "mem-k-") [:identity {:k o}]})
+                                     :expands? true
+                                     }
 
-  (let [wf-impl (base/wf!
-                  :ctx [{
-                        :mem-k*             {
-                                             :fn       (fn [o]
-                                                         {(base/rand-sid "mem-k-") [:identity {:k o}]})
-                                             :expands? true
-                                             }
+                ;; kv zipping - joins keys with values
+                :*kv-zip            {
+                                     :fn       (fn [[[k] vs]]
+                                                 (let [ks (:k k)]
+                                                   (apply assoc {} (interleave ks vs))
+                                                   ))
+                                     :collect? true
+                                     }
 
-                        ;; kv zipping - joins keys with values
-                        :*kv-zip            {
-                                             :fn       (fn [[[k] vs]]
-                                                         (let [ks (:k k)]
-                                                           (apply assoc {} (interleave ks vs))
-                                                           ))
-                                             :collect? true
-                                             }
+                :identity {:fn identity }
 
-                        :identity {:fn identity }
-
-                        :collect  {
-                                   :fn       (fn [xs] xs)
-                                   :collect? true
-                                   }
-                        }
-
+                :collect  {
+                           :fn       (fn [xs] xs)
+                           :collect? true
+                           }
+                }
+        wf-impl (base/wf!
+                  :ctx [kv-ctx
                         {
                          :process* (base/expand-into :process)
-                         :process {
-                                   :fn (fn [v] (str "_" v))
-                                   }
+                         :process  {:fn (fn [v] (str "_" v))}
                          }
                         ]
 
                   :steps [{
-
                            ;; step returns values
                            ::listings [:identity [1 2 3]]
 
@@ -119,8 +99,7 @@
                            }])]
 
     (let [result @(base/sync-run-wf! wf-impl)
-          KV (:result/KV result)
-          ]
+          KV (:result/KV result)]
       ;; resulting {} should not be converted to '()
 
       ;; values are taken from ::listings
@@ -129,21 +108,4 @@
       (is (u/sid-list? (keys KV)))
       )
     )
-
-  )
-
-
-#_(let [
-      nu-opts (concat
-                (base/as-fn-list opt-fns)
-                [(partial test-wf-opts_ ready)])
-
-      wf-impl
-      (base/wf! :init init-fns
-                :steps steps-fns
-                :opts nu-opts
-                :ctx ctx-fns
-                )
-      ]
-  (base/run-wf! wf-impl identity)
   )
