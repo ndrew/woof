@@ -157,6 +157,8 @@
   )
 
 
+
+
 (defn dom-ctx [params]
   {
    ;;
@@ -654,6 +656,8 @@
   )
 
 
+
+
 (defn copy-to-clipboard [v]
   (let [clipboard js/navigator.clipboard
         copy-value (if (string? v) v (d/pretty! v))
@@ -662,6 +666,8 @@
         (.then (fn [response] (.log js/console "Copied to clipboard!" copy-value))
                (fn [err]      (.warn js/console "Failed to copy to clipboard" err))))
     ))
+
+
 
 (defn copy-to-clipboard-handler [v]
   (when js/navigator.clipboard.writeText
@@ -686,3 +692,20 @@
     )
 
   )
+
+(defn clipboard-ctx [params]
+  {
+   :copy-to-clipboard   {:fn copy-to-clipboard-handler}
+   }
+  )
+
+
+;; keep track of injected styles
+(defonce *styles-added-map (atom {}))
+
+(defn _add-style-once-steps-fn [css-url params]   ;; add css styles only once
+  (if-not (get @*styles-added-map css-url)
+    (do
+      (swap! *styles-added-map assoc css-url true)
+      { (base/rand-sid "CSS-") [:css-file css-url]})
+    {}))

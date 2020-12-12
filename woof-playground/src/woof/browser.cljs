@@ -4,6 +4,7 @@
     [cljs.core.async.interop :refer-macros [<p!]]
 
     [goog.dom :as dom]
+    [goog.object :as gobj]
 
     [rum.core :as rum]
 
@@ -42,7 +43,7 @@
          (and
            ;; do not start the browser workflow if we
             ;; are in playground
-            (not (goog.object/get js/window "PLAYGROUND"))
+            (not (gobj/get js/window "PLAYGROUND"))
             ;; todo: can we know here the params that were passed from clojure deps cmd args, like --auto-run-browser-wf
             ;(seq (has-cli-arg? "--auto-run-browser-wf"))
             true
@@ -57,11 +58,6 @@
 
 
 
-(defn browser-ctx [params]
-  {
-   :copy-to-clipboard   {:fn woof-dom/copy-to-clipboard-handler}
-   }
-  )
 
 ;; ws
 
@@ -90,10 +86,11 @@
 (defonce *wf-instance
          (atom {
                 :wf/instance nil
-
+                ;; ...
                 }))
 
 (defonce *initialized (volatile! false))
+
 
 (defn &display-results-fn [params] (get params :wf/display-results-fn identity))
 
@@ -128,23 +125,6 @@
                      }
 
    })
-
-
-
-;;;
-;; "http://localhost:9500/css/apt.css"
-
-;; keep track of injected styles
-(defonce *styles-added-map (atom {}))
-
-(defn _add-style-once-steps-fn [css-url params]   ;; add css styles only once
-  (if-not (get @*styles-added-map css-url)
-    (do
-      (swap! *styles-added-map assoc css-url true)
-      { (base/rand-sid "CSS-") [:css-file css-url]})
-    {}))
-
-
 
 
 (defn scraper-wf!
@@ -214,7 +194,7 @@
         ctx* (concat
                [
                 common/common-ctx
-                browser-ctx
+                woof-dom/clipboard-ctx
                 woof-dom/dom-ctx
                 ]
 
@@ -385,7 +365,7 @@
 (when AUTO-START-WF?
 
   ;; start wf automatically - if we are in browser playground
-  (when (and (goog.object/get js/window "BROWSER_PLAYGROUND")
+  (when (and (gobj/get js/window "BROWSER_PLAYGROUND")
              (not @*initialized))
     (vswap! *initialized not)
     (dbg/__log "browser WF: starting (BROWSER_PLAYGROUND=true)")
@@ -395,7 +375,7 @@
   ;;
   ;; run wf - if we are auto-scraping
 
-  (when (and (not (goog.object/get js/window "BROWSER_PLAYGROUND"))
+  (when (and (not (gobj/get js/window "BROWSER_PLAYGROUND"))
              AUTO-START-WF?)
     (.requestIdleCallback js/window
                           (fn []

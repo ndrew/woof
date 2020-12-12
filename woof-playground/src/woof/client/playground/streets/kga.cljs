@@ -523,7 +523,7 @@
      ;;
      :steps-fns                           [
                                            (fn [params] {::#EVT-LOOP# [:evt-loop (evt-loop/&evt-loop params)]})
-                                           (partial woof-browser/_add-style-once-steps-fn "http://localhost:9500/css/apt.css")
+                                           (partial woof-dom/_add-style-once-steps-fn "http://localhost:9500/css/apt.css")
 
                                            ]
 
