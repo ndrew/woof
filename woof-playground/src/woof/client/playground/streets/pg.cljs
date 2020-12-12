@@ -30,7 +30,9 @@
     [clj-fuzzy.metrics :as metrics]
 
     [clojure.core.reducers :as r]
-    [clojure.set :as set])
+    [clojure.set :as set]
+    [woof.client.common :as common]
+    )
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -2040,7 +2042,7 @@
      :ctx-fns     [
                    evt-loop/evt-loop-ctx-fn
 
-                   woof-browser/common-ctx ;; re-use common browser step handlers
+                   common/common-ctx ;; re-use common browser step handlers
                    woof-dom/dom-ctx
                    ]
 

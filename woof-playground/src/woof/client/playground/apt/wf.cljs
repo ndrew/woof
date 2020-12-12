@@ -24,6 +24,8 @@
 
     [woof.wfs.evt-loop :as evt-loop]
 
+    [woof.client.common :as common]
+
     [clojure.set :as set]
 
     [cljs-time.core :as time]
@@ -470,7 +472,7 @@
      :ctx-fns     [
                    evt-loop/evt-loop-ctx-fn
                    ;; re-use common browser step handlers
-                   woof-browser/common-ctx
+                   common/common-ctx
                    woof-dom/dom-ctx
                    ]
      ;;

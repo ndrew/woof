@@ -27,7 +27,9 @@
 
     [woof.wfs.evt-loop :as evt-loop]
     [woof.client.playground.scraper.tw :as dashboard]
-    [woof.utils :as u])
+    [woof.utils :as u]
+    [woof.client.common :as common]
+    )
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -240,7 +242,7 @@
                    evt-loop/evt-loop-ctx-fn
 
                    ;; re-use common browser step handlers
-                   woof-browser/common-ctx
+                   common/common-ctx
                    wdom/dom-ctx
 
                    ]

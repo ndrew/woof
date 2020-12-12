@@ -29,7 +29,9 @@
     [woof.wfs.evt-loop :as evt-loop]
 
 
-    [clojure.set :as set])
+    [clojure.set :as set]
+    [woof.client.common :as common]
+    )
 
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
@@ -513,7 +515,7 @@
      :ctx-fns                             [
                                            evt-loop/evt-loop-ctx-fn
                                            ;; re-use common browser step handlers
-                                           woof-browser/common-ctx
+                                           common/common-ctx
                                            wdom/dom-ctx
 
 
