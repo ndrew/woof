@@ -1,27 +1,44 @@
 ## `WOOF Playground`
 
-# playground for woof
-
-sandbox for running woof workflows
+Sandbox for exploring and working on potential usages of [woof](https://github.com/ndrew/woof).
  
+Currently focusing on certain topics:
+* workflow tooling
+    * defining/running/maintaining workflows 
+    * re-loadable workflows - having similar experience to figwheel, but with workflows
+    * UI visual workflow representation
+* using workflows for certain domain problems
+    * in-browser scraping
+    * web & publishing
+ 
+---
 
-## playground
+#### Running via Clojure CLI tools and Figwheel
 
-Allows run workflows with react UI and server backend
+Note: use [Clojure CLI tools version 1.10.1.697](https://clojure.org/guides/getting_started) or above
 
-    clojure -A:fig:playground
 
-## Browser playground
+### WIP: Playground
 
-copy the contents of the webpage to resources/public/browser.html
+* idea: some kind of IDE can be used for creating/executing/maintaining workflows. 
 
-    clojure -A:fig:browser 
+Allows to run workflows with react UI and server backend (someday)
 
-### In page running: 
+    clojure -M:fig:playground
+
+
+### WIP: scraper & playground 
+
+* idea: in-browser scraping via workflows 
+
+    clojure -M:fig:scraper 
+
+
+##### In page running: 
 
 build the js for browser
 
-    clojure -A:fig:browser-min
+    clojure -M:fig:browser-min
 
 inject the script on the web page
 
@@ -31,15 +48,22 @@ run in dev tools
 
     woof.browser.run_workflow()
 
+or use [chrome extension](https://github.com/ndrew/woof/tree/master/woof-chrome) for loading workflow automatically
 
-### server workflow
 
-WIP: start a server as. For now — use REPL
+##### Auto building the js
+
+see [build-scraper-wf.sh](https://github.com/ndrew/woof/tree/master/woof-playground/scripts/build-scraper-wf.sh)
+
+
+### WIP: server workflow
+
+start a server as. For now — use REPL
 
     clojure -A:server 
 
 
-### REPL
+#### REPL
 
 launch server workflows from REPL
 
@@ -55,8 +79,14 @@ launch server workflows from REPL
     ; stop wf
     ((:start-wf! wf-instance))
 
-## tests
+### Figwheel Automatic tests
 
 http://localhost:9500/figwheel-extra-main/auto-testing
+
+
+## Current status
+
+Very alpha, use with caution.
+
 
 
