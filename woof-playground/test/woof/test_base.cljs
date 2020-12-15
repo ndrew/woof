@@ -45,7 +45,7 @@
                     :ctx ctx-fns
                     )
           ]
-      (base/run-wf! wf-impl identity)
+      (base/run-wf! wf-impl)
       )))
 
 
