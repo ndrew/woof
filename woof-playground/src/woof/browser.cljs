@@ -29,6 +29,15 @@
 
     ))
 
+;; todo: should meta info config be here or inside wf should decide
+(def META-INFO {
+             :ws? false
+             :evt-loop? true
+             :ui? true
+             :use-generic-wf? true
+             :debug? false
+             })
+
 ;;
 ;; ns for doing in-browser scraping
 
@@ -87,6 +96,7 @@
          (atom {
                 :wf/instance nil
                 ;; ...
+                :wf/UI {}
                 }))
 
 (defonce *initialized (volatile! false))
@@ -143,7 +153,7 @@
   ;; cons:
   ;; - not explicit config - like whether there is a scraping ui
 
-  (.groupCollapsed js/console "__WF")
+  (.groupCollapsed js/console "WF DEF")
 
 
   (let [{UI? :ui?
@@ -160,7 +170,7 @@
         ;;
         init* (concat
                 [;; mandatory inits
-                 (fn [params]                                   ;; pass configuration
+                 (fn [params]                           ;; pass configuration
                    (when UI? (sui/indicate-wf-started)) ;; UI: indicate WF has started
                    meta-info)
 
@@ -237,43 +247,57 @@
 
                   )
 
-        api     (get scraper-impl-map :api {})
-        on-stop (get scraper-impl-map :on-stop (fn [_] ))
-
         run-fn! (fn []
-                  ;; update sub-atom
-                  (let [wf-fn (fn [prev-state]
-                                (when UI?
-                                  (sui/wf-indicator-ui!))
+                  (let [
+                        ;;
+                        on-stop (get scraper-impl-map :on-stop (fn [_] ))
 
-                                (when (seq api)
-                                  (sui/wf-api-ui!
-                                    (if EVT-LOOP?
-                                      ;; TODO: do not show this if the WF had been already ended
-                                      (assoc api
-                                        "WF: stop!" (fn []
-                                                      ;; todo: maybe do this by getting :stop-fn from *wf-instance ?
-                                                      (js* "woof.browser.stop_workflow();")
-                                                      ))
-                                      api))
-                                  )
+                        ;; pass
+                        on-run! (get scraper-impl-map :scraper/on-run!
+                                     (fn [meta-info
+                                          scraper-impl-map
+                                          prev-state]
 
-                                ;; show scraping ui by default?
-                                (if (and UI?
-                                         ; (get meta-info :ws? false)
+                                       (let [api (get scraper-impl-map :api {})]
+                                         (when (seq api)
+                                           (sui/wf-api-ui!
+                                             (if EVT-LOOP?
+                                               (assoc api     ;; TODO: do not show this if the WF had been already ended
+                                                 "WF: stop!" (fn []
+                                                               ;; todo: maybe do this by getting :stop-fn from *wf-instance ?
+                                                               (js* "woof.browser.stop_workflow();")
+                                                               ))
+                                               api))
+                                           )
                                          )
-                                  (sui/scraping-ui-impl! meta-info))
 
-                                (__log "🚀" (if prev-state "re-starting" "starting") " scraping wf!")
 
-                                #_(if prev-state
-                                    (__log prev-state))
+                                       ;; show scraping ui by default?
+                                       (if (and UI?
+                                                ; (get meta-info :ws? false)
+                                                )
+                                         (sui/scraping-ui-impl! meta-info))
 
-                                (base/stateful-wf *wf-instance wf-impl
-                                                  ;; do we need to pass api here?
-                                                  :api api)
-                                )]
-                    (base/auto-run-wf! *wf-instance wf-fn
+                                       (__log "🚀" (if prev-state "re-starting" "starting") " scraping wf!")
+                                       ))
+                        ]
+                    ;; update sub-atom
+                    (base/auto-run-wf! *wf-instance
+                                       (fn [prev-state]
+
+                                         ;; display WF indicator always
+                                         (when UI?
+                                           (sui/wf-indicator-ui!))
+
+                                         ;; let the scraper wf decide whether to use :api or etc
+
+                                         (on-run!
+                                           meta-info
+                                           scraper-impl-map
+                                           prev-state)
+
+                                         (base/stateful-wf *wf-instance wf-impl)
+                                         )
                                        :on-stop (fn [state]
                                                   ;; todo: handle channel
                                                   (on-stop state)
@@ -286,7 +310,6 @@
     (if AUTO-START-WF?
       (run-fn!)
       (let [btn-el (dom/createDom "button" "" "run!")]
-        ;; todo: expose api actions and show them in ui
         (goog.events.listen btn-el goog.events.EventType.CLICK run-fn!)
         (woof-dom/ui-add-el! btn-el)
         ))
@@ -305,17 +328,7 @@
 (defn ^:export run_workflow []
 
   (.log js/console "RUNNING WORKFLOW" (u/now))
-  (let [url (.. js/document -location -href)
-
-        ;; todo: should meta info config be here or inside wf should decide
-        META-INFO {
-                   :ws? false
-                   :evt-loop? true
-                   :ui? true
-                   :use-generic-wf? true
-                   :debug? false
-                   }
-        ]
+  (let [url (.. js/document -location -href)]
 
     (if (:ui? META-INFO)
       (woof-dom/<scraping-ui>) )

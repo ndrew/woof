@@ -23,6 +23,12 @@
 
     [cljs-time.core :as time]
     [cljs-time.format :as time-fmt]
+
+    ;; todo:
+    [woof.client.browser.scraper.scraping-ui :as sui]
+
+    [woof.client.browser.rieltor.ui :as wf-ui]
+    [rum.core :as rum]
     ))
 
 
@@ -482,12 +488,15 @@
 
  ;; (wf-clean-up-css)
 
-  (.clear js/console)
+  ;; (.clear js/console)
+
   (reset! *SCRAPED-DATA [])
   (wf-clean-up-css)
 
   ;; for now go with local scope, instead of init fn
-  (let [;; brute-force scraping, pass all parameters and retrieve, filter els in it
+  (let [WATCHER-ID ::ui
+
+        ;; brute-force scraping, pass all parameters and retrieve, filter els in it
         _simple-brute-force (fn [is-scraped? mark-scraped! process-step selector]
                               (.log js/console "simple scrape: A")
 
@@ -594,9 +603,19 @@
         ]
 
     {
-     :init  []
+     :init  [
+             (partial watcher/_watcher-cf-init-cb WATCHER-ID
+                      (rum/cursor-in *wf-state [:wf/UI])
+                      (fn [*state state]
+                        (.log js/console "UI: upd" state (= state @*state))
+                        (wf-ui/<rum-ui> *state state)
+                        ))
+             ]
 
-     :ctx   [(fn [params]
+
+     :ctx   [watcher/watcher-ctx
+
+             (fn [params]
                {
                 :tick               {:fn       (partial _tick params)
                                      :infinite true
@@ -697,14 +716,14 @@
               :css/attr-3 [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
 
               }
-
              {
-              ::hello [:prn "scraping started"]
+              ::hello [:prn "scraping started!!!"]
               }
 
              ]
 
      :opts  [
+             watcher/watcher-opts
              (base/build-opt-on-done (fn [params result]
                                        (.warn js/console result)
                                        ))
