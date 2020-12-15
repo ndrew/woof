@@ -2,7 +2,7 @@
  :deps
  {
 
-  woof-core {:local/root "../woof-core"}
+  woof-core/woof-core        {:local/root "../woof-core"}
 
   ;; clojure deps
   org.clojure/clojure        {:mvn/version "1.10.1"}
@@ -10,33 +10,33 @@
   org.clojure/core.async     {:mvn/version "1.1.587"}
 
   ;; common
-  fipp                       {:mvn/version "0.6.22"}
-  clj-fuzzy                  {:mvn/version "0.4.1"}
+  fipp/fipp                  {:mvn/version "0.6.22"}
+  clj-fuzzy/clj-fuzzy        {:mvn/version "0.4.1"}
   org.clojure/math.combinatorics {:mvn/version "0.1.6"}
 
   ;; backend web
-  hiccup                     {:mvn/version "1.0.5"}
-  http-kit                   {:mvn/version "2.3.0"},
+  hiccup/hiccup              {:mvn/version "1.0.5"}
+  http-kit/http-kit          {:mvn/version "2.3.0"},
 
-  ring                       {:mvn/version "1.8.0"}
+  ring/ring                  {:mvn/version "1.8.0"}
   jumblerg/ring-cors         {:mvn/version "2.0.0"}
 
-  compojure                  {:mvn/version "1.6.1", :exclusions [commos-codec]},
+  compojure/compojure        {:mvn/version "1.6.1", :exclusions [commos-codec/commos-codec]},
   com.cognitect/transit-clj  {:mvn/version "0.8.313"},
 
   ;; backend other
   me.raynes/fs                {:mvn/version "1.4.6"},
-  clojure-watch               {:mvn/version "LATEST"}
+  clojure-watch/clojure-watch {:mvn/version "LATEST"}
 
   ;; backend logging
   com.taoensso/timbre         {:mvn/version "4.10.0"}
 
   ;; frontend
 
-  cljs-http                  {:mvn/version "0.1.46"}
+  cljs-http/cljs-http                  {:mvn/version "0.1.46"}
   com.cognitect/transit-cljs {:mvn/version "0.8.256"},
 
-  rum                        {:mvn/version "0.12.3"},
+  rum/rum                    {:mvn/version "0.12.3"},
   cljsjs/react-dom-server    {:mvn/version "16.6.0-0"}
 
   com.andrewmcveigh/cljs-time {:mvn/version "0.5.2"}
