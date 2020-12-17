@@ -86,6 +86,10 @@
                                 "-r"  "--run-backend-wf"
                                 ]
                     }
+           ;; workaround around warning about using -M
+           :build {
+                   :main-opts  ["-m" "cljs.main"]
+                   }
            }
 
  ;; setup some development paths

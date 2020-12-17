@@ -10,7 +10,7 @@ echo "START: scraper.js";
 cd ~/m/woof/woof-playground/
 
 
-OUTPUT=$( clj -m cljs.main --optimizations whitespace --compile-opts scripts/scraper.edn --output-to  ~/m/woof/woof-playground/resources/public/scraper/scraper.js -c woof.browser 2>&1 );
+OUTPUT=$( clj -M:build --optimizations whitespace --compile-opts scripts/scraper.edn --output-to  ~/m/woof/woof-playground/resources/public/scraper/scraper.js -c woof.browser 2>&1 );
 
 if [ -z "$OUTPUT" ]; then
   # copy it to chrome extension
