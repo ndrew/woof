@@ -92,7 +92,7 @@
 
 
 ;; wf storage
-(defonce *wf-instance
+(defonce *WF-INSTANCE
          (atom {
                 :wf/instance nil
                 ;; ...
@@ -119,6 +119,7 @@
                               (let [wf-done (&display-results-fn params)]
                                    (wf-done result))
 
+                              ;; maybe UI should be handled asynchronously?
                               (if (:ui? params)
                                   (sui/indicate-wf-done))
 
@@ -137,47 +138,43 @@
    })
 
 
-(defn scraper-wf!
-  "boilerplate for defining scraping workflow:
-  * wf - state atom for wf
-  * meta-info - configuration map for wf
-  * scraper-fn - sub workflow impl"
-  [
-   *wf
-   meta-info
-   scraper-fn]
+;;
 
-  ;; pros:
-  ;; - can reduce amount of boiler-plate - no need to include init/ctx/steps in each subsequent wf
+(defonce *XXX (atom 0))
 
-  ;; cons:
-  ;; - not explicit config - like whether there is a scraping ui
-
-  (.groupCollapsed js/console "WF DEF")
+(defonce RELOAD-CHAN (async/chan))
 
 
+(defn- scraper-wf!__impl [*wf meta-info scraper-impl-map]
   (let [{UI? :ui?
          EVT-LOOP? :evt-loop?
          WS? :ws?
          DEBUG? :debug?} meta-info
-
-        ;; inner WF
-        scraper-impl-map (scraper-fn *wf meta-info)
+        ;; INIT
+        ;;
 
         *wf-instance (rum/cursor-in *wf [:wf/instance])
 
-        ;; INIT
-        ;;
         init* (concat
                 [;; mandatory inits
+
+                 ;; do things first on the start of wf
                  (fn [params]                           ;; pass configuration
+                   (.log js/console "WF INIT FN:")
+
+                   ;;
                    (when UI? (sui/indicate-wf-started)) ;; UI: indicate WF has started
-                   meta-info)
+
+                   meta-info
+                   )
 
                  (base/build-init-chan-factory-fn chan-factory) ;; chan factory
 
                  ;; todo: what happens to *wf-instance
                  ;;(base/build-init-state-fn *wf-storage)          ;; state
+
+
+
                  (base/build-init-state-fn *wf)           ;; state
                  ]
 
@@ -197,7 +194,7 @@
                    ;;
                    (swap! *wf assoc :WF/params last-params)
                    {}
-                  )])
+                   )])
 
         ;; CTX
         ;;
@@ -225,6 +222,14 @@
                        (base/build-opt-save-wf-fn *wf-instance)
                        ]
                       (get scraper-impl-map :opts [])
+                      [
+                       (base/build-opt-on-done
+                         (fn [params result]
+
+                           (async/put! RELOAD-CHAN (u/now))
+
+                           result))
+                       ]
                       )
 
         steps* (concat (if EVT-LOOP?
@@ -245,70 +250,121 @@
                              (dbg/dbg-wf) ;; use capturing wf to keep the initial stuff
                              base/_default-wf-impl)
 
-                  )
+                  )]
+    wf-impl
+    )
+  )
+
+(defn scraper-wf!
+  "boilerplate for defining scraping workflow:
+  * wf - state atom for wf
+  * meta-info - configuration map for wf
+  * scraper-fn - sub workflow impl"
+  [
+   *wf
+   meta-info
+   scraper-fn]
+
+  ;; pros:
+  ;; - can reduce amount of boiler-plate - no need to include init/ctx/steps in each subsequent wf
+
+  ;; cons:
+  ;; - not explicit config - like whether there is a scraping ui
+
+
+
+  (.groupCollapsed js/console (str "WF DEF-" @*XXX))
+
+
+  (let [{UI? :ui?
+         EVT-LOOP? :evt-loop?
+         WS? :ws?
+         DEBUG? :debug?} meta-info
+
+        ;; construct a new instance of WF
+        scraper-impl-map (scraper-fn *wf meta-info)
+        ;;
+        on-stop (get scraper-impl-map :on-stop (fn [_] ))
+
+        on-run! (get scraper-impl-map :scraper/on-run!
+                     (fn [meta-info
+                          scraper-impl-map
+                          prev-state]
+
+                       (let [api (get scraper-impl-map :api {})]
+                         (when (seq api)
+                           (sui/wf-api-ui!
+                             (if EVT-LOOP?
+                               (assoc api     ;; TODO: do not show this if the WF had been already ended
+                                 "WF: stop!" (fn []
+                                               ;; todo: maybe do this by getting :stop-fn from *wf-instance ?
+                                               (js* "woof.browser.stop_workflow();")
+                                               ))
+                               api))
+                           )
+                         )
+
+                       ;; show scraping ui by default?
+                       (if (and UI?
+                                ; (get meta-info :ws? false)
+                                )
+                         (sui/scraping-ui-impl! meta-info))
+
+                       (__log "🚀" (if prev-state "re-starting" "starting") " scraping wf!")
+                       ))
+
+
+        ;;
+
+        *wf-instance (rum/cursor-in *wf [:wf/instance])
 
         run-fn! (fn []
-                  (let [
-                        ;;
-                        on-stop (get scraper-impl-map :on-stop (fn [_] ))
+                  (base/auto-run-wf! *wf-instance
+                                     (fn [prev-state]
+                                       (.warn js/console (str "WF RUN-" @*XXX))
 
-                        ;; pass
-                        on-run! (get scraper-impl-map :scraper/on-run!
-                                     (fn [meta-info
-                                          scraper-impl-map
-                                          prev-state]
+                                       ;; display WF indicator always
+                                       (when UI?
+                                         (sui/wf-indicator-ui!))
 
-                                       (let [api (get scraper-impl-map :api {})]
-                                         (when (seq api)
-                                           (sui/wf-api-ui!
-                                             (if EVT-LOOP?
-                                               (assoc api     ;; TODO: do not show this if the WF had been already ended
-                                                 "WF: stop!" (fn []
-                                                               ;; todo: maybe do this by getting :stop-fn from *wf-instance ?
-                                                               (js* "woof.browser.stop_workflow();")
-                                                               ))
-                                               api))
-                                           )
-                                         )
+                                       ;; let the scraper wf decide whether to use :api or etc
+                                       (on-run!
+                                         meta-info
+                                         scraper-impl-map
+                                         prev-state)
+
+                                       ;; init inner WF
+                                       (let [WF (scraper-wf!__impl *wf meta-info scraper-impl-map)]
+                                         ;(.log js/console "WF" @*wf)
+                                         ;(.log js/console "WF-instance" @*wf-instance)
+                                         ;(js-debugger)
+
+                                         (base/stateful-wf *wf-instance WF))
+                                       )
+                                     :on-stop (fn [state]
+                                                (.warn js/console "WF STOP:" state
+                                                       (swap! *XXX (partial + 10))
+                                                       )
 
 
-                                       ;; show scraping ui by default?
-                                       (if (and UI?
-                                                ; (get meta-info :ws? false)
+                                                ;; todo: handle waiting if WF returned it's own on-stop channel
+                                                (on-stop state)
+
+                                                (dbg/__log-end)
+
+                                                ;; return a channel that
+
+
+                                                RELOAD-CHAN
                                                 )
-                                         (sui/scraping-ui-impl! meta-info))
 
-                                       (__log "🚀" (if prev-state "re-starting" "starting") " scraping wf!")
-                                       ))
-                        ]
-                    ;; update sub-atom
-                    (base/auto-run-wf! *wf-instance
-                                       (fn [prev-state]
-
-                                         ;; display WF indicator always
-                                         (when UI?
-                                           (sui/wf-indicator-ui!))
-
-                                         ;; let the scraper wf decide whether to use :api or etc
-
-                                         (on-run!
-                                           meta-info
-                                           scraper-impl-map
-                                           prev-state)
-
-                                         (base/stateful-wf *wf-instance wf-impl)
-                                         )
-                                       :on-stop (fn [state]
-                                                  ;; todo: handle channel
-                                                  (on-stop state)
-                                                  (dbg/__log-end)
-                                                  ))
-                    )
+                                     )
                   )
         ]
 
     (if AUTO-START-WF?
       (run-fn!)
+      ;;
       (let [btn-el (dom/createDom "button" "" "run!")]
         (goog.events.listen btn-el goog.events.EventType.CLICK run-fn!)
         (woof-dom/ui-add-el! btn-el)
@@ -316,7 +372,7 @@
 
     (.groupEnd js/console)
 
-    (dbg/__log-start "SCRAPING WF")
+    (dbg/__log-start (str "SCRAPING WF-" @*XXX))
     )
   )
 
@@ -327,6 +383,8 @@
 ;; export - to be able to run workflow from dev tools
 (defn ^:export run_workflow []
 
+  (swap! *XXX inc)
+
   (.log js/console "RUNNING WORKFLOW" (u/now))
   (let [url (.. js/document -location -href)]
 
@@ -336,12 +394,12 @@
     ;; map localhost to a specific wf implementation
     (if-let [w (impl/choose-workflow url)]
       ;; if there is a wf assigned for the URL - run it
-      (scraper-wf! *wf-instance
+      (scraper-wf! *WF-INSTANCE
                    META-INFO w)
 
       (if (:use-generic-wf? META-INFO)
         ;; run generic scraping wf if needed
-        (scraper-wf! *wf-instance
+        (scraper-wf! *WF-INSTANCE
                      META-INFO default-scraper/wf!)
 
         ;; no scraper for this URL - show error
@@ -359,7 +417,7 @@
 
 ;; export the function to stop the workflow
 (defn ^:export stop_workflow []
-  (let [wf-state @*wf-instance]
+  (let [wf-state @*WF-INSTANCE]
     (when-let [wf-instance (:wf/instance wf-state)]
       (let [stop (:stop-wf! wf-instance)]
         (stop))
@@ -400,6 +458,7 @@
                           )
     )
   )
+
 
 
 ;;
