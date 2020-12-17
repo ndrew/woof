@@ -719,6 +719,18 @@
         ;; trigger wf stop
         (stop-wf-fn!)
 
+        ;; <?> which version of :on-stop should be called?
+        ;;   the one in state?
+        ;;    + case when :on-stop is being passed first time, but not on sub-sequent calls
+        ;;    - :on-stop was changed via figwheel
+        ;;   the one passed as argument?
+        ;;    - case when :on-stop is being passed first time, but not on sub-sequent calls
+        ;;      - seems unlikely
+        ;;    + :on-stop was changed via figwheel
+        ;;   both?
+        ;;    then in which order?
+        ;;
+        ;;
         (let [prev-on-stop (:on-stop old-instance)
               stop-signal (if prev-on-stop (prev-on-stop @*wf-instance))]
 
