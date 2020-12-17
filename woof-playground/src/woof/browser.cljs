@@ -29,6 +29,51 @@
 
     ))
 
+
+; basis for scraping workflows
+
+; uses wf composition
+;
+;
+; provides:
+; + state atom for wf + auto-reload in figwheel
+; + di for sub-workflows: ws, dom, ..
+; + top level configuration (meta-info) - whether wf should use certain features, like websocket or ui
+; +
+
+
+
+
+;; run_workflow
+;; -> before wf init
+;;   - ui
+;; -> choose scraper wf impl
+;; {
+;;   :init/:ctx/:steps/:opts
+;; }
+;; -> scraper-wf!
+;
+
+
+;                    INIT        CTX        STEPS        OPTS
+; COMMON DI:                                               +
+; - wf started        +
+; - meta-info         +
+; - chan-factory      +                                    +
+; STATE DI            +                                    +
+; EVT-LOOP            +           +
+; WS                  +           +
+; - common            +                                    +
+; - clipboard         +
+; - dom               +
+; SUB-WF
+; - impl              +           +           +            +
+; SIDE-EFFECTS
+; - wf initialized:   +
+; - reload                                                 +
+
+
+
 ;; todo: should meta info config be here or inside wf should decide
 (def META-INFO {
              :ws? false
@@ -64,7 +109,6 @@
 (defonce chan-factory (base/chan-factory (atom {})))
 
 ;; shared step handlers for all scraping workflows
-
 
 ;; ws
 
@@ -142,49 +186,29 @@
          DEBUG? :debug?} meta-info
         ;; INIT
         ;;
-
         *wf-instance (rum/cursor-in *wf [:wf/instance])
 
         init* (concat
-                [;; mandatory inits
-
-                 ;; do things first on the start of wf
-                 (fn [params]                           ;; pass configuration
-                   (.log js/console "WF INIT FN:")
-
-                   ;;
+                [;; mandatory inits - do things first on the start of wf
+                 (fn [_]                                ;; pass configuration
                    (when UI? (sui/indicate-wf-started)) ;; UI: indicate WF has started
-
-                   meta-info
-                   )
-
+                   meta-info)
                  (base/build-init-chan-factory-fn chan-factory) ;; chan factory
-
-                 ;; todo: what happens to *wf-instance
-                 ;;(base/build-init-state-fn *wf-storage)          ;; state
-
-
-
                  (base/build-init-state-fn *wf)           ;; state
                  ]
-
                 ;; evt loop
                 (if EVT-LOOP? [(evt-loop/build-evt-loop-init-fn (base/make-chan chan-factory (base/rand-sid "evt-")))]
                               [])
-
                 ;; ws
                 (if WS? [init-ws-fn]
                         [])
-
-                ;;
+                ;; SUB WF
                 (get scraper-impl-map :init [])
 
                 ;; to store init params in state
                 [(fn [last-params]
-                   ;;
                    (swap! *wf assoc :WF/params last-params)
-                   {}
-                   )])
+                   {})])
 
         ;; CTX
         ;;
@@ -204,6 +228,13 @@
                (get scraper-impl-map :ctx [])
                )
 
+        steps* (concat (if EVT-LOOP?
+                         [(fn [params]
+                            {:evt/loop [:evt-loop (evt-loop/&evt-loop params)]})]
+                         [])
+
+                       (get scraper-impl-map :steps []))
+
         opts* (concat [
                        common-opts
 
@@ -215,19 +246,10 @@
                       [
                        (base/build-opt-on-done
                          (fn [params result]
-
                            (async/put! RELOAD-CHAN (u/now))
-
                            result))
                        ]
                       )
-
-        steps* (concat (if EVT-LOOP?
-                         [(fn [params]
-                            {:evt/loop [:evt-loop (evt-loop/&evt-loop params)]})]
-                         [])
-
-                       (get scraper-impl-map :steps []))
 
 
         wf-impl (base/wf!
@@ -246,13 +268,42 @@
   )
 
 
+(defn default-on-run!
+  [meta-info scraper-impl-map prev-state]
+
+  (let [{UI? :ui?
+         EVT-LOOP? :evt-loop?
+         WS? :ws?
+         DEBUG? :debug?} meta-info
+        api (get scraper-impl-map :api {})]
+    ;;
+    (when (seq api)
+      (sui/wf-api-ui!
+        (if EVT-LOOP?
+          (assoc api     ;; TODO: do not show this if the WF had been already ended
+            "WF: stop!" (fn []
+                          ;; todo: maybe do this by getting :stop-fn from *wf-instance ?
+                          (js* "woof.browser.stop_workflow();")
+                          ))
+          api))
+      )
+    ;; show scraping ui by default?
+    (if (and UI?
+             ; (get meta-info :ws? false)
+             )
+      (sui/scraping-ui-impl! meta-info))
+
+    (__log "🚀" (if prev-state "re-starting" "starting") " scraping wf!")
+    )
+)
+
+
 (defn scraper-wf!
   "boilerplate for defining scraping workflow:
   * wf - state atom for wf
   * meta-info - configuration map for wf
   * scraper-fn - sub workflow impl"
-  [
-   *wf
+  [*wf
    meta-info
    scraper-fn]
 
@@ -274,41 +325,16 @@
         scraper-impl-map (scraper-fn *wf meta-info)
         ;;
         on-stop (get scraper-impl-map :on-stop (fn [_] ))
+        ;; note, that we use qualified keyword here, as on-run! is not in base
+        on-run! (get scraper-impl-map :scraper/on-run! default-on-run!)
 
-        on-run! (get scraper-impl-map :scraper/on-run!
-           (fn [meta-info
-                scraper-impl-map
-                prev-state]
-
-             (let [api (get scraper-impl-map :api {})]
-               (when (seq api)
-                 (sui/wf-api-ui!
-                   (if EVT-LOOP?
-                     (assoc api     ;; TODO: do not show this if the WF had been already ended
-                       "WF: stop!" (fn []
-                                     ;; todo: maybe do this by getting :stop-fn from *wf-instance ?
-                                     (js* "woof.browser.stop_workflow();")
-                                     ))
-                     api))
-                 )
-               )
-
-             ;; show scraping ui by default?
-             (if (and UI?
-                      ; (get meta-info :ws? false)
-                      )
-               (sui/scraping-ui-impl! meta-info))
-
-             (__log "🚀" (if prev-state "re-starting" "starting") " scraping wf!")
-             ))
-
-        ;;
+        ;; sub-atom that will be rewritten on reload
         *wf-instance (rum/cursor-in *wf [:wf/instance])
 
         run-fn! (fn []
           (base/auto-run-wf! *wf-instance
              (fn [prev-state]
-               (.warn js/console (str "WF RUN-" @*XXX))
+               (.log js/console (str "WF RUN-" @*XXX))
 
                ;; display WF indicator always
                (when UI?
@@ -329,17 +355,13 @@
                  (base/stateful-wf *wf-instance WF))
                )
              :on-stop (fn [state]
-                        (.warn js/console "WF STOP:" state
-                               (swap! *XXX (partial + 10))
-                               )
-
+                        (.log js/console "WF STOP:" state (swap! *XXX (partial + 10)))
 
                         ;; todo: handle waiting if WF returned it's own on-stop channel
                         (on-stop state)
-
                         (dbg/__log-end)
 
-                        ;; return a channel that
+                        ;; return a channel to handle reload
                         RELOAD-CHAN
                         )
              )
@@ -362,7 +384,6 @@
 ;;
 ;; export - to be able to run workflow from dev tools
 (defn ^:export run_workflow []
-
   (swap! *XXX inc) ;;
 
   (.log js/console "RUNNING WORKFLOW" (u/now))
