@@ -286,6 +286,8 @@
   "
   [& {:keys [init ctx steps opts wf-impl]}]
 
+  ;; todo: pass custom impls of combine-fns and combine-init-fns
+
   (let [init-fn (combine-init-fns (as-fn-list init))
         opts-fn (combine-fns (as-fn-list opts) :merge-results merge-opts-maps)
 
@@ -706,39 +708,36 @@
   "runs workflow, if wf is already running, stops, waits until it is finished and then started"
   [*wf-instance wf-constructor-fn & {:keys [on-stop]}]
 
-  (if-let [old-instance @*wf-instance]
-    ;; re-start wf if it's already running
-    (let [stop-wf-fn! (:stop-wf! old-instance)]
-      ;; trigger wf stop
-      (stop-wf-fn!)
+  (let [start-fn! (fn [WF]
+                    (let [WF' (if on-stop (assoc WF :on-stop on-stop)
+                                          WF)]
+                      ((:start-wf! (reset! *wf-instance WF')))))]
 
-      (let [on-stop (:on-stop old-instance)
-            stop-signal (if on-stop (on-stop @*wf-instance))
-            ]
-        (if (and (not (nil? stop-signal))
-                 (utils/channel? stop-signal))
-          (go
-            ;; get signal from stop-channel
-            (let [_ (async/<! stop-signal)]
-              (reset! *wf-instance (wf-constructor-fn @*wf-instance))
-              ((:start-wf! @*wf-instance))
-              ))
-          (do
-            ;; start wf right away
-            (reset! *wf-instance (wf-constructor-fn @*wf-instance))
-            ((:start-wf! @*wf-instance))
+    (if-let [old-instance @*wf-instance]
+      ;; re-start wf if it's already running
+      (let [stop-wf-fn! (:stop-wf! old-instance)]
+        ;; trigger wf stop
+        (stop-wf-fn!)
+
+        (let [prev-on-stop (:on-stop old-instance)
+              stop-signal (if prev-on-stop (prev-on-stop @*wf-instance))]
+
+          (if (and (not (nil? stop-signal))
+                   (utils/channel? stop-signal))
+            (go
+              ;; get signal from stop-channel
+              (let [_ (async/<! stop-signal)]
+                (start-fn! (wf-constructor-fn @*wf-instance))
+                ))
+            (do
+              (start-fn! (wf-constructor-fn @*wf-instance)))
             )
           )
         )
-    )
-    ;; else, start workflow if atom has no previous workflow
-    (let [WF (wf-constructor-fn nil)]
-      (reset! *wf-instance (if on-stop (assoc WF :on-stop on-stop)
-                                       WF))
-      ((:start-wf! @*wf-instance))
+      ;; else, start workflow if atom has no previous workflow
+      (start-fn! (wf-constructor-fn nil))
       )
     )
-
   )
 
 

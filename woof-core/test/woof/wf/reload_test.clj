@@ -36,7 +36,6 @@
   )
 
 
-
 ;;
 ;; test workflow
 (defn reload-test-wf [*STATE id]
@@ -226,12 +225,11 @@
                          )
 
       (Thread/sleep 1500)
-
       (base/auto-run-wf! *wf-instance
                          (fn [old-state]
                            (let [prev-wf-results (get-in old-state [::WF-RESULTS :B])]
                              (dbg "starting wf :C...\n" (d/pretty! prev-wf-results))
-                             (is (nil? prev-wf-results)))
+                             (is (not (nil? prev-wf-results))))
 
                            (reload-test-wf *wf-instance :C )
                            )
@@ -277,8 +275,7 @@
 
     ;; blocking get
     (let [[A B] (async/alts!! [thread-blocker t])
-          last-results (get-in @*wf-instance [::WF-RESULTS :C])
-          ]
+          last-results (get-in @*wf-instance [::WF-RESULTS :C])]
       ;; ensure that wf was terminated via stop-wf!, not via timeout
       (is (= :wf-ended A))
 
