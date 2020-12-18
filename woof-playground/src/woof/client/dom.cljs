@@ -719,3 +719,18 @@
       (swap! *styles-added-map assoc css-url true)
       { (base/rand-sid "CSS-") [:css-file css-url]})
     {}))
+
+;;
+;; keyboard
+
+(defn chord
+  ([code]
+  {:code code
+   :shift false :ctrl false :alt false :meta false })
+  ([code & {:keys [shift ctrl meta alt]
+            :or {shift false ctrl false alt false meta false}}]
+   {:code code
+    :shift shift
+    :ctrl ctrl
+    :alt alt
+    :meta meta}))

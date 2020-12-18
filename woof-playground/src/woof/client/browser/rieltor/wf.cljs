@@ -663,6 +663,70 @@
 
 
 
+
+
+(defn wf-api [*wf-state]
+  (let [trigger-event (fn [steps] (_trigger-event (get @*wf-state :WF/params {}) steps))]
+    [
+     ;; toggles 'debug' mode on/off
+     ["debug" (fn [] (classes/toggle (.-body js/document) "woof-debug"))]
+     []
+     ["save HTML" (fn []
+                    (let [els (wdom/q* SCRAPE-SELECTOR)
+                          html (reduce (fn [s el]
+                                         (str s (. el -outerHTML))) "" els)]
+                      (ws/POST "http://localhost:8081/kv/put" (fn [])
+                               {:k :html
+                                :v html})))]
+
+     ["save EDN" (fn []
+                   (let [data @*SCRAPED-DATA]
+                     (ws/POST "http://localhost:8081/kv/append" (fn [])
+                              {:k :listings
+                               :v data})))]
+     []
+     ;; different modes of scraping
+
+     ;; scrape once everything on page
+     [
+      "simple scrape"
+      #^{:shortcut (wdom/chord 83 :shift true :meta true)} ;; shift+cmd+S
+      #(trigger-event {(base/rand-sid) [:brute-force-simple SCRAPE-SELECTOR]})]                ;;
+     ["brute scrape"  #(trigger-event
+                         (let [k (base/rand-sid)]
+                           {
+                            k [:find-els SCRAPE-SELECTOR]
+                            (base/rand-sid) [:brute-1 k]
+                            }))]
+
+     ["recurring scrape" #(trigger-event
+                            (let [k (base/rand-sid)]
+                              {
+                               k [:find-els SCRAPE-SELECTOR]
+                               (base/rand-sid) [:brute-recurring k]
+                               }))]
+
+     []
+     ["♾️ scroll" (fn []
+                    ;; todo make it togglable
+                    (let [params (get @*wf-state :WF/params {})
+                          evt-loop (evt-loop/&evt-loop params)]
+                      (async/put! evt-loop {
+                                            (base/rand-sid) [:8-scroll 100]
+                                            })))]
+
+     []
+     ["📋FAILED" (fn [] (wdom/copy-to-clipboard @*FAILED))]  ;; copy failed elements to buffer
+     ["📋RESULT" (fn []
+                   (let [data @*SCRAPED-DATA]
+                     (.log js/console data)
+                     ;(wdom/copy-to-clipboard data)
+                     ;(wdom/save-edn (str "rieltor-" (u/now) ".edn") data)
+                     ))]
+     ])
+  )
+
+
 (defn wf! [*wf-state meta-info]
 
 
@@ -676,6 +740,19 @@
   ;; for now go with local scope, instead of init fn
   (let [WATCHER-ID ::ui
         *WF-UI (rum/cursor-in *wf-state [:wf/UI])
+
+        API (wf-api *wf-state)
+
+        SHORTCUTS (reduce (fn [a [k f]]
+                            (if f
+                              (if-let [m (meta f)]
+                                (if (contains? m :shortcut)
+                                  (assoc a (:shortcut m) f))
+                                a
+                                )
+                              a
+                              )
+                            ) {} API)
 
         ;; todo: move keyboard handing to browser
         klog (fn [e]
@@ -692,6 +769,8 @@
 
                    (= chord {:shift true :ctrl false :alt false :meta true :code  40})
                    (wdom/scraping-ui__inc -50)
+
+                   (contains? SHORTCUTS chord) ((get SHORTCUTS chord))
 
                    :else (do)
                    )
@@ -836,61 +915,7 @@
              ]
 
 
-     :api   (let [trigger-event (fn [steps] (_trigger-event (get @*wf-state :WF/params {}) steps))]
-              [
-               ;; toggles 'debug' mode on/off
-               ["debug" (fn [] (classes/toggle (.-body js/document) "woof-debug"))]
-               []
-               ["save HTML" (fn []
-                              (let [els (wdom/q* SCRAPE-SELECTOR)
-                                    html (reduce (fn [s el]
-                                                   (str s (. el -outerHTML))) "" els)]
-                                (ws/POST "http://localhost:8081/kv/put" (fn [])
-                                         {:k :html
-                                          :v html})))]
-
-               ["save EDN" (fn []
-                             (let [data @*SCRAPED-DATA]
-                               (ws/POST "http://localhost:8081/kv/append" (fn [])
-                                        {:k :listings
-                                         :v data})))]
-               []
-               ;; different modes of scraping
-
-               ;; scrape once everything on page
-               ["simple scrape" #(trigger-event {(base/rand-sid) [:brute-force-simple SCRAPE-SELECTOR]})]                ;;
-               ["brute scrape"  #(trigger-event
-                                    (let [k (base/rand-sid)]
-                                      {
-                                        k [:find-els SCRAPE-SELECTOR]
-                                        (base/rand-sid) [:brute-1 k]
-                                       }))]
-
-               ["recurring scrape" #(trigger-event
-                                      (let [k (base/rand-sid)]
-                                        {
-                                          k [:find-els SCRAPE-SELECTOR]
-                                          (base/rand-sid) [:brute-recurring k]
-                                         }))]
-
-               []
-               ["♾️ scroll" (fn []
-                                    ;; todo make it togglable
-                                    (let [params (get @*wf-state :WF/params {})
-                                          evt-loop (evt-loop/&evt-loop params)]
-                                      (async/put! evt-loop {
-                                                            (base/rand-sid) [:8-scroll 100]
-                                                            })))]
-
-               []
-               ["📋FAILED" (fn [] (wdom/copy-to-clipboard @*FAILED))]  ;; copy failed elements to buffer
-               ["📋RESULT" (fn []
-                             (let [data @*SCRAPED-DATA]
-                               (.log js/console data)
-                               ;(wdom/copy-to-clipboard data)
-                               ;(wdom/save-edn (str "rieltor-" (u/now) ".edn") data)
-                               ))]
-              ])
+     :api   API
 
      :on-stop (fn [state]
                 (__log "ON STOP")

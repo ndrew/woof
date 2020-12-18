@@ -43,9 +43,9 @@
         (map (fn [[label action]]
                (if (and (nil? label) (nil? action))
                  [:.separator]
+                 ;; todo: menu-item handle shortcuts
                  (menu-item label action)))
              menu-items)))
-
 
 
 
