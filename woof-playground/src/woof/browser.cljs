@@ -56,10 +56,11 @@
 
 
 ;                    INIT        CTX        STEPS        OPTS
-; COMMON DI:                                               +
+; COMMON                                                   +
 ; - wf started        +
 ; - meta-info         +
 ; - chan-factory      +                                    +
+; - keyboard         ...
 ; STATE DI            +                                    +
 ; EVT-LOOP            +           +
 ; WS                  +           +

@@ -1,0 +1,111 @@
+/* styles from playground */
+
+/* menubar */
+
+.menubar {
+    box-sizing: content-box;
+
+    display: inline-flex;
+    align-content: flex-end;
+    align-items: baseline;
+
+    flex-wrap: wrap;
+
+    margin-right: .5rem;
+}
+
+.menubar .menu-item {
+    font-weight: 100;
+
+    padding: .1rem .33rem 0 .33rem;
+
+    color: rgb(220,20,60);
+    text-decoration: none;
+    border: 1px solid crimson;
+}
+
+.menubar .menu-item + .menu-item {
+    margin-left: .5rem;
+}
+
+.menubar .menu-item:hover,
+.menubar .menu-item.selected {
+    color: #fff;
+    background-color: rgba(255,128,128,.75);
+}
+
+.menubar.minimal .menu-item {
+    border: none;
+}
+
+.menubar > .header {
+    font-weight: bolder;
+    margin-right: .5rem;
+}
+
+.menubar .separator {
+    width: 1rem;
+}
+
+
+
+
+
+/* move indicator to right */
+.woof-wf-indicator {
+    position: absolute;
+    top: -18px;
+    right: 0px;
+    width: 16px;
+}
+
+:root {
+    --height: 300px;
+}
+
+/* remove magin */
+.woof-scraper-ui .panel + .panel {
+    margin-left: 0;
+}
+
+
+.woof-scraper-ui {
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 8pt;
+}
+
+.woof-scraper-ui .panel {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+    margin: 0;
+}
+
+.ui-container {
+    overflow-y: scroll;
+
+}
+
+
+.ui-container,
+.ui-container > * {
+    min-height: var(--height);
+}
+
+
+
+/* rum component */
+.ui-container > .woof-scraper-control {
+    background-color: rgba(255,0,0,.1);
+
+    padding: .133rem;
+}
+
+.woof-scraper-control > .menubar {
+    margin-bottom: .333rem;
+}
+
+.menubar {
+    font-family: ".SF NS Text", serif;
+}

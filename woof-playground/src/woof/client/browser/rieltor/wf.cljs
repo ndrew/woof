@@ -1,6 +1,5 @@
 (ns woof.client.browser.rieltor.wf
   (:require
-
     [goog.dom :as dom]
     [goog.dom.classes :as classes]
     [goog.dom.dataset :as dataset]
@@ -28,12 +27,13 @@
     [woof.client.browser.scraper.scraping-ui :as sui]
 
     [woof.client.browser.rieltor.ui :as wf-ui]
+    [woof.client.browser.rieltor.parser :as parser]
+
     [rum.core :as rum]
     ))
 
 
 ;; css-... classes seems to be too generic
-
 
 ;; second idea - all tweets are article elements, but inview does not capture them all, so we may try to emulate scroll
 ;; and to iterate through all article elements manually
@@ -42,17 +42,13 @@
 (def ALLOW-DOUBLE-PARSE true)
 (def SCRAPE-SELECTOR ".index-list-container > .catalog-item")
 
-
 ;;
 ;; parsing implementation
-
 
 (defonce *SCRAPED-DATA (atom []))     ;; todo: should global atom be used for this?
 (defonce *PROCESSING-MAP (atom {}))   ;; todo: should global atom be used for this?
 
-
 (defonce *FAILED (atom []))
-
 
 
 (defn safe-href [el selector]
@@ -284,9 +280,8 @@
   (classes/add el "parsed")
 
   ;; *PROCESSING-MAP
-  (if-let [id (safe-href el ".catalog-item__img A")]
+  (if-let [id (parser/safe-href el ".catalog-item__img A")]
     (let [$ID (wdom/q el ".catalog-item__img A")     ; "DIV:nth-child(1) > DIV > A:nth-child(1)" -> ".catalog-item__img A"
-
 
           $IMG (wdom/q el ".catalog-item__img IMG")  ; "DIV:nth-child(1) > DIV > A:nth-child(1) > IMG"
           $IMG-NUM (wdom/q el ".catalog-item__img .catalog-item__img-num")
@@ -484,20 +479,12 @@
 
 
 
-(defn wf! [*wf-state meta-info]
 
- ;; (wf-clean-up-css)
-
-  ;; (.clear js/console)
-
-  (reset! *SCRAPED-DATA [])
-  (wf-clean-up-css)
-
-  ;; for now go with local scope, instead of init fn
-  (let [WATCHER-ID ::ui
-
+;; todo: move the scraping stuff to a separate ns
+(defn make-ctx-fn []
+  (let [
         ;; brute-force scraping, pass all parameters and retrieve, filter els in it
-        _simple-brute-force (fn [is-scraped? mark-scraped! process-step selector]
+        _simple-brute-force (fn  [is-scraped? mark-scraped! process-step selector]
                               (.log js/console "simple scrape: A")
 
                               ;; try to find elements to be processed, but skip already processed
@@ -518,21 +505,10 @@
                                 ))
 
         ;; brute-force scraping via separate find items step (incl. filtering) and separate expand step generation step
-
         _expander! (fn [collection-expand item-expand els]
                      (reduce (fn [a el]
                                (merge a (item-expand el)))
                              (collection-expand els) els))
-
-
-
-        item-expand! (fn [el]
-                       (let [_sid (mark-scraped! el)
-                             sid (if (qualified-keyword? _sid)
-                                   _sid
-                                   (base/rand-sid "el-"))]
-                         {sid [:scrape-el el]}))
-
 
         _infinite-scroll! (fn [params timeout-fn f max-num ]
                             (let [chan-factory (base/&chan-factory params)
@@ -550,6 +526,12 @@
 
                               chan))
 
+        item-expand! (fn [el]
+                       (let [_sid (mark-scraped! el)
+                             sid (if (qualified-keyword? _sid)
+                                   _sid
+                                   (base/rand-sid "el-"))]
+                         {sid [:scrape-el el]}))
 
         *brute-force-counter (atom 0)
 
@@ -574,7 +556,6 @@
                                                        5000)
                                                      )
                                          ]
-
 
                                      (if (> wait-time (* 15 1000))
                                        (do
@@ -602,14 +583,143 @@
                                    )
         ]
 
+    (fn [params]
+      {
+
+       :tick               {:fn       (partial _tick params)
+                            :infinite true
+                            }
+       :rnd-scroll         {:fn (fn [_]
+                                  (rand-nth [1 2 3]))}
+
+       :8-scroll {:fn (partial _infinite-scroll! params
+                               (fn [] + 1000 (int (rand 1000)))
+                               (fn []
+                                 (.scrollBy js/window 0  (* (.-innerHeight js/window)
+                                                            (rand-nth [1 2 3])))
+                                 )
+                               )
+                  :infinite true
+                  }
+
+
+       :scrape-el          {:fn (fn [el]
+                                  (try
+                                    (scrape-element el)
+                                    (catch js/Error e
+                                      (do
+                                        (classes/add el "parsed-error")
+
+                                        (.error js/console e)
+
+                                        (swap! *FAILED conj
+                                               (wdom/el-map el)
+                                               )
+
+                                        )
+                                      )
+                                    )
+
+                                  )}
+
+       ;;
+       ;; conditional expand
+
+       ;; brute force approach A
+
+       :brute-force-simple {
+                            :fn       (partial _simple-brute-force
+                                               is-scraped?
+                                               mark-scraped!
+                                               :scrape-el)
+                            :expands? true
+                            :collect? true
+                            }
+
+       ;; brute force approach B
+
+       :find-els           {:fn (fn [selector]
+                                  (filter (fn [el] (not (is-scraped? el))) (wdom/q* selector))
+                                  #_(take 10 (filter (fn [el] (not (is-scraped? el))) (wdom/q* selector)))
+
+                                  )
+                            }
+
+       :brute-1            {:fn       (partial _expander!
+                                               (fn [] {})
+                                               item-expand!)
+                            :collect? true
+                            :expands? true}
+
+       :brute-recurring    {:fn       (partial _expander!
+                                               recurring-scrape-expand!
+                                               item-expand!)
+                            :collect? true
+                            :expands? true}
+       }
+      )
+    )
+  )
+
+
+
+(defn wf! [*wf-state meta-info]
+
+
+  ;; <?> should this initialization be here or in wf?
+
+  ;; (.clear js/console)
+  (reset! *SCRAPED-DATA [])
+  (wf-clean-up-css)
+
+
+  ;; for now go with local scope, instead of init fn
+  (let [WATCHER-ID ::ui
+        *WF-UI (rum/cursor-in *wf-state [:wf/UI])
+
+        ;; todo: move keyboard handing to browser
+        klog (fn [e]
+               (let [chord (into {} (for [[key attr] {:shift "shiftKey" :ctrl "ctrlKey" :alt "altKey" :meta "metaKey"
+                                                      :code  "keyCode"}]
+                                      [key (aget e attr)]))]
+
+                 (cond
+                   (= chord {:shift true :ctrl false :alt false :meta true :code  38})
+                   (do
+                     (.log js/console "increase size!")
+                     (wdom/scraping-ui__inc 50)
+                     )
+
+                   (= chord {:shift true :ctrl false :alt false :meta true :code  40})
+                   (wdom/scraping-ui__inc -50)
+
+                   :else (do)
+                   )
+                 (.log js/console chord)
+                 )
+               )
+        ]
     {
      :init  [
-             (partial watcher/_watcher-cf-init-cb WATCHER-ID
-                      (rum/cursor-in *wf-state [:wf/UI])
-                      (fn [*state state]
-                        (.log js/console "UI: upd" state (= state @*state))
-                        (wf-ui/<rum-ui> *state state)
-                        ))
+             ;; pass UI atom to wf
+             (fn [params]
+               (merge
+                 {
+                  :wf/*UI *WF-UI
+                  }
+                 (watcher/_watcher-cf-init-cb
+                   WATCHER-ID *WF-UI
+                   (fn [*state state]
+                     (.log js/console "UI: upd" state (= state @*state))
+                     (wf-ui/<rum-ui> *state state))
+                   params)))
+
+             ;; add key logger
+             (fn [params]
+               (js/addEventListener "keydown" klog false)
+
+               {}
+               )
              ]
 
 
@@ -693,123 +803,102 @@
      :steps [
              {
 
-              :css/a2   [:css-rule (str SCRAPE-SELECTOR " { outline: 1px solid red; }")]
+        :css/a2   [:css-rule (str SCRAPE-SELECTOR " { outline: 1px solid red; }")]
+
+        ;; :css/c4   [:css-rule ".parsed { opacity: .6; }"]
+
+        :css/c4_1 [:css-rule ".parsed-twice { background-color: red; }"]
+        :css/c4_2 [:css-rule ".parsed-error { background-color: red; outline: 5px solid crimson; }"]
+        :css/c5   [:css-rule ".parsed-red { outline: 5px solid red; }"]
+        :css/c6   [:css-rule ".parsed-magenta { outline: 5px solid magenta; }"]
+        :css/c7   [:css-rule ".parsed-brown { outline: 5px solid brown; }"]
+        :css/c8   [:css-rule ".parsed-error { outline: 5px solid brown; }"]
 
 
-              ;; :css/c4   [:css-rule ".parsed { opacity: .6; }"]
+        ;; :css/attr-0 [:css-rule ".DDD { outline: 5px solid blue; }"]
 
-              :css/c4_1 [:css-rule ".parsed-twice { background-color: red; }"]
-              :css/c4_2 [:css-rule ".parsed-error { background-color: red; outline: 5px solid crimson; }"]
-              :css/c5   [:css-rule ".parsed-red { outline: 5px solid red; }"]
-              :css/c6   [:css-rule ".parsed-magenta { outline: 5px solid magenta; }"]
-              :css/c7   [:css-rule ".parsed-brown { outline: 5px solid brown; }"]
-              :css/c8   [:css-rule ".parsed-error { outline: 5px solid brown; }"]
+        :css/attr-0 [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
+        :css/attr-1 [:css-rules* [".DDD > *" "z-index: 100;"]]
+        :css/attr-2 [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+        :css/attr-3 [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
 
-
-              ;; :css/attr-0 [:css-rule ".DDD { outline: 5px solid blue; }"]
-
-
-
-              :css/attr-0 [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
-              :css/attr-1 [:css-rules* [".DDD > *" "z-index: 100;"]]
-              :css/attr-2 [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
-              :css/attr-3 [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
-
-              }
-             {
-              ::hello [:prn "scraping started!!!"]
-              }
-
-             ]
+        }
+       {
+        ::hello [:prn "scraping started!!!"]
+        }
+     ]
 
      :opts  [
              watcher/watcher-opts
              (base/build-opt-on-done (fn [params result]
-                                       (.warn js/console result)
-                                       ))
+                                       ; (.warn js/console result)
+                                       (js/removeEventListener "keydown" klog false)))
              ]
 
 
      :api   (let [trigger-event (fn [steps] (_trigger-event (get @*wf-state :WF/params {}) steps))]
-              (array-map
-
-                "debug" (fn []
-                          (classes/toggle (.-body js/document) "woof-debug")
-                          )
-
-                "save HTML" (fn []
+              [
+               ;; toggles 'debug' mode on/off
+               ["debug" (fn [] (classes/toggle (.-body js/document) "woof-debug"))]
+               []
+               ["save HTML" (fn []
                               (let [els (wdom/q* SCRAPE-SELECTOR)
                                     html (reduce (fn [s el]
-                                                   (str s (. el -outerHTML))) "" els)
-                                    ]
-
+                                                   (str s (. el -outerHTML))) "" els)]
                                 (ws/POST "http://localhost:8081/kv/put" (fn [])
                                          {:k :html
-                                          :v html}
-                                         )
-                                )
-                              )
+                                          :v html})))]
 
-                "A) trigger scraping: simple" #(trigger-event {(base/rand-sid) [:brute-force-simple SCRAPE-SELECTOR]})
-                "B) trigger scraping: brute"  #(trigger-event
-                                                (let [k (base/rand-sid)]
-                                                  {
-                                                    k [:find-els SCRAPE-SELECTOR]
-                                                    (base/rand-sid) [:brute-1 k]
-                                                   }))
+               ["save EDN" (fn []
+                             (let [data @*SCRAPED-DATA]
+                               (ws/POST "http://localhost:8081/kv/append" (fn [])
+                                        {:k :listings
+                                         :v data})))]
+               []
+               ;; different modes of scraping
 
-                "C) trigger scraping: recurring" #(trigger-event
-                                                  (let [k (base/rand-sid)]
-                                                    {
-                                                      k [:find-els SCRAPE-SELECTOR]
-                                                      (base/rand-sid) [:brute-recurring k]
-                                                     }))
+               ;; scrape once everything on page
+               ["simple scrape" #(trigger-event {(base/rand-sid) [:brute-force-simple SCRAPE-SELECTOR]})]                ;;
+               ["brute scrape"  #(trigger-event
+                                    (let [k (base/rand-sid)]
+                                      {
+                                        k [:find-els SCRAPE-SELECTOR]
+                                        (base/rand-sid) [:brute-1 k]
+                                       }))]
 
-                "infinite scroll" (fn []
+               ["recurring scrape" #(trigger-event
+                                      (let [k (base/rand-sid)]
+                                        {
+                                          k [:find-els SCRAPE-SELECTOR]
+                                          (base/rand-sid) [:brute-recurring k]
+                                         }))]
+
+               []
+               ["♾️ scroll" (fn []
                                     ;; todo make it togglable
                                     (let [params (get @*wf-state :WF/params {})
                                           evt-loop (evt-loop/&evt-loop params)]
                                       (async/put! evt-loop {
                                                             (base/rand-sid) [:8-scroll 100]
-                                                            })
-                                      )
-                                    )
-                "📋FAILED" (fn [] (wdom/copy-to-clipboard @*FAILED))
+                                                            })))]
 
-                "📋RESULT" (fn []
+               []
+               ["📋FAILED" (fn [] (wdom/copy-to-clipboard @*FAILED))]  ;; copy failed elements to buffer
+               ["📋RESULT" (fn []
                              (let [data @*SCRAPED-DATA]
                                (.log js/console data)
                                ;(wdom/copy-to-clipboard data)
                                ;(wdom/save-edn (str "rieltor-" (u/now) ".edn") data)
-                               ))
-
-                "SAVE-EDN" (fn []
-                             (let [data @*SCRAPED-DATA]
-                               (ws/POST "http://localhost:8081/kv/append" (fn [])
-                                        {:k :listings
-                                         :v data})
-                               )
-                     )
-
-
-
-                )
-              )
+                               ))]
+              ])
 
      :on-stop (fn [state]
                 (__log "ON STOP")
-                (.log js/console state)
-
-                ;; can return channel
-                )
+                ;; for now do not return channel
+                nil)
 
 
      }
     )
 
   )
-
-
-
-;; call this on refresh
-;; (wf-clean-up-css)

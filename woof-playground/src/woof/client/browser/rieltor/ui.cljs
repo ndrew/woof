@@ -25,19 +25,29 @@
     [cljs-time.format :as time-fmt]
 
     [woof.client.dom :as woof-dom]
-    [rum.core :as rum]))
+    [rum.core :as rum]
+    [woof.client.playground.ui :as ui]))
 
 ;; ui for scraping workflow
 
-(rum/defc <test-ui> < rum/static
+(rum/defc <scraping-ui> < rum/static
   [*state STATE]
 
-  [:div
+  [:div.woof-scraper-control
+
+   (when (seq (:api STATE))
+     (ui/menubar "API" (:api STATE)))
+
+
    [:header "some ui here. Unfortunately, evt handlers should be set separately"]
    [:button {:on-click (fn [e]
                          (.log js/console e)
                          (swap! *state assoc :now (u/now))
                          )} "foo"]
+
+   [:div.resize-test
+    "foo"
+    ]
 
    [:hr]
    (pr-str STATE)
@@ -53,7 +63,7 @@
   ([*state STATE]
    (let [container-el (woof-dom/q ".ui-container")]
      ;; react UI
-     (rum/mount (<test-ui> *state STATE)
+     (rum/mount (<scraping-ui> *state STATE)
                 container-el)
 
      )))

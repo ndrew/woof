@@ -262,7 +262,7 @@
       (set! (-> el .-style .-bottom) "0px")
       (set! (-> el .-style .-left) "0px")
       (set! (-> el .-style .-width) "100%")
-      (set! (-> el .-style .-paddingLeft) ".5rem")
+      ; (set! (-> el .-style .-paddingLeft) ".5rem")
       (set! (-> el .-style .-backgroundColor) "rgb(241 251 255)")
       (set! (-> el .-style .-borderTop) "1px solid #000")
 
@@ -274,16 +274,26 @@
 
       (css-add-rule! ".woof-scraper-ui #wf-indicator { height: 12px;\n  width: 12px;\n  background-color: #000;\n  border-radius: 50%; border: 1px solid rgba(0,0,0,.133); }")
 
-      (css-add-rule! "@keyframes dots { from { opacity: 0.333; } to { opacity: 1; } } ")
+      (css-add-rule! "@keyframes dots { from { opacity: 0.5; } to { opacity: 1; } } ")
       (css-add-rule! ".woof-scraper-ui .woof-indicator-blink { animation: dots 1500ms infinite; animation-direction: alternate; }")
       ;;
       ;; add a placeholder element to dom
       (add-el! ".woof-scraper-ui" el)
       )
     )
-
-
   )
+
+(defn scraping-ui__inc [delta]
+  (if-let [el (.querySelector (.-body js/document) ".woof-scraper-ui")]
+    (let [h (-> el .-clientHeight)
+          doc (-> js/document .-documentElement)
+          ]
+      (set! (-> el .-style .-minHeight) (str (+ h delta) "px"))
+      (.setProperty (-> doc .-style ) "--height" (str (+ h delta) "px"))
+      )
+  )
+)
+
 
 (defn ui-add-el! [el]
   (let [scraper-ui (.querySelector (.-body js/document) ".woof-scraper-ui")]
