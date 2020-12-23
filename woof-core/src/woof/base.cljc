@@ -663,6 +663,11 @@
   (get-in @*state [::xtor]))
 
 
+
+;;
+;; stateful wf
+
+;;
 ;; keep xtor in state as ::xtor
 (defn build-opt-save-wf-fn [*state] ;;  & {:keys [remove-state-key] :or {state-key :STATE}}
   (fn [params]
@@ -673,26 +678,55 @@
   )
 
 
+;; better version of stateful-wf
+(defn reloadable-wf
+  [*wf-state & {:keys [api init ctx steps opts]}]
 
+  (let [wf (wf! :init init
+                :ctx ctx
+                :steps steps
+                :opts (combine-fns (concat [(build-opt-save-wf-fn *wf-state)] (as-fn-list opts)) :merge-results merge-opts-maps))]
+
+    ;; expose api if needed
+    (merge api
+          {
+           :wf        wf
+
+           ;; if the :state is needed to be stored here, it can be done via api
+           ;; :state     *state
+
+           :start-wf! (fn [] (run-wf! wf))
+
+           :stop-wf!  (fn []
+                        (if-let [xtor (state-get-xtor *wf-state)]
+                          (do
+                            (end! xtor)
+                            ::wf-stop-started)
+                          (utils/throw! "no xtor in state")))
+           }
+          )
+   )
+ )
 
 ;;
 ;; TODO: find ways of notifying that workflow had ended and implement them in base - see (auto-run-wf! ...)
 ;;
+;; candidate for deprecation - as it's confusing
+;;
 (defn stateful-wf
   "build a stateful workflow map with :start-wf! and :stop-wf! 'methods' to start and stop workflow. Providing :api allows to have other user 'methods' or data "
-  [*state wf & {:keys [api] :or {api {}}}]
+  [*state wf & {:keys [api get-xtor] :or {api {}
+                                          get-xtor (fn [*state] (state-get-xtor *state))}}]
 
   (merge api
          {
           :wf        wf
-
           ;; if the :state is needed to be stored here, it can be done via api
           ;; :state     *state
 
           :start-wf! (fn [] (run-wf! wf))
-
           :stop-wf!  (fn []
-                        (if-let [xtor (state-get-xtor *state)]
+                        (if-let [xtor (get-xtor *state)]
                           (do
                             (end! xtor)
                             ::wf-stop-started)
