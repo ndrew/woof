@@ -1,6 +1,10 @@
 (ns woof.wfs.evt-loop
   (:require
-    [woof.utils :as u]))
+    [woof.utils :as u]
+
+    #?(:clj [clojure.core.async :as async :refer [go go-loop]])
+    #?(:cljs [cljs.core.async :as async])
+    ))
 
 
 (defn build-evt-loop-init-map [evt-loop-chan]
@@ -21,6 +25,10 @@
     evt-loop
     (u/throw! "no ::evt-loop-chan provided in params. Ensure that init-fn built by `build-evt-loop-init-fn` is added to :init" )))
 
+
+(defn _emit-steps [params steps]
+  (let [evt-loop (&evt-loop params)]
+    (async/put! evt-loop steps)))
 
 
 (defonce EVT-LOOP-CTX-MAP {
