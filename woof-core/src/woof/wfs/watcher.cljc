@@ -54,7 +54,9 @@
         ch (base/make-chan cf (base/rand-sid))]
 
     ;; why this is not properly working with mult
-    (let [nu-state @*state]
+    (let [nu-state' @*state
+          nu-state (if (nil? nu-state') (reset! *state {}) nu-state')]
+
       (cb *state nu-state)
       (async/put! ch nu-state))
 
