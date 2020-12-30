@@ -14,7 +14,12 @@
     [woof.client.browser.scraper.rum-ui :as rum-wf]
     [woof.client.browser.scraper.actions :as api-wf]
 
-    ))
+    [woof.client.browser.scraper.scrape :as scrape]
+
+    [woof.client.browser.yt.parser :as parser]
+
+
+    [woof.wfs.evt-loop :as evt-loop]))
 
 ;; scraping wf example
 ;; - get watch history
@@ -39,13 +44,20 @@
 ;; WORKFLOW ACTIONS (API)
 ;;
 (defn wf-api [*wf-state]
-  [
-   (api-wf/chord-action (woof-dom/chord 49 :shift true )
-     "HELLO" (fn []
-               (.log js/console "HELLO")))
+  (let [trigger-event (fn [steps] (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps))
+        ]
+    [
+     (api-wf/chord-action (woof-dom/chord 49 :shift true )
+       "SCRAPE"
+       (fn []
+         (trigger-event {(base/rand-sid) [:brute-force-simple (parser/history-selector)]})
+         ))
 
-   ]
+
+     ]
   )
+  )
+
 
 
 
@@ -74,7 +86,16 @@
 
      :ctx   (concat
               (get _UI_ :ctx [])
-              ;[(make-ctx-fn *WF-scrape-data)]
+
+              ;; scrape ctx
+              [
+               (scrape/make-ctx-fn
+                 parser/mark-scraped!
+                 parser/is-scraped?
+                 (parser/history-selector)
+                 parser/history-scrape)
+
+               ]
               )
 
      :steps [
