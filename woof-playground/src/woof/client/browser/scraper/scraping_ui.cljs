@@ -5,7 +5,8 @@
     [goog.object]
     [goog.dom.classes :as classes]
 
-    [cljs.core.async :as async]
+    [rum.core :as rum]
+
     [woof.base :as base]
 
     [clojure.string :as str]

@@ -70,3 +70,14 @@
   )
 
 
+
+(defn _on-run! [*WF-UI meta-info scraper-impl-map prev-state]
+  ;; update the API with stop function
+  (let [{api :api} scraper-impl-map]
+    (when (seq api)
+      (swap! *WF-UI assoc :api
+             (into [["WF:\uD83D\uDEAB" (fn []
+                                         (js* "woof.browser.stop_workflow();"))]
+                    []]
+                   api)
+             ))))
