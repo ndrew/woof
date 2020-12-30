@@ -679,7 +679,7 @@
 
 
 ;; better version of stateful-wf
-(defn reloadable-wf
+(defn _reloadable-wf
   [*wf-state & {:keys [api init ctx steps opts]}]
 
   (let [wf (wf! :init init
@@ -707,6 +707,18 @@
           )
    )
  )
+
+
+;; shorter version of
+#_(base/reloadable-wf *running-wf
+                      :api api
+                      :init init
+                      :ctx ctx
+                      :steps steps
+                      :opts opts
+                      )
+(defn reloadable-wf [*running-wf wf-map]
+      (apply _reloadable-wf (into [*running-wf] (interleave (keys wf-map) (vals wf-map)))))
 
 ;;
 ;; TODO: find ways of notifying that workflow had ended and implement them in base - see (auto-run-wf! ...)
@@ -786,6 +798,15 @@
     )
   )
 
+
+(defn _auto-run-wf! [*wf-state wf-map-fn & {:keys [on-stop]
+                                           :or    {on-stop (fn [_] :ok)}}]
+  (auto-run-wf! *wf-state
+                (fn [prev-state]
+                  (let [wf-map (wf-map-fn prev-state)]
+                    (reloadable-wf *wf-state wf-map)))
+                :on-stop on-stop)
+  )
 
 ;;
 

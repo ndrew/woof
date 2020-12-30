@@ -316,6 +316,10 @@
 
   (.groupCollapsed js/console (str "WF DEF-" @*XXX))
 
+
+  ;; todo: migrate to base/_auto-run-wf!
+
+
   (let [;;
         {UI? :ui?
          EVT-LOOP? :evt-loop?
