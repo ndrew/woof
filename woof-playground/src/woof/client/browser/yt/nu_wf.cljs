@@ -7,7 +7,8 @@
 
     [rum.core :as rum]
 
-    [woof.base :as base :refer [rand-sid]]
+
+    [woof.base :as base :refer [rand-sid sid]]
 
     [woof.client.dom :as woof-dom]
 
@@ -26,7 +27,6 @@
     [woof.wfs.alpha :as alpha]
     [woof.wfs.evt-loop :as evt-loop]
     [woof.client.ws :as ws]
-    [woof.core.protocols :as protocols]
     [woof.data :as d]
     [woof.utils :as u]))
 
@@ -43,85 +43,59 @@
 (defn wf-api [*wf-state *WF-UI]
 
   (let [SCRAPE-SELECTOR (parser/history-day-selector)
-        trigger-event (fn [steps] (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps))]
+        trigger-event (fn [steps] (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps))
 
-    #_{
-     ::clock              [:tick [3000 3]]
-
-     ;;::scroller [:rnd-scroll ::clock]
-     ;; :infinite/scroll [:scroll ::scroller]
-
-     }
-
-    [
-     #_(api-wf/chord-action (woof-dom/chord 49 :shift true )
-       "SCRAPE"
+        LINEARIZE? true
+        ]
+    [#_(api-wf/chord-action (woof-dom/chord 49 :shift true ) "SCRAPE"
        (fn []
          (trigger-event {(base/rand-sid) [:brute-force-simple SCRAPE-SELECTOR]})))
-
-
-     [
-      "RECURRING PARSE"
+     ["RECURRING PARSE"
       (fn []
         ;:brute-recurring
         (trigger-event
-          (let [k (base/rand-sid)]
-            {
-             k               [:find-els SCRAPE-SELECTOR]
-
-             ;; normal version
-             (base/rand-sid) [:brute-recurring k]
-
-             ;; linearized version
-             ;; (base/rand-sid) [:linear-brute-recurring k]
-             }
-            )
-          )
-        )
+          (let [k (sid)]
+            (if LINEARIZE?
+              ;; linearized version
+              {
+               k     [:find-els SCRAPE-SELECTOR]
+               (sid) [:linear-brute-recurring k]
+               }
+              ;; normal version
+              {
+               k     [:find-els SCRAPE-SELECTOR]
+               (sid) [:brute-recurring k]
+               }))))
       ]
 
      ["PARSE"
       (fn []
-        (trigger-event {(base/rand-sid) [:brute-force-simple SCRAPE-SELECTOR]}))]
+        (trigger-event {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))]
 
-
+     ;;
      ;; scroll until
-
      ["SCROLL"
       (fn []
-        (trigger-event {(base/rand-sid) [:scroll 1]}))]
 
-     ;["♾️ scroll"
-     ; (fn []
-     ;   (trigger-event {(base/rand-sid) [:8-scroll 100]}))]
+        ; simplest scroll
+        ;(trigger-event {(base/rand-sid) [:scroll 1]})
 
-
-     ;; todo: clean processed
-     #_["CLEAN PROCESSED"
-      (fn []
-        (let [$els (woof-dom/q* ".PROCESSED-SECTION #contents")]
-          (doseq [$el $els]
-            (woof-dom/html! $el "")
-            )
-          )
-        )
-      ]
-
-     #_["CLEAN PROCESSED (smart)"
-      (fn []
+        ;; scroll with timeout
         (trigger-event
-          (let [k (base/rand-sid)]
+          (let [CLOCK (sid "t-")
+                SCROLLER (sid "scr-")]
             {
-             ;k               [:find-els SCRAPE-SELECTOR]
-             ;; normal version
-             ;(base/rand-sid) [:brute-recurring k]
+             CLOCK        [:tick [3000 3]]
+             SCROLLER     [:rnd-scroll CLOCK]
+             (sid "scr-") [:scroll SCROLLER]
+             })
+          )
+        )]
 
-             ;; linearized version
-             ;; (base/rand-sid) [:linear-brute-recurring k]
-             }
-            )
-          ))
-      ]
+     ["♾️ scroll"
+      (fn []
+        (trigger-event {(sid) [:8-scroll 10]}))]
+
 
      ["ANALYZE DOM!"
       (fn []
@@ -160,49 +134,6 @@
 )
 
 
-;; idle executors:
-;; ---------------
-;; maybe should be moved to wfs.alpa
-
-; execute on idle
-(defn execute-on-idle [executor]
-  (let [from (protocols/execute! executor)
-        to (async/chan 1)]
-
-    (go-loop []
-      (async/<! (alpha/request-idle-callback-chan!))
-      (let [v (async/<! from)]
-        (if (nil? v)
-          (async/close! to)
-          (when (async/>! to v)
-            (recur)))))
-
-    to)
-  )
-
-
-; idle or timeout
-(defn _execute-on-idle-w-timeout [t executor]
-  (let [from (protocols/execute! executor)
-        to (async/chan 1)]
-
-    (go-loop []
-      (async/alt!
-        (alpha/request-idle-callback-chan!) ([]
-                                             ;(.log js/console "idle")
-                                             )
-        (u/timeout t) ([]
-                       ;(.log js/console "t")
-                       )
-        )
-      ;(async/<! (alpha/request-idle-callback-chan!))
-      (let [v (async/<! from)]
-        (if (nil? v)
-          (async/close! to)
-          (when (async/>! to v)
-            (recur)))))
-    to)
-  )
 
 
 
@@ -320,10 +251,10 @@
                              (condp = execute-mode
 
                                :on-idle {
-                                         :execute execute-on-idle
+                                         :execute alpha/execute-on-idle
                                          }
                                :idle-w-timeout {
-                                                :execute (partial _execute-on-idle-w-timeout 50)
+                                                :execute (partial alpha/_execute-on-idle-w-timeout 50)
                                                 }
                                :timed-execute {
                                                :execute  (partial base/_timed-execute-fn 1000)
