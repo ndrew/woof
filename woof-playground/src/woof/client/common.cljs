@@ -14,6 +14,8 @@
 (defn common-ctx [params]
   {
    :log     {:fn (fn[v] (.log js/console v) true)}
+   :warn     {:fn (fn[v] (.warn js/console v) true)}
+
    :&log     {:fn (fn[v] (.log js/console v) true)
               :collect? true
               }
