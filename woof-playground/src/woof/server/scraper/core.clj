@@ -220,6 +220,9 @@
                :routes
                      (wrap-cors
                          (compojure/routes
+
+                           ;; first implementation of storing scraping session in separate atom
+
                            ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
                            (route/resources "/" {:root "public"})
 
@@ -231,6 +234,7 @@
                              (d/pretty! @*SCRAPING-SESSION))
 
                            (compojure/GET "/save-scraping-session" []
+                             ;; todo: handle saving of the scraping session
                              (spit "/Users/ndrw/m/woof/woof-playground/scraping-session.edn"
                                    (d/pretty! @*SCRAPING-SESSION))
 
@@ -258,6 +262,9 @@
                              (server-ws-fn params request)
                              )
 
+
+                           ;; more generic implm
+
                            ;;
                            ;; kv handler
                            ;;
@@ -265,6 +272,11 @@
                            (compojure/GET "/kv/list" [:as request]
                              (info "[KV] /kv/list")
                              (pr-str (keys @state/*kv)))
+
+                           (compojure/GET "/kv/clear" [:as request]
+                             (info "[KV] /kv/clear")
+                             (reset! state/*kv {}))
+
 
                            (compojure/GET "/kv/all" [:as request]
                              (info "[KV] /kv/all")

@@ -61,6 +61,10 @@
 
 ;; server entry point, for standalone running
 (defn -main [& args]
-  (debug ::-main)
-  (run-server 8081))
+  (info ::-main)
+
+  ;; todo: how pass port here from configuration
+  ;; (run-server 8081)
+
+  )
 
