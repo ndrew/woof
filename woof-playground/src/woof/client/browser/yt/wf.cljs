@@ -71,6 +71,8 @@
 
   )
 
+
+
 ;; element scraping function
 (defn scrape-element [el]
   ; (.warn js/console el (d/pretty! (wdom/dataset el)))
@@ -88,18 +90,72 @@
 
   (let [id_$ "A:nth-child(1)"
         ;channel_$ "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A"
+                 ;_  "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A"
         ;title_$ "DIV:nth-child(3) > H3:nth-child(1) > SPAN:nth-child(2)"
+
+
         ]
 
     (if-let [id (safe-href el id_$)]
-      (swap! *SCRAPED-DATA conj
-             {
-              :id id
-              ;:channel (safe-href el channel_$)
-              ;:title (safe-txt el title_$)
-              ;; todo: img
-              }
-             )
+      (do
+
+        (swap! *SCRAPED-DATA conj
+               (merge
+
+                 {
+                  :id id
+
+                  ;; todo: exctract WL index from the URL
+
+                  ;:channel (safe-href el channel_$)
+                  ;:title (safe-txt el title_$)
+
+
+                  ;; :el-map (map #(dissoc % :el) (wdom/el-map el :top-selector-fn (fn [base el] { :nth-child (:i base)})))
+                  }
+
+                 (if-let [n (wdom/q el "YTD-CHANNEL-NAME YT-FORMATTED-STRING > A")]
+                   {:channel-href (wdom/attr n "href")  }
+                   {"YTD-CHANNEL-NAME YT-FORMATTED-STRING > A" false
+                    :html (.-outerHTML el)
+                    })
+
+                 (if-let [n (wdom/q el "A YT-IMG-SHADOW:nth-child(1) IMG")]
+                   {:img-src (wdom/attr n "src")  }
+                   {"A YT-IMG-SHADOW:nth-child(1) IMG" false
+                    :html (.-outerHTML el)
+                    })
+
+                 (if-let [n (wdom/q el "#channel-name #text a")]
+                   {:channel-title (.-innerText n)  }
+                   {"#channel-name #text a" false
+                    :html (.-outerHTML el)
+                    })
+
+                 (if-let [n (wdom/q el "DIV:nth-child(3)  H3:nth-child(1)  SPAN:nth-child(2)")]
+                   {:title (.-innerText n)}
+                   {
+                    "DIV:nth-child(3)  H3:nth-child(1)  SPAN:nth-child(2)" false
+                    :html (.-outerHTML el)
+                    })
+
+                 (if-let [n (wdom/q el "YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER > SPAN:nth-child(2)")]
+                   {:duration (.-innerText n)}
+                   {
+                    "YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER > SPAN:nth-child(2)" false
+                    :html (.-outerHTML el)
+                    })
+
+
+                 #_(if-let [n (wdom/q el "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A")]
+                   {:innerText (.-innerText n)}
+                   {"DIV:nth-child(3) > H3:nth-child(1) > SPAN:nth-child(2)" false})
+
+
+                 )
+               )
+        )
+
       (do
         (.warn js/console "cannot find the id for element " el)
         )
@@ -107,6 +163,48 @@
 
 
     )
+
+  #_[{:_$ "A:nth-child(1)",
+    :filters #{:link?},
+    :href "/watch?v=Oe6OfnNuxOw&list=WL&index=6&t=138s"}
+   {:_$ "A:nth-child(2)",
+    :filters #{:link?},
+    :href "/watch?v=Oe6OfnNuxOw&list=WL&index=6&t=138s"}
+   {:_$ "A:nth-child(2) > YT-IMG-SHADOW:nth-child(1) > IMG",
+    :filters #{:img?},
+    :img-src
+    "https://i.ytimg.com/vi/Oe6OfnNuxOw/hqdefault.jpg?sqp=-oaymwEZCPYBEIoBSFXyq4qpAwsIARUAAIhCGAFwAQ==&rs=AOn4CLCatO5wJzcBDVF0EQMLUg8NcsTPkA"}
+   {:_$ "DIV:nth-child(3) > H3:nth-child(1) > SPAN:nth-child(2)",
+    :filters #{:text?},
+    :text
+    "\n            The iPhone's Most Powerful New Productivity Feature\n          "}
+   {:_$
+             "A:nth-child(2) > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-PLAYBACK-STATUS-RENDERER:nth-child(1) > YT-FORMATTED-STRING:nth-child(1)",
+    :filters #{:text?},
+    :text "ПЕРЕГЛЯНУТО"}
+   {:_$
+             "A:nth-child(2) > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER:nth-child(3) > SPAN:nth-child(2)",
+    :filters #{:text?},
+    :text "\n  11:51\n"}
+   {:_$
+             "A:nth-child(2) > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-NOW-PLAYING-RENDERER:nth-child(4) > SPAN",
+    :filters #{:text?},
+    :text "Зараз відтворюється"}
+   {:_$
+             "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(2)",
+    :filters #{:text?},
+    :text "•"}
+   {:_$
+             "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > PAPER-TOOLTIP:nth-child(2) > DIV",
+    :filters #{:text?},
+    :text
+             "\n\n                                                            Thomas Frank\n\n                                                        "}
+   {:_$
+             "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A",
+    :filters #{:link? :text?},
+    :href "/c/Thomasfrank",
+    :text "Thomas Frank"}]
+
 
   #_[{:_$ "A:nth-child(1)",
     :filters #{:link?},
@@ -330,7 +428,7 @@
                                            (rand-nth [1 2 3]))}
 
                 :8-scroll {:fn (partial _infinite-scroll! params
-                                        (fn [] + 200 (int (rand 100)))
+                                        (fn [] + 1000 (int (rand 1000)))
                                         (fn []
                                           (.scrollBy js/window 0  (* (.-innerHeight js/window)
                                                                      (rand-nth [1 2 3])))
@@ -374,7 +472,10 @@
                 ;; brute force approach B
 
                 :find-els           {:fn (fn [selector]
-                                           (filter (fn [el] (not (is-scraped? el))) (wdom/q* selector)))
+                                           (filter (fn [el] (not (is-scraped? el))) (wdom/q* selector))
+                                           #_(take 10 (filter (fn [el] (not (is-scraped? el))) (wdom/q* selector)))
+
+                                           )
                                      }
 
                 :brute-1            {:fn       (partial _expander!
@@ -463,6 +564,7 @@
                                              )
 
                 "infinite scroll" (fn []
+                                    ;; todo make it togglable
                                    (let [params (get @*wf-state :WF/params {})
                                          evt-loop (evt-loop/&evt-loop params)]
                                      (async/put! evt-loop {
