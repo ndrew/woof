@@ -2,6 +2,9 @@
   (:require
     [woof.base :as base]
     [woof.utils :as u]
+
+    [woof.core.protocols :as protocols]
+
     #?(:clj [clojure.core.async :as async :refer [go go-loop]])
     #?(:cljs [cljs.core.async :as async])
     #?(:cljs [goog.object :as gobj])
@@ -136,7 +139,7 @@
 
 
 (defn _seq-worker-handler
-  ""
+  "" ;; todo: write documentation
   [worker-chan-id shandler-fn params v]
   (let [
         make-chan (fn [] (base/make-chan (base/&chan-factory params) (base/rand-sid)))
@@ -168,6 +171,54 @@
       outbound-chan
       )
     )
+  )
+
+;; idle executors:
+;; ---------------
+;; maybe should be moved to wfs.alpa
+
+; execute on idle
+(defn execute-on-idle [executor]
+  (let [from (protocols/execute! executor)
+        to (async/chan 1)]
+
+    (go-loop []
+      (async/<! (request-idle-callback-chan!))
+      (let [v (async/<! from)]
+        (if (nil? v)
+          (async/close! to)
+          (when (async/>! to v)
+            (recur)))))
+
+    to)
+  )
+
+
+; idle or timeout
+(defn _execute-on-idle-w-timeout [t executor]
+  (let [from (protocols/execute! executor)
+        to (async/chan 1)]
+
+    (go-loop []
+      (async/alt!
+        (request-idle-callback-chan!) ([]
+                                       ;#?(:cljs
+                                          ;(.log js/console "idle")
+                                          ;)
+                                          )
+        (u/timeout t) ([]
+                       ;#?(:cljs
+                          ;(.log js/console "t")
+                          ;)
+                       )
+        )
+      ;(async/<! (alpha/request-idle-callback-chan!))
+      (let [v (async/<! from)]
+        (if (nil? v)
+          (async/close! to)
+          (when (async/>! to v)
+            (recur)))))
+    to)
   )
 
 

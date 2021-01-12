@@ -445,6 +445,7 @@
 
 
 (def rand-sid wf/rand-sid)
+(def sid wf/rand-sid)
 
 
 (defn time-chunk-execute [t executor]
