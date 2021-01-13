@@ -1,5 +1,9 @@
 (ns woof.client.browser.scraper.scraping-ui
   (:require
+    [cljs.core.async :as async]
+    [clojure.string :as str]
+    [clojure.set :as set]
+
     [goog.object]
     [goog.dom :as dom]
     [goog.object]
@@ -8,17 +12,15 @@
     [rum.core :as rum]
 
     [woof.base :as base]
-
-    [clojure.string :as str]
     [woof.data :as d]
     [woof.utils :as u]
     [woof.client.dom :as woof-dom]
     [woof.client.ws :as ws]
-
     ))
 
 
 
+;;
 (defn scraping-ui-impl! [meta-info]
 
   (if (get meta-info :ws? false)
@@ -26,7 +28,7 @@
           get-session-btn-el   (dom/createDom "button" "" "get session")
           panel (dom/createDom "div" "panel")]
 
-      (js-debugger)
+      ;;(js-debugger)
 
       (dom/appendChild panel (dom/createDom "header" "" "SCRAPING SESSION "))
 
@@ -55,14 +57,13 @@
 
 (defn wf-api-ui! [api]
   (let [panel (dom/createDom "div" "panel")]
+    (classes/add panel "woof-api-panel")
     (dom/appendChild panel (dom/createDom "header" "" "API"))
     (doseq [[k v] api]
       (let [btn-el (dom/createDom "button" "" (str k))]
         ;; todo: expose api actions and show them in um
 
-        (woof-dom/on-click btn-el (fn []
-                                    (v)
-                                    ))
+        (woof-dom/on-click btn-el (fn [] (v)))
         (dom/appendChild panel btn-el)
         )
       )
@@ -70,9 +71,10 @@
     )
   )
 
+
 (defn wf-indicator-ui! []
   (let [panel (dom/createDom "div" "panel")]
-
+    (classes/add panel "woof-wf-indicator")
     (dom/appendChild panel (dom/createDom "span" (js-obj
                                                    "id" "wf-indicator"
                                                    "class" "wf-not-running") ))
@@ -82,26 +84,34 @@
   )
 
 
-(defn- indicate [color blink?]
+(defn- indicate [color cl blink?]
+  (.warn js/console "indicate" color cl blink?)
   (when-let [indicator (.querySelector (.-body js/document) "#wf-indicator")]
     (set! (-> indicator .-style .-backgroundColor) color)
     (if blink?
       (classes/addRemove indicator "" "woof-indicator-blink")
-      (classes/addRemove indicator "woof-indicator-blink" "")
-      )
-
-
-
+      (classes/addRemove indicator "woof-indicator-blink" ""))
     )
 
+  (when-let [indicator-panel (woof-dom/q ".woof-wf-indicator")]
+    (let [classes  (into #{} (classes/get indicator-panel))
+          cl-diff (set/difference classes #{"panel" "woof-wf-indicator"})]
 
+      (doseq [cl2remove cl-diff]
+        (classes/remove indicator-panel cl2remove))
+      (classes/add indicator-panel cl)
+      )
+    )
   )
 
 (defn indicate-wf-started []
-  (indicate "rgb(26 232 175)" true))
+  (indicate "rgb(26 232 175)" "woof-wf-started" true))
 
 (defn indicate-wf-done []
-  (indicate "rgb(101 189 132)" false))
+  (indicate "rgb(101 189 132)" "woof-wf-done" false))
 
 (defn indicate-wf-error []
-  (indicate "rgb(255 0 0)" false))
+  (indicate "rgb(255 0 0)" "woof-wf-error" false))
+
+;;
+

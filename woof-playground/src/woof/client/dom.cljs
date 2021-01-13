@@ -907,3 +907,10 @@
     :ctrl ctrl
     :alt alt
     :meta meta}))
+
+
+
+(defn outer-html [els]
+  (if (seq els)
+    (reduce (fn [s el] (str s (. el -outerHTML))) "" els)
+    (. els -outerHTML)))

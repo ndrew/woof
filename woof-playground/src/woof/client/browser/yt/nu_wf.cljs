@@ -1,23 +1,20 @@
 (ns woof.client.browser.yt.nu-wf
   (:require
 
-
     [cljs.core.async :as async :refer [go go-loop]]
     [goog.dom.classes :as classes]
 
     [rum.core :as rum]
-
 
     [woof.base :as base :refer [rand-sid sid]]
 
     [woof.client.dom :as woof-dom]
 
     [woof.client.playground.ui :as ui]
-
     [woof.client.dbg :as dbg :refer [__log]]
 
     [woof.client.browser.scraper.rum-ui :as rum-wf]
-    [woof.client.browser.scraper.actions :as api-wf]
+    [woof.client.browser.scraper.actions :as api-wf :refer [chord-action]]
 
     [woof.client.browser.scraper.scrape :as scrape]
 
@@ -28,7 +25,8 @@
     [woof.wfs.evt-loop :as evt-loop]
     [woof.client.ws :as ws]
     [woof.data :as d]
-    [woof.utils :as u]))
+    [woof.utils :as u])
+  )
 
 ;; scraping wf example
 ;; - get watch history
@@ -46,6 +44,10 @@
 (defn scraping-sub-wf [*wf-state *WF-UI]
   (let [; helpers
         trigger-event (fn [steps] (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps))
+        save!         (fn [k v] (ws/POST "http://localhost:8081/kv/put"
+                                         (fn [] (.log js/console (str k " saved")))
+                                         {:k k :v v}))
+
 
         ; meta
         LINEARIZE? true
@@ -57,7 +59,7 @@
         ]
     { ; _SCRAPE_
 
-     :api [#_(api-wf/chord-action (woof-dom/chord 49 :shift true ) "SCRAPE"
+     :api [#_(chord-action (woof-dom/chord 49 :shift true ) "SCRAPE"
                                   (fn []
                                     (trigger-event {(base/rand-sid) [:brute-force-simple SCRAPE-SELECTOR]})))
            ["RECURRING PARSE"
@@ -79,8 +81,7 @@
             ]
 
            ["PARSE"
-            (fn []
-              (trigger-event {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))]
+            (fn [] (trigger-event {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))]
 
            ;;
            ;; scroll until
@@ -116,29 +117,14 @@
                 #_(.log js/console (woof-dom/nu-el-map (first sections))))
               )]
 
-           ["SAVE HTML"
-            (fn []
-              (let [els (woof-dom/q* SCRAPE-SELECTOR)
-                    html (reduce (fn [s el] (str s (. el -outerHTML))) "" els)]
 
-                (ws/POST "http://localhost:8081/kv/put" (fn [])
-                         {:k :html
-                          :v html})
-                )
-              )
-            ]
+           ["SAVE HTML" #(save! :html (woof-dom/outer-html (woof-dom/q* SCRAPE-SELECTOR)))]
 
-           ;;
-           (api-wf/chord-action (woof-dom/chord 49 :shift true )
-                                "SAVE DATA"
-                                (fn []
-                                  ;; find sections
-                                  (ws/POST "http://localhost:8081/kv/put" (fn [])
-                                           {:k :RESULTS
-                                            :v (:RESULTS @*WF-UI)})
-                                  (.log js/console "sent results")
-                                  ;; todo: maybe indicate via woof ui
-                                  ))
+           ;;shift+1
+           (chord-action (woof-dom/chord 49 :shift true)
+                         "SAVE DATA"
+                         #(save! :RESULTS (:RESULTS @*WF-UI))
+                         )
            ]
 
      ;; linearize parsing
