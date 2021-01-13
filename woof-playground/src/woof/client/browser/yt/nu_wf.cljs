@@ -38,111 +38,109 @@
 (def <rum-ui> (rum-wf/gen-rum-ui yt-ui/<scraping-ui>))
 
 
-;; WORKFLOW ACTIONS (API)
-;;
-(defn wf-api [*wf-state *WF-UI]
-
-  (let [SCRAPE-SELECTOR (parser/history-day-selector)
-
-        trigger-event (fn [steps] (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps))
-
-        LINEARIZE? true
-        ]
-    [#_(api-wf/chord-action (woof-dom/chord 49 :shift true ) "SCRAPE"
-       (fn []
-         (trigger-event {(base/rand-sid) [:brute-force-simple SCRAPE-SELECTOR]})))
-     ["RECURRING PARSE"
-      (fn []
-        ;:brute-recurring
-        (trigger-event
-          (let [k (sid)]
-            (if LINEARIZE?
-              ;; linearized version
-              {
-               k     [:find-els SCRAPE-SELECTOR]
-               (sid) [:linear-brute-recurring k]
-               }
-              ;; normal version
-              {
-               k     [:find-els SCRAPE-SELECTOR]
-               (sid) [:brute-recurring k]
-               }))))
-      ]
-
-     ["PARSE"
-      (fn []
-        (trigger-event {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))]
-
-     ;;
-     ;; scroll until
-     ["SCROLL"
-      (fn []
-
-        ; simplest scroll
-        ;(trigger-event {(base/rand-sid) [:scroll 1]})
-
-        ;; scroll with timeout
-        (trigger-event
-          (let [CLOCK (sid "t-")
-                SCROLLER (sid "scr-")]
-            {
-             CLOCK        [:tick [3000 3]]
-             SCROLLER     [:rnd-scroll CLOCK]
-             (sid "scr-") [:scroll SCROLLER]
-             })
-          )
-        )]
-
-     ["♾️ scroll"
-      (fn []
-        (trigger-event {(sid) [:8-scroll 10]}))]
-
-
-     ["ANALYZE DOM!"
-      (fn []
-        ;; find sections
-        (let [sections (woof-dom/q* SCRAPE-SELECTOR)]
-
-            (swap! *WF-UI assoc :DOM (map #(woof-dom/nu-el-map % :MAX-LEVEL 3) sections))
-            #_(.log js/console (woof-dom/nu-el-map (first sections))))
-        )]
-
-     ["SAVE HTML"
-      (fn []
-        (let [els (woof-dom/q* SCRAPE-SELECTOR)
-                html (reduce (fn [s el] (str s (. el -outerHTML))) "" els)]
-
-            (ws/POST "http://localhost:8081/kv/put" (fn [])
-                     {:k :html
-                      :v html})
-            )
-        )
-      ]
-
-     ;;
-     (api-wf/chord-action (woof-dom/chord 49 :shift true )
-        "SAVE DATA"
-        (fn []
-          ;; find sections
-          (ws/POST "http://localhost:8081/kv/put" (fn [])
-                   {:k :RESULTS
-                    :v (:RESULTS @*WF-UI)})
-          (.log js/console "sent results")
-          ;; todo: maybe indicate via woof ui
-          ))
-     ]
-  )
-)
-
-
 
 ;;
 ;; implementation of scraping
 ;;
 ;;
-(defn scraping-sub-wf [*WF-UI]
-  (let [SEQ-ID ::seq]
+(defn scraping-sub-wf [*wf-state *WF-UI]
+  (let [; helpers
+        trigger-event (fn [steps] (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps))
+
+        ; meta
+        LINEARIZE? true
+
+        ; data
+        SEQ-ID ::seq
+        SCRAPE-SELECTOR (parser/history-day-selector)
+
+        ]
     { ; _SCRAPE_
+
+     :api [#_(api-wf/chord-action (woof-dom/chord 49 :shift true ) "SCRAPE"
+                                  (fn []
+                                    (trigger-event {(base/rand-sid) [:brute-force-simple SCRAPE-SELECTOR]})))
+           ["RECURRING PARSE"
+            (fn []
+              ;:brute-recurring
+              (trigger-event
+                (let [k (sid)]
+                  (if LINEARIZE?
+                    ;; linearized version
+                    {
+                     k     [:find-els SCRAPE-SELECTOR]
+                     (sid) [:linear-brute-recurring k]
+                     }
+                    ;; normal version
+                    {
+                     k     [:find-els SCRAPE-SELECTOR]
+                     (sid) [:brute-recurring k]
+                     }))))
+            ]
+
+           ["PARSE"
+            (fn []
+              (trigger-event {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))]
+
+           ;;
+           ;; scroll until
+           ["SCROLL"
+            (fn []
+
+              ; simplest scroll
+              ;(trigger-event {(base/rand-sid) [:scroll 1]})
+
+              ;; scroll with timeout
+              (trigger-event
+                (let [CLOCK (sid "t-")
+                      SCROLLER (sid "scr-")]
+                  {
+                   CLOCK        [:tick [3000 3]]
+                   SCROLLER     [:rnd-scroll CLOCK]
+                   (sid "scr-") [:scroll SCROLLER]
+                   })
+                )
+              )]
+
+           ["♾️ scroll"
+            (fn []
+              (trigger-event {(sid) [:8-scroll 10]}))]
+
+
+           ["ANALYZE DOM!"
+            (fn []
+              ;; find sections
+              (let [sections (woof-dom/q* SCRAPE-SELECTOR)]
+
+                (swap! *WF-UI assoc :DOM (map #(woof-dom/nu-el-map % :MAX-LEVEL 3) sections))
+                #_(.log js/console (woof-dom/nu-el-map (first sections))))
+              )]
+
+           ["SAVE HTML"
+            (fn []
+              (let [els (woof-dom/q* SCRAPE-SELECTOR)
+                    html (reduce (fn [s el] (str s (. el -outerHTML))) "" els)]
+
+                (ws/POST "http://localhost:8081/kv/put" (fn [])
+                         {:k :html
+                          :v html})
+                )
+              )
+            ]
+
+           ;;
+           (api-wf/chord-action (woof-dom/chord 49 :shift true )
+                                "SAVE DATA"
+                                (fn []
+                                  ;; find sections
+                                  (ws/POST "http://localhost:8081/kv/put" (fn [])
+                                           {:k :RESULTS
+                                            :v (:RESULTS @*WF-UI)})
+                                  (.log js/console "sent results")
+                                  ;; todo: maybe indicate via woof ui
+                                  ))
+           ]
+
      ;; linearize parsing
      :init [(fn [params] (alpha/_idle-seq-worker-init SEQ-ID params))]
 
@@ -246,17 +244,17 @@
         _RUN_ (runner-sub-wf
                   :execute-mode :idle-w-timeout)
 
-
-
         _UI_ (ui-sub-wf *WF-UI)
 
-        ;;
-        API (wf-api *wf-state *WF-UI)
+
+        _SCRAPE_ (scraping-sub-wf *wf-state *WF-UI)
+
+        API (get _SCRAPE_ :api [])
+
         _API_ (api-wf/actions-impl!
                 API api-wf/default-on-chord)
 
 
-        _SCRAPE_ (scraping-sub-wf *WF-UI)
         ]
 
     {
