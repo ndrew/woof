@@ -44,6 +44,13 @@
 (defn scraping-sub-wf [*wf-state *WF-UI]
   (let [; helpers
         trigger-event (fn [steps] (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps))
+
+        action (fn [title steps-fn]
+                   [title (fn []
+                            (let [steps (steps-fn)]
+                                (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))])
+
+
         save!         (fn [k v] (ws/POST "http://localhost:8081/kv/put"
                                          (fn [] (.log js/console (str k " saved")))
                                          {:k k :v v}))
@@ -56,120 +63,100 @@
         SEQ-ID ::seq
         SCRAPE-SELECTOR (parser/history-day-selector)
 
+        recurring-parse! (fn [LINEARIZE? ]
+                          (let [k (sid)]
+                            (if LINEARIZE?
+                              { ;; linearized version
+                               k     [:find-els SCRAPE-SELECTOR]
+                               (sid) [:linear-brute-recurring k]
+                               }
+                              {;; normal version
+                               k     [:find-els SCRAPE-SELECTOR]
+                               (sid) [:brute-recurring k]
+                               }))
+                          )
+
         ]
     { ; _SCRAPE_
 
-     :api [#_(chord-action (woof-dom/chord 49 :shift true ) "SCRAPE"
-                                  (fn []
-                                    (trigger-event {(base/rand-sid) [:brute-force-simple SCRAPE-SELECTOR]})))
-           ["RECURRING PARSE"
-            (fn []
-              ;:brute-recurring
-              (trigger-event
-                (let [k (sid)]
-                  (if LINEARIZE?
-                    ;; linearized version
-                    {
-                     k     [:find-els SCRAPE-SELECTOR]
-                     (sid) [:linear-brute-recurring k]
-                     }
-                    ;; normal version
-                    {
-                     k     [:find-els SCRAPE-SELECTOR]
-                     (sid) [:brute-recurring k]
-                     }))))
-            ]
+     :api [
+           (action "parse(recurring)" recurring-parse!)
+           (action "parse(normal)" #(do {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))
+           []
+           (action "SCROLL" #(let [CLOCK (sid "t-")
+                                   SCROLLER (sid "scr-")]
+                               {
+                                CLOCK        [:tick [3000 3]]
+                                SCROLLER     [:rnd-scroll CLOCK]
+                                (sid "scr-") [:scroll SCROLLER]
+                                }))
+           (action "♾️ scroll" #(do {(sid) [:8-scroll 10]}))
+           []
+           ["ANALYZE DOM!" (fn []
+                                ;; find sections
+                                (let [sections (woof-dom/q* SCRAPE-SELECTOR)]
 
-           ["PARSE"
-            (fn [] (trigger-event {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))]
-
-           ;;
-           ;; scroll until
-           ["SCROLL"
-            (fn []
-
-              ; simplest scroll
-              ;(trigger-event {(base/rand-sid) [:scroll 1]})
-
-              ;; scroll with timeout
-              (trigger-event
-                (let [CLOCK (sid "t-")
-                      SCROLLER (sid "scr-")]
-                  {
-                   CLOCK        [:tick [3000 3]]
-                   SCROLLER     [:rnd-scroll CLOCK]
-                   (sid "scr-") [:scroll SCROLLER]
-                   })
-                )
-              )]
-
-           ["♾️ scroll"
-            (fn []
-              (trigger-event {(sid) [:8-scroll 10]}))]
-
-
-           ["ANALYZE DOM!"
-            (fn []
-              ;; find sections
-              (let [sections (woof-dom/q* SCRAPE-SELECTOR)]
-
-                (swap! *WF-UI assoc :DOM (map #(woof-dom/nu-el-map % :MAX-LEVEL 3) sections))
-                #_(.log js/console (woof-dom/nu-el-map (first sections))))
-              )]
-
-
+                                  (swap! *WF-UI assoc :DOM (map #(woof-dom/nu-el-map % :MAX-LEVEL 3) sections))
+                                  #_(.log js/console (woof-dom/nu-el-map (first sections)))))]
+           []
            ["SAVE HTML" #(save! :html (woof-dom/outer-html (woof-dom/q* SCRAPE-SELECTOR)))]
-
-           ;;shift+1
-           (chord-action (woof-dom/chord 49 :shift true)
-                         "SAVE DATA"
-                         #(save! :RESULTS (:RESULTS @*WF-UI))
-                         )
+           (chord-action (woof-dom/chord 49 :shift true)                    ;; shift+!
+                         "SAVE DATA" #(save! :RESULTS (:RESULTS @*WF-UI)))
            ]
 
      ;; linearize parsing
      :init [(fn [params] (alpha/_idle-seq-worker-init SEQ-ID params))]
 
      :steps [{
-              ::hello [:prn "scraping started!!!"]
+              ::hello [:prn "scraping wf running"]
               }]
      :ctx [
            (fn [params]
              ;; todo: kinda generic way of parsing elements on page
+             ;;
+             ;; builds scraping ctx with common scraping stuff
+             ;;
+             ;;
              (let [ctx-fn (scrape/make-ctx-fn
+                            ;; marks element as parsed
                             parser/mark-scraped!
+                            ;; whether element had been scraped
                             parser/is-scraped?
-                            (parser/history-day-selector)
-                            ; (partial parser/_history-day-scrape-async params)
-                            (partial parser/_history-day-scrape params))
-                   ctx (ctx-fn params)
+                            ;; indicates which elements to parse
+                            SCRAPE-SELECTOR
 
-                   s-handler (get ctx :scrape-el)
-                   f (:fn s-handler)
-                   ]
+                            ; (partial parser/_history-day-scrape-async params)
+                            (partial parser/_history-day-scrape params)
+                            )
+
+                   ;; trick: wrapping step handler from s-handler
+                   ctx (ctx-fn params)]
 
                ;;
                ;; very ugly - pass parsing impl to ui state, so it can be used to parse via UI
                (swap! *WF-UI merge {
-                                    :SCRAPE-FN (get-in ctx [:brute! :fn])
-                                    :SCRAPE-SELECTOR (parser/history-day-selector)
+                                    :SCRAPE-FN       (get-in ctx [:brute! :fn])
+                                    :SCRAPE-SELECTOR SCRAPE-SELECTOR
                                     })
 
+               ;; override step handlers with linearized versions of step handlers
                (merge
                  ctx
-                 {
+                 (if LINEARIZE?
+                   (let [s-handler (get ctx :scrape-el)
+                         f (:fn s-handler)]
+                     {
+                      :scrape-el (assoc s-handler
+                                   :fn (fn [v]
+                                         (alpha/_seq-worker-handler SEQ-ID f params v)))
 
-                  ;; linearize existing step handler
-                  :scrape-el (assoc s-handler
-                               :fn (fn [v]
-                                     (alpha/_seq-worker-handler SEQ-ID f params v)))
+                      ;;
+                      :linear-brute-recurring (assoc s-handler
+                                                :fn (fn [col]
+                                                      (alpha/_seq-worker-expander SEQ-ID f params col)))
 
-                  ;;
-                  :linear-brute-recurring (assoc s-handler
-                                            :fn (fn [col]
-                                                  (alpha/_seq-worker-expander SEQ-ID f params col)))
-
-                  }
+                      })
+                   {})
                  )
                )
              )
