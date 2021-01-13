@@ -138,139 +138,126 @@
 
 
 (defn wf! [*wf-state meta-info]
-  (let [
-        *WF-UI (rum/cursor-in *wf-state [:wf/UI])
-
-        _UI_ (rum-wf/ui-impl!
-               *WF-UI
-               <rum-ui>)
+  (let [*WF-UI (rum/cursor-in *wf-state [:wf/UI])
+        _UI_ (assoc
+               (rum-wf/ui-impl! *WF-UI <rum-ui>)
+               :steps [(fn [params]
+                         {
+                          :CSS/minimal-styles    [:css-file "http://localhost:9500/css/r.css"]
+                          :CSS/playground-styles [:css-file "http://localhost:9500/css/playground.css"]
+                       })]
+               )
 
         API (wf-api *wf-state *WF-UI)
-
         _API_ (api-wf/actions-impl! API api-wf/default-on-chord)
 
-        ;; *WF-scrape-data (rum/cursor-in *WF-UI [:scraped])
+
+        _RUN_ {
+               :opts [(fn [params]
+                        (let [execute-mode :idle-w-timeout]
+
+                          ;; todo: find out the most efficient way of parsing
+                          (condp = execute-mode
+
+                            :on-idle {
+                                      :execute alpha/execute-on-idle
+                                      }
+                            :idle-w-timeout {
+                                             :execute (partial alpha/_execute-on-idle-w-timeout 50)
+                                             }
+                            :timed-execute {
+                                            :execute  (partial base/_timed-execute-fn 1000)
+                                            }
+
+                            :chunked-execute {
+                                              :execute (partial base/_chunked-execute-fn 30)
+                                              }
+
+                            ;; no execute wf
+                            {}
+                            )
+                          )
+                        )]
+               }
 
         SEQ-ID ::seq
 
+        _SCRAPE_ {
+                  ;; linearize parsing
+                  :init [(fn [params] (alpha/_idle-seq-worker-init SEQ-ID params))]
+
+                  :steps [{
+                          ::hello [:prn "scraping started!!!"]
+                          }]
+                  :ctx [
+                        (fn [params]
+                          ;; todo: kinda generic way of parsing elements on page
+                          (let [ctx-fn (scrape/make-ctx-fn
+                                         parser/mark-scraped!
+                                         parser/is-scraped?
+                                         (parser/history-day-selector)
+                                         ; (partial parser/_history-day-scrape-async params)
+                                         (partial parser/_history-day-scrape params))
+                                ctx (ctx-fn params)
+
+                                s-handler (get ctx :scrape-el)
+                                f (:fn s-handler)
+                                ]
+
+                            ;;
+                            ;; very ugly - pass parsing impl to ui state, so it can be used to parse via UI
+                            (swap! *WF-UI merge {
+                                                 :SCRAPE-FN (get-in ctx [:brute! :fn])
+                                                 :SCRAPE-SELECTOR (parser/history-day-selector)
+                                                 })
+
+                            (merge
+                              ctx
+                              {
+
+                               ;; linearize existing step handler
+                               :scrape-el (assoc s-handler
+                                            :fn (fn [v]
+                                                  (alpha/_seq-worker-handler SEQ-ID f params v)))
+
+                               ;;
+                               :linear-brute-recurring (assoc s-handler
+                                                           :fn (fn [col]
+                                                                 (alpha/_seq-worker-expander SEQ-ID f params col)))
+
+                               }
+                              )
+                            )
+                          )
+                        ]
+                  }
         ]
     {
      :init            (concat
-
-                        (get _UI_ :init [])
-
-                        ;; linearize parsing
-                        [
-                         (fn [params] (alpha/_idle-seq-worker-init SEQ-ID params))
-                         ]
-
+                        (get _UI_  :init [])
                         (get _API_ :init [])
+                        (get _SCRAPE_ :init [])
                         )
-
 
      :ctx             (concat
-                        (get _UI_ :ctx [])
-
-                        ;; scrape ctx
-                        [
-                         (fn [params]
-
-                           ;; todo: kinda generic way of parsing elements on page
-                           (let [ctx-fn (scrape/make-ctx-fn
-                                          parser/mark-scraped!
-                                          parser/is-scraped?
-                                          (parser/history-day-selector)
-                                          ; (partial parser/_history-day-scrape-async params)
-                                          (partial parser/_history-day-scrape params))
-                                 ctx (ctx-fn params)
-                                 s-handler (get ctx :scrape-el)
-                                 f (:fn s-handler)
-                                 ]
-
-                             ;;
-                             ;; very ugly - pass parsing impl to ui state, so it can be used to parse via UI
-                             (swap! *WF-UI merge {
-                                                  :SCRAPE-FN (get-in ctx [:brute! :fn])
-                                                  :SCRAPE-SELECTOR (parser/history-day-selector)
-                                                  })
-
-                             (merge
-                               ctx
-                               {
-
-                                ;; linearize existing step handler
-                                :scrape-el (assoc s-handler
-                                             :fn (fn [v]
-                                                   (alpha/_seq-worker-handler SEQ-ID f params v)))
-
-                                ;;
-                                ;:linear-brute-recurring (assoc s-handler
-                                ;                            :fn (fn [col]
-                                ;                                  (alpha/_seq-worker-expander SEQ-ID f params col)))
-
-                                }
-
-                               )
-
-                             )
-
-                           ; (partial alpha/_seq-worker-expander SEQ-ID f)
-                           ;         :linear-brute-recurring    {:fn       (partial _expander!
-                           ;                                                       recurring-scrape-expand!
-                           ;                                                      item-expand!)
-                           ;                                  :collect? true
-                           ;                                 :expands? true}
-
-
-                           ;; meh - ugly
-
-                           )
-                         ]
+                        (get _UI_     :ctx [])
+                        (get _API_ :init [])
+                        (get _SCRAPE_ :ctx [])
                         )
 
-     :steps           [
-                       ;; UI
-                       {
-                        :CSS/minimal-styles    [:css-file "http://localhost:9500/css/r.css"]
-                        :CSS/playground-styles [:css-file "http://localhost:9500/css/playground.css"]
-
-                        }
-                       ;;
-                       {
-                        ::hello [:prn "scraping started!!!"]
-                        }
-                       ]
+     :steps           (concat
+                        (get _UI_ :steps [])
+                        (get _API_ :steps [])
+                        (get _SCRAPE_ :steps [])
+                        )
 
      :opts            (concat
                         (get _UI_ :opts [])
                         (get _API_ :opts [])
-                        [(fn [params]
-                           (let [execute-mode :idle-w-timeout]
-
-                             ;; todo: find out the most efficient way of parsing
-                             (condp = execute-mode
-
-                               :on-idle {
-                                         :execute alpha/execute-on-idle
-                                         }
-                               :idle-w-timeout {
-                                                :execute (partial alpha/_execute-on-idle-w-timeout 50)
-                                                }
-                               :timed-execute {
-                                               :execute  (partial base/_timed-execute-fn 1000)
-                                               }
-
-                               :chunked-execute {
-                                                 :execute (partial base/_chunked-execute-fn 30)
-                                                 }
-
-                               ;; no execute wf
-                               {}
-                               )
-                             )
-                           )]
+                        (get _RUN_ :opts [])
                         )
 
+     ;; expose some wf API
      :api             API
 
      :on-stop         (fn [state]
