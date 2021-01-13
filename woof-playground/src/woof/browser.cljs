@@ -75,7 +75,8 @@
 
 
 
-;; todo: should meta info config be here or inside wf should decide
+;;
+;; todo: should meta info config be here or inside wf should decide, or wf can override it?
 (def META-INFO {
              :ws? false
              :evt-loop? true
