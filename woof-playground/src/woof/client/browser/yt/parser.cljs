@@ -163,34 +163,18 @@
 
 
 (defn _observe [mut-chan muts]
-  (.warn js/console muts)
+  ; (.warn js/console muts)
   (doseq [mut muts]
     (async/put! mut-chan mut)))
 
 (defn make-observer [mut-chan]
   (js/MutationObserver. (partial _observe mut-chan)))
 
-
-(defn- make-mutation-chan
-  "Returns a channel that listens for MutationRecords on a given DOM node."
-  [mut-chan node]
-  (.observe
-    (js/MutationObserver.
-      (fn [muts]
-        (.warn js/console muts)
-        (doseq [mut muts]
-          (async/put! mut-chan mut))))
-    node
-    #js {:characterData true
-         :childList true
-         :subtree true})
-
-  mut-chan)
-
-
 ;;
 ;;
 (defn _history-scrape-fn [params el]
+
+  ; todo: should this be a separate woof workflow?
 
   ; mark el as WIP
   (classes/add el "WOOF-WIP")
@@ -232,21 +216,23 @@
            :childList true
            :subtree true})
 
+    ;; parse in different 'thread'
     (js/setTimeout parse!)
-
-    ;result (history-day-scrape-impl el)
 
     (go-loop []
       (let [v (async/alt!
                 mut-chan ([result] :mutation)
                 (u/timeout 1000) :tick)]
 
-
         (if (= :mutation v)
           (do
+            ;; reset the try counter on mutation
             (.log js/console "MUTATION")
             (classes/add el "WOOF-UPD")
+            (vswap! *count 0)
+
             (js/setTimeout parse!)
+
             (recur)
             )
           (if (= :tick v)
@@ -275,7 +261,6 @@
                                             })
                       (.disconnect mut-observer)
                       )
-
                     )
                   )
                 (do
@@ -290,12 +275,9 @@
 
                   )
                 )
-
               )
             )
           )))
-
     out-chan
     )
-
   )

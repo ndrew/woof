@@ -9,9 +9,11 @@
     [goog.dom.classes :as classes]
     [goog.dom.dataset :as dataset]
 
-    [woof.base :as base :refer [rand-sid sid]]
+    [woof.base :as base :refer [rand-sid sid
+                                &chan-factory make-chan]]
 
-    [woof.client.dom :as woof-dom]
+    [woof.client.dom :as woof-dom :refer [q q*]]
+
     [woof.client.playground.ui :as ui]
     [woof.client.dbg :as dbg :refer [__log]]
 
@@ -92,8 +94,15 @@
 
              []
 
-             (action "parse(recurring)" recurring-parse!)
-             (action "parse(normal)" #(do {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))
+             ;; pass only selector
+             (action ":batch-scrape-1!" #(do {(sid) [:batch-scrape-1! SCRAPE-SELECTOR]}))
+             (action ":batch-scrape-2!" #(do {(sid) [:batch-scrape-2! SCRAPE-SELECTOR]}))
+
+             ;;
+             (action "parse(expand)" #(do {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))
+
+             (action "parse(recurring expand)" recurring-parse!)
+
              []
              (action "SCROLL" #(let [CLOCK (sid "t-")
                                      SCROLLER (sid "scr-")]
@@ -134,19 +143,27 @@
                ;; builds scraping ctx with common scraping stuff
                ;;
                ;;
-               (let [ctx-fn (scrape/make-ctx-fn
-                              ;;
-                              ;; marks element as parsed
-                              (fn [el]
-                                (dataset/set el "woof_scraped" "PROCESSING")
-                                ;(parser/mark-scraped! el)
-                                )
-                              ;;
-                              ;; whether element had been scraped
-                              (fn [el]
-                                (dataset/has el "woof_scraped")
-                                ;;(parser/is-scraped? el)
-                                )
+               (let [
+
+                     ;;
+                     ;; marks element as parsed
+                     scrape-start! (fn [el]
+                                     (dataset/set el "woof_scraped" "PROCESSING")
+                                     ;(parser/mark-scraped! el)
+
+                                       ;; return sid or unique element id
+                                       (sid)
+                                     )
+                     ;;
+                     ;; whether element had been scraped
+                     is-scraping? (fn [el]
+                                   (dataset/has el "woof_scraped")
+                                   ;;(parser/is-scraped? el)
+                                   )
+
+                     ctx-fn (scrape/make-ctx-fn
+                              scrape-start!
+                              is-scraping?
 
                               ;; indicates which elements to parse
                               SCRAPE-SELECTOR
@@ -170,6 +187,55 @@
 
                  ;; override step handlers with linearized versions of step handlers
                  (merge
+                   {
+                    ;;=================================
+                    ;; scrape via non-expand s-handler
+                    ;; -
+                    :batch-scrape-2! {
+                                      :fn (fn [selector]
+
+                                            ;; try to find elements to be processed, but skip already processed
+                                            (let [els (filter #(not (is-scraping? %))
+                                                              (q* selector))
+
+                                                  ;; mark element for scraping first
+                                                  els2scrape (loop [els els
+                                                                    ;; key map ordered
+                                                                    els-map (array-map)]
+                                                               (if (seq els)
+                                                                 (let [el (first els)
+                                                                       _id (scrape-start! el)
+                                                                       id (if (qualified-keyword? _id) _id (sid))]
+
+                                                                   (recur (rest els)
+                                                                          (assoc els-map id el))
+                                                                   )
+                                                                 ;; return
+                                                                 els-map
+                                                                 )
+                                                               )
+                                                  ]
+
+                                              ;;(.log js/console "els" els (woof-dom/q* selector))
+
+
+                                              (doseq [[id el] els2scrape]
+                                                ;;=================
+                                                ;;=================
+                                                ;; TODO: CONTINUE HERE
+                                                ;;=================
+                                                ;;=================
+
+                                                (.log js/console id el)
+                                                ;(SCRAPE-FN el)
+                                                )
+
+                                              :ok
+                                              )
+                                            )
+                                      }
+
+                    }
                    ctx
                    (if LINEARIZE?
                      (let [s-handler (get ctx :scrape-el)

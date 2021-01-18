@@ -6,10 +6,11 @@
     [goog.dom :as dom]
     [goog.dom.classes :as classes]
 
-    [woof.base :as base]
+    [woof.base :as base :refer [&chan-factory make-chan
+                                rand-sid sid]]
     [woof.utils :as u]
     
-    [woof.client.dom :as woof-dom]
+    [woof.client.dom :as woof-dom :refer [q q*]]
 
     [woof.wfs.evt-loop :as evt-loop]
     [woof.wfs.alpha :as alpha]
@@ -23,8 +24,8 @@
 
 
 (defn _tick [params [t max-num]]
-  (let [chan-factory (base/&chan-factory params)
-        chan (base/make-chan chan-factory (base/rand-sid))]
+  (let [chan-factory (&chan-factory params)
+        chan (make-chan chan-factory (rand-sid))]
 
     (async/go-loop [i 0]
                    (async/>! chan (u/now))
@@ -39,6 +40,9 @@
 
 
 
+;;
+;; context for different scraping scrategies
+;; -
 (defn make-ctx-fn [mark-scraped!
                    is-scraped?
 
@@ -47,29 +51,14 @@
 
                    ;; todo: configure recurring scraping wait time
                    ]
+
+  ;;
+  ;;
+
   (let [
-        ;; brute-force scraping, pass all parameters and retrieve, filter els in it
-        _simple-brute-force (fn  [is-scraped? mark-scraped! process-step selector]
-                              
-                              ;;(.log js/console "simple scrape: A")
+        ;; idea: is to have certain prefix, so these can be extracted in opts
+        PARSE-STEP-PREFIX "SCRAPE__"
 
-                              ;; try to find elements to be processed, but skip already processed
-                              (let [els (filter (fn [el] (not (is-scraped? el)))
-                                                (woof-dom/q* selector))]
-
-
-                                ;;(.log js/console "els" els (woof-dom/q* selector))
-
-                                (reduce (fn [a el]
-                                          (let [_sid (mark-scraped! el)
-                                                sid (if (qualified-keyword? _sid)
-                                                      _sid
-                                                      (base/rand-sid "el-"))]
-                                            (assoc a sid [process-step el])
-                                            )
-                                          ) {} els)
-
-                                ))
 
         ;; brute-force scraping via separate find items step (incl. filtering) and separate expand step generation step
         _expander! (fn [collection-expand item-expand els]
@@ -97,7 +86,7 @@
                        (let [_sid (mark-scraped! el)
                              sid (if (qualified-keyword? _sid)
                                    _sid
-                                   (base/rand-sid "el-"))]
+                                   (base/rand-sid PARSE-STEP-PREFIX))]
                          {sid [:scrape-el el]}))
 
         ;; re-curring expand steps
@@ -173,6 +162,7 @@
        :tick               {:fn       (partial _tick params)
                             :infinite true
                             }
+
        :rnd-scroll         {:fn (fn [_]
                                   (rand-nth [1 2 3]))}
 
@@ -188,31 +178,30 @@
 
 
 
-       :brute! {
-                 :fn (fn [selector]
-                       ;;(.log js/console "simple scrape: A")
+       ;;=====================================
+       ;; scrape via non-expand step handler
+       ;;  + preserves order
+       ;; - scrape fn should be async
+       ;; old name brute!
+       :batch-scrape-1! {
+                         :fn (fn [selector]
+                               ;; try to find elements to be processed, but skip already processed
+                               (let [els (filter (fn [el] (not (is-scraped? el)))
+                                                 (q* selector))]
 
-                       ;; try to find elements to be processed, but skip already processed
-                       (let [els (filter (fn [el] (not (is-scraped? el)))
-                                         (woof-dom/q* selector))]
+                                 ;;(.log js/console "els" els (woof-dom/q* selector))
 
+                                 ;; process each el by one
+                                 (doseq [el els]
+                                   (let [_sid (mark-scraped! el)]
+                                     (SCRAPE-FN el)
+                                     ))
 
-                         ;;(.log js/console "els" els (woof-dom/q* selector))
-
-                         (doseq [el els]
-                           (let [_sid (mark-scraped! el)]
-                             (SCRAPE-FN el)
-                             ;(assoc a sid [process-step el])
-
-                             )
-                           )
-
-                         )
-                       #_(fn  [is-scraped? mark-scraped! process-step selector]
-
-                         )
-                       )
+                                 :ok
+                                 )
+                               )
                  }
+
 
 
        ;;
@@ -220,25 +209,46 @@
 
        ;; brute force approach A
 
-       :brute-force-simple {
-                            :fn       (partial _simple-brute-force
-                                               is-scraped?
-                                               mark-scraped!
-                                               :scrape-el)
-                            :expands? true
-                            :collect? true
-                            }
+       ;; brute-force scraping, pass all parameters and retrieve, filter els in it
+       :brute-force-simple
+       (let [_simple-brute-force (fn  [is-scraped? mark-scraped! process-step selector]
+               ;;(.log js/console "simple scrape: A")
+
+               ;; try to find elements to be processed, but skip already processed
+               (let [els (filter (fn [el] (not (is-scraped? el)))
+                                 (q* selector))]
+
+                 ;;(.log js/console "els" els (woof-dom/q* selector))
+
+                 (reduce (fn [a el]
+                           (let [_sid (mark-scraped! el)
+                                 sid (if (qualified-keyword? _sid)
+                                       _sid
+                                       (rand-sid PARSE-STEP-PREFIX))]
+                             (assoc a sid [process-step el])))
+                         {} els)
+                 ))]
+         {
+          :fn       (partial _simple-brute-force
+                             is-scraped?
+                             mark-scraped!
+                             :scrape-el)
+          :expands? true
+          :collect? true
+          })
 
        ;; brute force approach B
 
        :find-els           {:fn (fn [selector]
                                   (filter (fn [el] (not (is-scraped? el))) (woof-dom/q* selector))
+
                                   #_(take 10 (filter (fn [el] (not (is-scraped? el))) (woof-dom/q* selector)))
+
                                   )
                             }
 
         ;;
-
+       ;;
        :brute-1            {:fn       (partial _expander!
                                                (fn [] {})
                                                item-expand!)
