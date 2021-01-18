@@ -462,7 +462,10 @@
 ;; channel factory
 
 (defprotocol ChannelFactory
+
   (make-chan [this id])
+
+  (own-chan [this id chan])
 
   ; (make-mult [this id])
 
@@ -474,6 +477,10 @@
 
 (defn chan-factory [*state-map]
   (reify ChannelFactory
+
+    (own-chan [this id chan]
+      (swap! *state-map assoc id chan)
+      chan)
 
     (make-chan [this id]
       (let [c (async/chan)]

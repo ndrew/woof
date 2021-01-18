@@ -50,8 +50,14 @@
 
 
 (defn _watcher-cf-init-cb [WATCHER-ID *state cb params]
-  (let [cf (base/&chan-factory params)
-        ch (base/make-chan cf (base/rand-sid))]
+  (let [
+        cf (base/&chan-factory params)
+        ; old impl
+        ; ch (base/make-chan cf (base/rand-sid))
+
+        ;; as watcher can receive lots of updates - use non-default chan implementation
+        ch (base/own-chan cf (base/sid) (async/chan (async/sliding-buffer 72)))
+        ]
 
     ;; why this is not properly working with mult
     (let [nu-state' @*state
