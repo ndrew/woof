@@ -1,21 +1,22 @@
 (ns woof.client.browser.yt.nu-wf
   (:require
+    [clojure.string :as str]
 
     [cljs.core.async :as async :refer [go go-loop]]
-    [goog.dom.classes :as classes]
 
     [rum.core :as rum]
+
+    [goog.dom.classes :as classes]
+    [goog.dom.dataset :as dataset]
 
     [woof.base :as base :refer [rand-sid sid]]
 
     [woof.client.dom :as woof-dom]
-
     [woof.client.playground.ui :as ui]
     [woof.client.dbg :as dbg :refer [__log]]
 
     [woof.client.browser.scraper.rum-ui :as rum-wf]
     [woof.client.browser.scraper.actions :as api-wf :refer [chord-action]]
-
     [woof.client.browser.scraper.scrape :as scrape]
 
     [woof.client.browser.yt.parser :as parser]
@@ -23,9 +24,12 @@
 
     [woof.wfs.alpha :as alpha]
     [woof.wfs.evt-loop :as evt-loop]
+
     [woof.client.ws :as ws]
+
     [woof.data :as d]
-    [woof.utils :as u])
+    [woof.utils :as u]
+    )
   )
 
 ;; scraping wf example
@@ -77,90 +81,115 @@
                           )
 
         ]
-    { ; _SCRAPE_
+    {; _SCRAPE_
 
-     :api [
-           (action "parse(recurring)" recurring-parse!)
-           (action "parse(normal)" #(do {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))
-           []
-           (action "SCROLL" #(let [CLOCK (sid "t-")
-                                   SCROLLER (sid "scr-")]
-                               {
-                                CLOCK        [:tick [3000 3]]
-                                SCROLLER     [:rnd-scroll CLOCK]
-                                (sid "scr-") [:scroll SCROLLER]
-                                }))
-           (action "♾️ scroll" #(do {(sid) [:8-scroll 10]}))
-           []
-           ["ANALYZE DOM!" (fn []
-                                ;; find sections
-                                (let [sections (woof-dom/q* SCRAPE-SELECTOR)]
+     :api   [
+             ;; toggle details
+             (chord-action (woof-dom/chord 49 :shift true)                    ;; shift+!
+                           "👀" woof-dom/scraping-ui__togle-details)
+             ["debug!" (fn []
+                         (classes/toggle (.. js/document -body) "ZZZ"))]
 
-                                  (swap! *WF-UI assoc :DOM (map #(woof-dom/nu-el-map % :MAX-LEVEL 3) sections))
-                                  #_(.log js/console (woof-dom/nu-el-map (first sections)))))]
-           []
-           ["SAVE HTML" #(save! :html (woof-dom/outer-html (woof-dom/q* SCRAPE-SELECTOR)))]
-           (chord-action (woof-dom/chord 49 :shift true)                    ;; shift+!
-                         "SAVE DATA" #(save! :RESULTS (:RESULTS @*WF-UI)))
-           ]
+             []
+
+             (action "parse(recurring)" recurring-parse!)
+             (action "parse(normal)" #(do {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))
+             []
+             (action "SCROLL" #(let [CLOCK (sid "t-")
+                                     SCROLLER (sid "scr-")]
+                                 {
+                                  CLOCK        [:tick [3000 3]]
+                                  SCROLLER     [:rnd-scroll CLOCK]
+                                  (sid "scr-") [:scroll SCROLLER]
+                                  }))
+             (action "♾️ scroll" #(do {(sid) [:8-scroll 10]}))
+             []
+             ["ANALYZE DOM!" (fn []
+                               ;; find sections
+                               (let [sections (woof-dom/q* SCRAPE-SELECTOR)]
+
+                                 (swap! *WF-UI assoc :DOM (map #(woof-dom/nu-el-map % :MAX-LEVEL 3) sections))
+                                 #_(.log js/console (woof-dom/nu-el-map (first sections)))))]
+             []
+             ["SAVE HTML" #(save! :html (woof-dom/outer-html (woof-dom/q* SCRAPE-SELECTOR)))]
+             ["SAVE DATA" #(save! :RESULTS (:RESULTS @*WF-UI))]
+
+             #_(chord-action (woof-dom/chord 49 :shift true)                    ;; shift+!
+                           "SAVE DATA" #(save! :RESULTS (:RESULTS @*WF-UI)))
+
+
+
+             ]
 
      ;; linearize parsing
-     :init [(fn [params] (alpha/_idle-seq-worker-init SEQ-ID params))]
+     :init  [(fn [params] (alpha/_idle-seq-worker-init SEQ-ID params))]
 
      :steps [{
               ::hello [:prn "scraping wf running"]
               }]
-     :ctx [
-           (fn [params]
-             ;; todo: kinda generic way of parsing elements on page
-             ;;
-             ;; builds scraping ctx with common scraping stuff
-             ;;
-             ;;
-             (let [ctx-fn (scrape/make-ctx-fn
-                            ;; marks element as parsed
-                            parser/mark-scraped!
-                            ;; whether element had been scraped
-                            parser/is-scraped?
-                            ;; indicates which elements to parse
-                            SCRAPE-SELECTOR
-
-                            ; (partial parser/_history-day-scrape-async params)
-                            (partial parser/_history-day-scrape params)
-                            )
-
-                   ;; trick: wrapping step handler from s-handler
-                   ctx (ctx-fn params)]
-
+     :ctx   [
+             (fn [params]
+               ;; todo: kinda generic way of parsing elements on page
                ;;
-               ;; very ugly - pass parsing impl to ui state, so it can be used to parse via UI
-               (swap! *WF-UI merge {
-                                    :SCRAPE-FN       (get-in ctx [:brute! :fn])
-                                    :SCRAPE-SELECTOR SCRAPE-SELECTOR
-                                    })
+               ;; builds scraping ctx with common scraping stuff
+               ;;
+               ;;
+               (let [ctx-fn (scrape/make-ctx-fn
+                              ;;
+                              ;; marks element as parsed
+                              (fn [el]
+                                (dataset/set el "woof_scraped" "PROCESSING")
+                                ;(parser/mark-scraped! el)
+                                )
+                              ;;
+                              ;; whether element had been scraped
+                              (fn [el]
+                                (dataset/has el "woof_scraped")
+                                ;;(parser/is-scraped? el)
+                                )
 
-               ;; override step handlers with linearized versions of step handlers
-               (merge
-                 ctx
-                 (if LINEARIZE?
-                   (let [s-handler (get ctx :scrape-el)
-                         f (:fn s-handler)]
-                     {
-                      :scrape-el (assoc s-handler
-                                   :fn (fn [v]
-                                         (alpha/_seq-worker-handler SEQ-ID f params v)))
+                              ;; indicates which elements to parse
+                              SCRAPE-SELECTOR
 
-                      ;;
-                      :linear-brute-recurring (assoc s-handler
-                                                :fn (fn [col]
-                                                      (alpha/_seq-worker-expander SEQ-ID f params col)))
+                              (partial parser/_history-scrape-fn params)
 
-                      })
-                   {})
+                              ;; NORMAL PARSING
+                              ; (partial parser/_history-day-scrape-async params)
+                              ; (partial parser/_history-day-scrape params)
+                              )
+
+                     ;; trick: wrapping step handler from s-handler
+                     ctx (ctx-fn params)]
+
+                 ;;
+                 ;; very ugly - pass parsing impl to ui state, so it can be used to parse via UI
+                 (swap! *WF-UI merge {
+                                      :SCRAPE-FN       (get-in ctx [:brute! :fn])
+                                      :SCRAPE-SELECTOR SCRAPE-SELECTOR
+                                      })
+
+                 ;; override step handlers with linearized versions of step handlers
+                 (merge
+                   ctx
+                   (if LINEARIZE?
+                     (let [s-handler (get ctx :scrape-el)
+                           f (:fn s-handler)]
+                       {
+                        :scrape-el              (assoc s-handler
+                                                  :fn (fn [v]
+                                                        (alpha/_seq-worker-handler SEQ-ID f params v)))
+
+                        ;;
+                        :linear-brute-recurring (assoc s-handler
+                                                  :fn (fn [col]
+                                                        (alpha/_seq-worker-expander SEQ-ID f params col)))
+
+                        })
+                     {})
+                   )
                  )
                )
-             )
-           ]
+             ]
      }
     )
   )
@@ -201,6 +230,48 @@
                :CSS/minimal-styles    [:css-file "http://localhost:9500/css/r.css"]
                :CSS/playground-styles [:css-file "http://localhost:9500/css/playground.css"]
                })]
+    :opts [(fn [params]
+             {:op-handlers-map {
+                                :process (fn [result]
+
+
+                                           (let [results* (select-keys result
+                                                                       (filter #(str/starts-with? (str %) ":/SCRAPE__") (keys result)))
+
+                                                 *errors (volatile! {})
+
+                                                 ready-results (reduce
+                                                                 (fn [a [k v]]
+                                                                   (if-not (u/channel? v)
+                                                                     (if (:error v)
+                                                                       (do
+                                                                         (vswap! *errors assoc k v)
+                                                                         a
+                                                                         )
+                                                                       (assoc a (:d v) (count (:videos v)))
+                                                                       )
+
+                                                                     a))
+                                                                 {} results*
+                                                                 )
+                                                 ]
+
+                                             ;;(.warn js/console ready-results)
+                                             (swap! *WF-UI assoc :SCRAPE/READY ready-results)
+
+                                             (swap! *WF-UI assoc :SCRAPE/ERROR @*errors)
+                                             )
+
+                                           ;; just take the results by key prefix
+
+                                           ;; todo: filter out the channels
+
+
+
+                                           result
+                                           )}
+              }
+             )]
     )
   )
 
@@ -215,7 +286,8 @@
 
 
         _RUN_ (runner-sub-wf
-                  :execute-mode :idle-w-timeout)
+                  :execute-mode :idle-w-timeout
+                  :t 10)
 
         _UI_ (ui-sub-wf *WF-UI)
 

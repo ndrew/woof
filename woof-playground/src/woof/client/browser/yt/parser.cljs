@@ -9,7 +9,7 @@
     [clojure.string :as str]
     [cljs.core.async :refer [go go-loop] :as async]
 
-    [woof.base :as base]
+    [woof.base :as base :refer [sid make-chan &chan-factory]]
     [woof.data :as d]
 
     [woof.client.dom :as wdom]
@@ -24,16 +24,15 @@
 
 
 
-#_(defn history-day-selector []
-  "#contents .ytd-section-list-renderer"
-  )
-
-
-
 (defn history-day-selector []
-  ;;
-  "#contents .ytd-section-list-renderer:not(.PROCESSED-SECTION)"
- ; "#contents .ytd-section-list-renderer"
+
+  ;
+  ; "#contents .ytd-section-list-renderer"
+  ; - continuation list renderer has this type
+
+  ;; <ytd-item-section-renderer> - contains list of videos per day
+  "#contents ytd-item-section-renderer:not(.WOOF-WIP)"
+
   )
 
 
@@ -48,7 +47,6 @@
       ""
       )
     )
-
   )
 
 
@@ -56,42 +54,14 @@
 
 (defn history-day-scrape-impl [el]
 
-  ; (.log js/console "parsing" el)
-
-  ;"DIV:nth-child(3) > YTD-VIDEO-RENDERER:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > H3:nth-child(1) > A:nth-child(2) > YT-FORMATTED-STRING:nth-child(2)"
-  ;"DIV:nth-child(3) > YTD-VIDEO-RENDERER:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > H3:nth-child(1) > YTD-BADGE-SUPPORTED-RENDERER:nth-child(1) > DIV:nth-child(1) > SPAN:nth-child(2)"
-
-  #_(let [$date "DIV:nth-child(1) > YTD-ITEM-SECTION-HEADER-RENDERER > DIV > DIV:nth-child(1)"
-        $duration "DIV:nth-child(3) > YTD-VIDEO-RENDERER:nth-child(1) > DIV:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A > DIV:nth-child(2) > YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER:nth-child(2) > SPAN:nth-child(2)"]
-    {
-     :date (safe-txt el $date)
-
-     :duration (safe-txt el $duration)
-     :aria-duration (if-let [$el (woof-dom/q el $duration)]
-                      ;; don't trim for now
-                      (.getAttribute $el "aria-label")
-                      ""
-                      #_(do
-                        (.log js/console "can't find element for selector: " selector "parent-el" el)
-                        (classes/add el "parsed-error")
-                        ""
-                        )
-                      )
-
-     :url (if-let [$el (woof-dom/q el "DIV:nth-child(3) > YTD-VIDEO-RENDERER:nth-child(1) > DIV:nth-child(1) > YTD-THUMBNAIL:nth-child(1) > A")]
-           (.getAttribute $el "href")
-           ""
-           )
-     }
-
-
-    )
+  ;; should this be in the
+  ;(classes/add el "WOOF-WIP")
 
   (let [; $date (woof-dom/q el "#header #title")
         date (safe-txt el "#header #title")
         ]
 
-    (.log js/console "parsing" date)
+    ;; (.log js/console "parsing" date)
 
     (merge
       {
@@ -113,6 +83,13 @@
                   ;;"YTD-THUMBNAIL"
 
                   videos (map (fn [$root]
+                                (if (classes/has $root "PROCESSED-VIDEO")
+                                  (classes/add $root "DOUBLE-PROCESSED-VIDEO")
+                                  )
+
+                                (classes/add $root "PROCESSED-VIDEO")
+
+
                     (merge
                       ;;  YTD-VIDEO-META-BLOCK
 
@@ -167,85 +144,158 @@
 
 
 
-;;
-;; main parsing function
-;;  - parses block of videos per day
-;;  - marks block as parsed after all videos had been processed
-;;
-(defn _history-day-scrape [params el]
-  (try
-    (let [result (history-day-scrape-impl el)
-          *UI (get params :wf/*UI)]
-      (if (get result :ready? false)
-        (let [t (u/now)
-              ;; chunk updates
-              _t (quot t 10000)
-
-              time-class (str "ttt-" _t)
-
-              ]
-          (swap! *UI update :RESULTS merge {(:d result) result})
-
-
-          ; (.log js/console "PROCESSED:" (pr-str result))
-          (classes/add el "PROCESSED-SECTION")
-
-          (classes/add el time-class)
-          (swap! *UI assoc :upd t)
-
-          (swap! *UI update :upd-class (fnil conj #{}) _t)
-
-
-          ;; hide the parsed data in order to speed up the
-          (classes/add (woof-dom/q el "#contents") "HIDE-HIDE-HIDE")
-
-          ;(woof-dom/html! (woof-dom/q el "#contents") (str (u/now)))
-
-          :parsed-OK
-          )
-        :waiting
-        )
-
-      ;; todo: ...
-      ; (swap! *SCRAPED-DATA conj result)
-      ; (swap! *WF-scrape-data conj result)
-      )
-    (catch js/Error e
-      (do
-        (classes/add el "PROCESSED-ERROR")
-        (.error js/console e)
-
-        ;; (swap! *FAILED conj (woof-dom/el-map el))
-        )
-      )
-    )
-  )
-
-
-
-#_(defn _history-day-scrape-async [params el]
-
-  (let [cf (base/&chan-factory params)
-        chan (base/make-chan cf (base/rand-sid))]
-    (go
-      (async/<! (u/timeout (rand-int 500)))
-      (async/put! chan
-                  (_history-day-scrape params el))
-
-      )
-    chan
-    )
-  )
-
 (defn is-scraped? [el]
   (dataset/has el "woof_id"))
 
 
 (defn mark-scraped! [el]
-  (let [sid (base/rand-sid)
-        ALLOW-DOUBLE-PARSE true
-        ]
+  ;; todo: configure
+  (let [ALLOW-DOUBLE-PARSE false]
+
     ;; mark element as processed
     (if-not ALLOW-DOUBLE-PARSE
-      (dataset/set el "woof_id" sid))
+      (dataset/set el "woof_id" (sid)))
     ))
+
+
+;;;;;;;;
+
+
+
+(defn _observe [mut-chan muts]
+  (.warn js/console muts)
+  (doseq [mut muts]
+    (async/put! mut-chan mut)))
+
+(defn make-observer [mut-chan]
+  (js/MutationObserver. (partial _observe mut-chan)))
+
+
+(defn- make-mutation-chan
+  "Returns a channel that listens for MutationRecords on a given DOM node."
+  [mut-chan node]
+  (.observe
+    (js/MutationObserver.
+      (fn [muts]
+        (.warn js/console muts)
+        (doseq [mut muts]
+          (async/put! mut-chan mut))))
+    node
+    #js {:characterData true
+         :childList true
+         :subtree true})
+
+  mut-chan)
+
+
+;;
+;;
+(defn _history-scrape-fn [params el]
+
+  ; mark el as WIP
+  (classes/add el "WOOF-WIP")
+
+  (let [mut-chan (make-chan (&chan-factory params) (sid "MUT/"))
+        out-chan (make-chan (&chan-factory params) (sid "OUT/"))
+
+        *WF-UI (base/& params :wf/*UI ":wf/*UI should be provided")
+
+        ;; store last parse result
+        *result (volatile! {})
+        *count (volatile! 0)
+
+        parse! (fn []
+                 ;; each sub video should be marked as parsed
+                 (let [result (history-day-scrape-impl el)]
+                   (.log js/console "PARSE:" result)
+
+                   (if (:ready? result)
+                     (do
+                       (swap! *WF-UI assoc :SCRAPE/WIP (:d result) (count (:videos result)))
+                       (vreset! *result result)
+                       )
+                     (do
+                       (.warn js/console "can't parse" el)
+                       )
+                     )
+                   ))
+
+        mut-observer (make-observer mut-chan)
+
+        ; INITIAL_EL el
+        ]
+
+    ;; todo: maybe mutation observer is not needed, we can re-use ytd-continuation-item-renderer
+    (.observe mut-observer
+      el
+      #js {:characterData true
+           :childList true
+           :subtree true})
+
+    (js/setTimeout parse!)
+
+    ;result (history-day-scrape-impl el)
+
+    (go-loop []
+      (let [v (async/alt!
+                mut-chan ([result] :mutation)
+                (u/timeout 1000) :tick)]
+
+
+        (if (= :mutation v)
+          (do
+            (.log js/console "MUTATION")
+            (classes/add el "WOOF-UPD")
+            (js/setTimeout parse!)
+            (recur)
+            )
+          (if (= :tick v)
+            (let [result @*result
+                  c @*count]
+
+              (if (or ; has loading spinner
+                      (woof-dom/q el "ytd-continuation-item-renderer")
+                      ; not parseable yet
+                      (not (get result :ready? false)))
+                (do
+                  (if (< 10 c)
+                    (do
+                      ;; try harder)
+                      (.log js/console "WAITING..." el result)
+                      (recur))
+                    (do ;; not ready after N tries
+                      (.warn js/console "CAN'T PROCESS" el
+                             (pr-str result))
+
+                      (classes/add el "WOOF-ERROR")
+                      (async/put! out-chan {:error true
+                                            ;; provide some reason why
+                                            :tag (.-outerHTML el)
+
+                                            })
+                      (.disconnect mut-observer)
+                      )
+
+                    )
+                  )
+                (do
+                  ;; PARSED
+
+                  (classes/add el "WOOF-DONE")
+                  (swap! *WF-UI dissoc :SCRAPE/WIP (:d result))
+                  (swap! *WF-UI update :RESULTS merge {(:d result) result})
+
+                  (async/put! out-chan result)
+                  (.disconnect mut-observer)
+
+                  )
+                )
+
+              )
+            )
+          )))
+
+    out-chan
+    )
+
+  )

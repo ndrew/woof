@@ -295,6 +295,10 @@
 )
 
 
+(defn scraping-ui__togle-details []
+  (classes/toggle (q ".woof_details") "woof_visible")
+  )
+
 (defn ui-add-el! [el]
   (let [scraper-ui (.querySelector (.-body js/document) ".woof-scraper-ui")]
     (dom/appendChild scraper-ui el)

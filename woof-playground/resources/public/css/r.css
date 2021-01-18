@@ -50,6 +50,11 @@
 
 
 
+:root {
+    --height: 75px;
+}
+
+
 
 /* move indicator to right */
 .woof-wf-indicator {
@@ -59,9 +64,6 @@
     width: 16px;
 }
 
-:root {
-    --height: 300px;
-}
 
 /* remove magin */
 .woof-scraper-ui .panel + .panel {
@@ -108,4 +110,129 @@
 
 .menubar {
     font-family: ".SF NS Text", serif;
+}
+
+
+.woof-scraper-control {
+    overflow-y: scroll;
+    max-height: var(--height);
+
+}
+
+
+.listing-row pre {
+    margin: 0;
+    font-size: 8pt;
+    padding: 0;
+}
+
+/* collapsed */
+
+.woof-scraper-control .woof_details {
+    position: fixed;
+    bottom: calc(var(--height) - 40px + 5px);
+    left: 0;
+
+    width: 100vw;
+    height: 40px;
+
+    background-color: #fff;
+    border: 1px solid crimson;
+}
+
+
+/* shown */
+.woof-scraper-control .woof_details.woof_visible {
+    height: calc(98vh - var(--height) );
+
+    overflow-y: scroll;
+}
+
+
+.woof-scraper-control .woof_api {
+    margin-top: 40px;
+}
+
+.woof_details .scrape {
+    font-size: 6pt;
+    line-height: 1;
+
+}
+
+
+/*body.ZZZ #contents .ytd-section-list-renderer,*/
+body.ZZZ .WOOF-DONE
+{
+    display: block;
+    max-height: 120px;
+    height: 120px;
+    opacity: .5;
+    overflow-y: scroll;
+    outline: 1px solid crimson;
+}
+
+
+#contents .ytd-section-list-renderer {
+    outline: 1px solid indianred;
+}
+
+#contents .ytd-section-list-renderer.WOOF-ERR {
+    background-color: crimson;
+}
+
+#contents .ytd-section-list-renderer.WOOF-WIP:before {
+    content: "***";
+    color: #fff;
+    background-color: crimson;
+}
+
+
+#contents .ytd-section-list-renderer.WOOF-WIP.WOOF-UPD:before {
+    outline: 3px solid blue;
+}
+
+
+#contents .ytd-section-list-renderer.WOOF-WIP.WOOF-DONE:before {
+    background-color: #cacaca;
+}
+
+#contents .ytd-section-list-renderer.WOOF-WIP {
+    max-height: 50px;
+    height: 50px;
+}
+
+
+#continuations {
+
+}
+
+
+.PROCESSED-ERROR {
+    outline: 5px solid red;
+}
+
+.PROCESSED-ERROR:before {
+    content: "ERROR";
+
+    color: #fff;
+    background-color: crimson;
+}
+
+.HIDE-HIDE-HIDE {
+    display: none;
+}
+
+
+.PROCESSED-VIDEO {
+    outline: 1px solid gray;
+    opacity: .5;
+}
+
+body.ZZZ .PROCESSED-VIDEO {
+    display: none;
+}
+
+
+.PROCESSED-VIDEO.DOUBLE-PROCESSED-VIDEO {
+    background-color: #cacaca;
 }
