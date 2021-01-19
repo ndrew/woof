@@ -42,7 +42,7 @@
 (defn clean-up-dom-side-effects []
   ;; clean up added css
   (woof-dom/remove-added-css [
-                              ;;
+                              "WOOF-WIP"
                               ])
   )
 
@@ -55,8 +55,13 @@
    ;; api
    (when (seq (:api STATE))
      (ui/menubar "API" (:api STATE)
-                 :class "woof_api") )
+                 :class "woof_api"))
 
+   [:hr]
+
+   (when (seq (:el-queue STATE))
+     (pr-str (count (:el-queue STATE)))
+     )
    ]
   )
 
@@ -109,17 +114,46 @@
 ;; SCRAPE
 ;;
 
+
+
+(def SCRAPE-SELECTOR "article:not(.WOOF-WIP)")
+
 (defn scraping-sub-wf [*wf-state *WF-UI]
-  (let []
+
+  ;; els -> candidates -> result
+
+  ;; init state to hold dom els queue
+  (swap! *WF-UI assoc :el-queue [])
+
+  (let [
+        api-action (fn [title steps-fn]
+                     [title (fn []
+                              (let [steps (steps-fn)]
+                                (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))])
+        ]
     {
 
-     :init []
+     :init  []
+
+     :ctx   [{
+              :populate-el-queue {:fn (fn [selector]
+                                        (let [els (q* selector)]
+
+                                          (doseq [el els]
+                                            (classes/add el "WOOF-WIP"))
+
+                                          (swap! *WF-UI update :el-queue into els)
+
+                                          :ok
+                                          )
+                                        )}
+              }]
 
      :steps [
              {::hello [:log "hello!"]}
              ]
 
-     :api []
+     :api   [(api-action "scan!" #(do {(sid) [:populate-el-queue SCRAPE-SELECTOR]}))]
      }
     )
   )
@@ -138,10 +172,10 @@
         ;_RUN_ (runner-sub-wf :execute-mode :idle-w-timeout :t 10)
 
         _SCRAPE_ (scraping-sub-wf *WF-STATE *WF-UI)
-        API (get _SCRAPE_ :api [])
+        api (get _SCRAPE_ :api [])
 
-        _UI_ (ui-sub-wf *WF-UI API)
-        _API_ (api-wf/actions-impl! API api-wf/default-on-chord)
+        _UI_ (ui-sub-wf *WF-UI api)
+        _API_ (api-wf/actions-impl! api api-wf/default-on-chord)
 
         ]
 
@@ -172,7 +206,7 @@
                         )
 
      ;; expose some wf API
-     :api             [["hello" (fn [])]] ;; API
+     :api             api
 
      :on-stop         (fn [state]
                         ; (__log "ON STOP")

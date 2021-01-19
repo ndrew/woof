@@ -55,6 +55,14 @@
 }
 
 
+body {
+    margin-bottom: var(--height);
+}
+
+.WOOF-WIP {
+    outline: 1px solid #cacaca;
+}
+
 
 /* move indicator to right */
 .woof-wf-indicator {
