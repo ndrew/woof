@@ -21,10 +21,13 @@
 
     ))
 
-
+;; example: processing dom elements in order
+;;
 ;; http://localhost:9500/example/seq.html
 
 
+;; non-react ui
+;;
 (defn <ui>
   ([]
    ;; init UI
@@ -43,8 +46,7 @@
   ([*state STATE]
    ;; update UI on state change
    (let [$pre (q ".woof-scrape-pre")
-         $conf (q ".woof-scrape-conf")
-         ]
+         $conf (q ".woof-scrape-conf")]
 
      ;; (html! $pre (d/pretty! STATE))
      (html! $pre "")
@@ -63,12 +65,9 @@
                ]
            ;;
            )
-
          )
        )
      ;;(html! $conf (pr-str (get STATE :confirms)))
-
-
      )
    )
   )
@@ -123,52 +122,15 @@
                (fn [params]
                  ;; add ui for scraping
                  (<ui>)
-                 {}
-                 )
+                 {})
 
-               #_(_watcher-chan-init WATCHER-ID
-                                   (base/make-chan (base/&chan-factory params) (base/rand-sid))
-                                   *state params)
                ;; state watcher for react like UI updates
-
                (partial watcher/_watcher-cf-init-cb WATCHER-ID *state
                         (fn [*state state]
                           (.log js/console "UI: upd" state (= state @*state))
                           (<ui> *state state)
                           ))
 
-
-
-               ;; why does this version is not working
-               #_(fn [params]
-                 (let [cf (base/&chan-factory params)
-                       ch (base/make-chan cf (base/rand-sid))
-
-                       dbg-chan (base/make-chan cf (base/rand-sid))
-
-                       mult-c (async/mult ch)
-
-                       ]
-
-                   (async/tap mult-c dbg-chan)
-
-                   (go-loop []
-                     (when-let [state (async/<! dbg-chan)]
-                       (.log js/console "wiretap UI:" state)
-                       (<ui> *state state)
-
-                       (recur)
-                       )
-                     )
-
-
-                   (watcher/do-watcher-chan-init WATCHER-ID
-                                                 ch
-                                                 *state params)
-                   )
-                 )
-
-               ;;(partial watcher/_watcher-cf-init WATCHER-ID *state)
 
                ;; add linearization worker
                (partial alpha/_seq-worker-init ::linearizer)
