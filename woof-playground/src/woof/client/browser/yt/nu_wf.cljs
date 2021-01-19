@@ -10,7 +10,7 @@
     [goog.dom.dataset :as dataset]
 
     [woof.base :as base :refer [rand-sid sid
-                                &chan-factory make-chan]]
+                                &chan-factory make-chan own-chan]]
 
     [woof.client.dom :as woof-dom :refer [q q*]]
 
@@ -31,6 +31,9 @@
 
     [woof.data :as d]
     [woof.utils :as u]
+    )
+  (:require-macros
+    [woof.utils-macros :refer [inline--fn inline--fn1]]
     )
   )
 
@@ -98,6 +101,12 @@
              (action ":batch-scrape-1!" #(do {(sid) [:batch-scrape-1! SCRAPE-SELECTOR]}))
              (action ":batch-scrape-2!" #(do {(sid) [:batch-scrape-2! SCRAPE-SELECTOR]}))
 
+             (action ":scrape!!!" #(let [r (sid)]
+                                     {
+                                      r     [:scrape!!! {:$ SCRAPE-SELECTOR}]
+                                      (sid) [:warn r]
+                                      }))
+
              ;;
              (action "parse(expand)" #(do {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))
 
@@ -136,6 +145,7 @@
      :steps [{
               ::hello [:prn "scraping wf running"]
               }]
+
      :ctx   [
              (fn [params]
                ;; todo: kinda generic way of parsing elements on page
@@ -148,17 +158,25 @@
                      ;;
                      ;; marks element as parsed
                      scrape-start! (fn [el]
-                                     (dataset/set el "woof_scraped" "PROCESSING")
+
+
+                                     ;; todo: use dataset for prod (as won't trigger css refresh)
+                                     ;(dataset/set el "woof_scraped" "PROCESSING")
+
+                                     (classes/add el "WOOF-WIP")
+
                                      ;(parser/mark-scraped! el)
 
-                                       ;; return sid or unique element id
-                                       (sid)
+                                     ;; return sid or unique element id
+                                     (sid)
                                      )
                      ;;
                      ;; whether element had been scraped
                      is-scraping? (fn [el]
-                                   (dataset/has el "woof_scraped")
-                                   ;;(parser/is-scraped? el)
+                                    ;;(dataset/has el "woof_scraped")
+                                    (classes/has el "WOOF-WIP")
+
+                                    ;;(parser/is-scraped? el)
                                    )
 
                      ctx-fn (scrape/make-ctx-fn
@@ -233,6 +251,70 @@
                                               :ok
                                               )
                                             )
+                                      }
+                          :scrape!!! {
+                                      :fn (fn [cfg]
+                                            (let [out-chan (make-chan (&chan-factory params) (sid "OUT/"))
+                                                  el-chan (make-chan (&chan-factory params) (sid "EL/"))
+
+                                                  *result (volatile! [])
+
+                                                  cont? (fn [el]
+                                                          (.log js/console "EL" el)
+
+                                                          (if (= :tick el)
+                                                            (vswap! *result conj (u/now))
+                                                            (vswap! *result conj el)
+                                                            )
+                                                          (> 20 (count @*result))
+                                                          )]
+
+
+                                              (let [els (filter #(not (is-scraping? %))
+                                                                (q* SCRAPE-SELECTOR))
+
+                                                    ;; mark element for scraping first
+                                                    els2scrape (loop [els els
+                                                                      ;; key map ordered
+                                                                      els-map (array-map)]
+                                                                 (if (seq els)
+                                                                   (let [el (first els)
+                                                                         _id (scrape-start! el)
+                                                                         id (if (qualified-keyword? _id) _id (sid))]
+
+                                                                     (recur (rest els)
+                                                                            (assoc els-map id el))
+                                                                     )
+                                                                   ;; return
+                                                                   els-map
+                                                                   )
+                                                                 )]
+
+                                                (doseq [el els]
+                                                  (async/put! el-chan el))
+                                                ;(async/into els el-chan)
+                                                )
+
+
+                                              (go-loop []
+                                                ;; how to extract this?
+                                                (let [el (async/alt!
+                                                           el-chan ([_el] _el)
+                                                           (u/timeout 1000) :tick)]
+
+                                                  (if (cont? el)
+                                                    (recur)
+                                                    (do
+                                                      (async/>! out-chan @*result)
+                                                      )
+                                                    )
+                                                  )
+                                                )
+                                              out-chan
+                                              )
+
+                                            )
+
                                       }
 
                     }
@@ -390,6 +472,7 @@
      :opts            (concat
                         (get _UI_ :opts [])
                         (get _API_ :opts [])
+                        (get _SCRAPE_ :opts [])
                         (get _RUN_ :opts [])
                         )
 
@@ -398,6 +481,16 @@
 
      :on-stop         (fn [state]
                         (__log "ON STOP")
+
+                        ;; clean up added css
+                        (woof-dom/remove-added-css [
+                                                    "WOOF-WIP"
+
+                                                    "PROCESSED-VIDEO"
+                                                    "DOUBLE-PROCESSED-VIDEO"
+                                                    ]
+                                                   )
+
                         ;; for now do not return channel
                         nil)
 
