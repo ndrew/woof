@@ -4,13 +4,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <link rel="icon" href="/favicon.png">
+
+    <style>
+        article {
+            height: 400px;
+
+            background-color: rgba(240, 128, 128, .13333);
+        }
+
+        article.WOOF-WIP {
+            background-color: crimson;
+        }
+
+        article + article {
+            margin-top: 100px;
+        }
+
+
+    </style>
+
 </head>
 <body>
+
+<div id="mark"></div>
 
 <h3>ALPHA: sequential processing of the dom nodes</h3>
 
 <p>by default expand steps run in non-deterministic order. </p>
 <p>the order can be preserved by using alpha/_seq-worker-expander </p>
+
+<div id="container">
 
 <article>article 1</article>
 <article>article 2</article>
@@ -69,6 +92,8 @@
 <article>article 49</article>
 <!--
  -->
+
+</div>
 
 <script src="../cljs-out/scraper-main.js" type="text/javascript"></script>
 </body></html>

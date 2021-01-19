@@ -62,6 +62,11 @@
    (when (seq (:el-queue STATE))
      (pr-str (count (:el-queue STATE)))
      )
+
+   (when (seq (:results STATE))
+     (pr-str (:results STATE))
+     )
+
    ]
   )
 
@@ -123,19 +128,85 @@
   ;; els -> candidates -> result
 
   ;; init state to hold dom els queue
-  (swap! *WF-UI assoc :el-queue [])
+  (swap! *WF-UI assoc :el-queue #queue [])
+  (swap! *WF-UI assoc :results [])
 
   (let [
         api-action (fn [title steps-fn]
                      [title (fn []
                               (let [steps (steps-fn)]
                                 (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))])
+        process! (fn [el]
+                   ;; process should return nil to short-circuit the processing of el
+
+                   (if (> (rand-int 100) 90)
+                      nil
+                     (woof-dom/txt el)
+                     )
+                   )
+
+        intersector (js/IntersectionObserver.
+                      (fn [entries observer]
+                        (.group js/console "intersect")
+
+                        (doseq [entry (array-seq entries)]
+                          (let [el (.-target entry)
+
+                                frac (-> (.-intersectionRatio entry)
+                                         (* 100) int
+                                         float (/ 100))
+
+                                use-el? (.-isIntersecting entry)
+
+                                ]
+
+                            (if use-el?
+                              (do
+                                (.log js/console
+                                      frac (woof-dom/txt el))
+
+                                (classes/add el "WOOF-WIP")
+                                (swap! *WF-UI update :el-queue conj el)
+                                (.unobserve observer el)
+                                )
+                              (do
+                                (.log js/console
+                                      (woof-dom/txt el) entry)
+                                )
+                              )
+                            )
+                          )
+
+                        (.groupEnd js/console)
+
+                        ;(reset! state (= (.-intersectionRatio (first entries)) 0))
+                        )
+                      #js {
+                           ;:root nil
+                           :threshold 0 ;[0 1]
+
+                           ; mark fixed bottom: 200px
+                           ;:rootMargin "0px 0px -200px 0px" ; (top, right, bottom, left)
+                           :rootMargin "0px 0px -100px 0px" ; (top, right, bottom, left)
+                           })
         ]
     {
 
-     :init  []
+     :init  [(fn [params]
+               (doseq [el (q* SCRAPE-SELECTOR)]
+                 (.observe intersector el))
+               {}
+               )]
 
      :ctx   [{
+
+              :observe! {:fn (fn [selector]
+                               (doseq [el (q* selector)]
+                                 (.observe intersector el))
+                               )
+
+                         }
+
               :populate-el-queue {:fn (fn [selector]
                                         (let [els (q* selector)]
 
@@ -144,16 +215,53 @@
 
                                           (swap! *WF-UI update :el-queue into els)
 
-                                          :ok
+                                          :ok))}
+              :process-els {:fn (fn [_]
+                                  ;; process items from the queue
+                                  (loop [items (get-in @*WF-UI [:el-queue])]
+                                    (if (seq items)
+                                      (let [item (peek items)]
+                                        (.log js/console "processing" item)
+                                        (if-let [result (process! item)]
+                                          (do
+                                            (swap! *WF-UI update :el-queue pop)
+                                            (swap! *WF-UI update :results into [result])
+                                            (recur (pop items)))
                                           )
-                                        )}
+                                        )
+                                      )
+                                    )
+                                  )}
               }]
+
+     :opts [(base/build-opt-on-done (fn [_]
+                                      (.disconnect intersector)
+                                      ))]
 
      :steps [
              {::hello [:log "hello!"]}
              ]
 
-     :api   [(api-action "scan!" #(do {(sid) [:populate-el-queue SCRAPE-SELECTOR]}))]
+     :api   [
+
+             ["emulate loading" (fn []
+                                  (let [container-el (woof-dom/q "#container")]
+
+                                    (dotimes [n (rand-int 15)]
+
+                                      (.insertAdjacentHTML container-el "beforeend" (str "<article>ADDED " n "</article>"))
+                                      )
+                                    )
+                                  )]
+
+             ["log queue" (fn []
+                      (.log js/console (get-in @*WF-UI [:el-queue]))
+                      )]
+
+             (api-action "observe!" #(do {(sid) [:observe! SCRAPE-SELECTOR]}))
+             (api-action "scan!" #(do {(sid) [:populate-el-queue SCRAPE-SELECTOR]}))
+             (api-action "process!" #(do {(sid) [:process-els SCRAPE-SELECTOR]}))
+             ]
      }
     )
   )
