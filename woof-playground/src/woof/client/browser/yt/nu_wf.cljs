@@ -1,37 +1,43 @@
 (ns woof.client.browser.yt.nu-wf
   (:require
-    [clojure.string :as str]
+       [clojure.string :as str]
 
-    [cljs.core.async :as async :refer [go go-loop]]
+       [cljs.core.async :as async :refer [go go-loop]]
 
-    [rum.core :as rum]
 
-    [goog.dom.classes :as classes]
-    [goog.dom.dataset :as dataset]
+       [goog.dom.classes :as classes]
+       [goog.dom.dataset :as dataset]
 
-    [woof.base :as base :refer [rand-sid sid
-                                &chan-factory make-chan own-chan]]
+       ;; woof core
+       [woof.base :as base :refer [rand-sid sid
+                                   &chan-factory make-chan own-chan]]
+       [woof.data :as d]
+       [woof.utils :as u]
 
-    [woof.client.dom :as woof-dom :refer [q q*]]
+       ;; client utils
+       [woof.client.dom :as woof-dom :refer [q q*]]
+       [woof.client.dbg :as dbg :refer [__log]]
 
-    [woof.client.playground.ui :as ui]
-    [woof.client.dbg :as dbg :refer [__log]]
+       ;; wf helpers -
+       [woof.client.ws :as ws]
 
-    [woof.client.browser.scraper.rum-ui :as rum-wf]
-    [woof.client.browser.scraper.actions :as api-wf :refer [chord-action]]
-    [woof.client.browser.scraper.scrape :as scrape]
+       ; helpers from base
+       [woof.wfs.alpha :as alpha]
+       [woof.wfs.evt-loop :as evt-loop]
 
-    [woof.client.browser.yt.parser :as parser]
-    [woof.client.browser.yt.nu-wf-ui :as yt-ui]
+       ;; ui
+       [rum.core :as rum]
 
-    [woof.wfs.alpha :as alpha]
-    [woof.wfs.evt-loop :as evt-loop]
+       [woof.client.playground.ui :as ui]
+       [woof.client.browser.scraper.rum-ui :as rum-wf]
+       [woof.client.browser.scraper.actions :as api-wf :refer [chord-action]]
+       [woof.client.browser.scraper.scrape :as scrape]
 
-    [woof.client.ws :as ws]
+       ;; scraping wf impl
+       [woof.client.browser.yt.parser :as parser]
+       [woof.client.browser.yt.nu-wf-ui :as yt-ui]
 
-    [woof.data :as d]
-    [woof.utils :as u]
-    )
+       )
   (:require-macros
     [woof.utils-macros :refer [inline--fn inline--fn1]]
     )
@@ -42,7 +48,6 @@
 
 
 
-(def <rum-ui> (rum-wf/gen-rum-ui yt-ui/<scraping-ui>))
 
 
 
@@ -370,6 +375,37 @@
    })
 
 
+
+(def <rum-ui> (rum-wf/gen-rum-ui yt-ui/<scraping-ui>))
+
+(defn _ui-process-fn__extract-results [*WF-UI result]
+
+  (let [results* (select-keys result
+                              (filter #(str/starts-with? (str %) ":/SCRAPE__") (keys result)))
+        *errors (volatile! {})
+        ready-results (reduce
+                        (fn [a [k v]]
+                          (if-not (u/channel? v)
+                            (if (:error v)
+                              (do
+                                (vswap! *errors assoc k v)
+                                a
+                                )
+                              (assoc a (:d v) (count (:videos v)))
+                              )
+
+                            a))
+                        {} results*
+                        )
+        ]
+
+    ;;(.warn js/console ready-results)
+    (swap! *WF-UI assoc :SCRAPE/READY ready-results)
+    (swap! *WF-UI assoc :SCRAPE/ERROR @*errors)
+    )
+  )
+
+
 (defn ui-sub-wf [*WF-UI]
   (assoc
     (rum-wf/ui-impl! *WF-UI <rum-ui>)
@@ -381,40 +417,8 @@
     :opts [(fn [params]
              {:op-handlers-map {
                                 :process (fn [result]
-
-
-                                           (let [results* (select-keys result
-                                                                       (filter #(str/starts-with? (str %) ":/SCRAPE__") (keys result)))
-
-                                                 *errors (volatile! {})
-
-                                                 ready-results (reduce
-                                                                 (fn [a [k v]]
-                                                                   (if-not (u/channel? v)
-                                                                     (if (:error v)
-                                                                       (do
-                                                                         (vswap! *errors assoc k v)
-                                                                         a
-                                                                         )
-                                                                       (assoc a (:d v) (count (:videos v)))
-                                                                       )
-
-                                                                     a))
-                                                                 {} results*
-                                                                 )
-                                                 ]
-
-                                             ;;(.warn js/console ready-results)
-                                             (swap! *WF-UI assoc :SCRAPE/READY ready-results)
-
-                                             (swap! *WF-UI assoc :SCRAPE/ERROR @*errors)
-                                             )
-
                                            ;; just take the results by key prefix
-
-                                           ;; todo: filter out the channels
-
-
+                                           (_ui-process-fn__extract-results *WF-UI result)
 
                                            result
                                            )}
