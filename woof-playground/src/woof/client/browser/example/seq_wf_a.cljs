@@ -123,6 +123,9 @@
 
 (def SCRAPE-SELECTOR "article:not(.WOOF-WIP)")
 
+
+;;
+;; scraping implementation
 (defn scraping-sub-wf [*wf-state *WF-UI]
 
   ;; els -> candidates -> result
@@ -136,7 +139,10 @@
                      [title (fn []
                               (let [steps (steps-fn)]
                                 (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))])
+
         process! (fn [el]
+                   ;; todo: implement actual processing
+
                    ;; process should return nil to short-circuit the processing of el
 
                    (if (> (rand-int 100) 90)
@@ -144,6 +150,20 @@
                      (woof-dom/txt el)
                      )
                    )
+
+        ;; add element to the processing queue
+        queue! (fn [el]
+                 (classes/add el "WOOF-WIP")
+                 (swap! *WF-UI update :el-queue conj el)
+                 )
+
+        UPD-CHAN (async/chan)
+        *ticker-ready? (atom false)
+
+        mutator (js/MutationObserver.
+                  (fn [mut]
+                    (async/put! UPD-CHAN :mutation)
+                    ))
 
         intersector (js/IntersectionObserver.
                       (fn [entries observer]
@@ -157,21 +177,16 @@
                                          float (/ 100))
 
                                 use-el? (.-isIntersecting entry)
-
                                 ]
 
                             (if use-el?
                               (do
-                                (.log js/console
-                                      frac (woof-dom/txt el))
-
-                                (classes/add el "WOOF-WIP")
-                                (swap! *WF-UI update :el-queue conj el)
+                                (.log js/console frac (woof-dom/txt el))
+                                (queue! el)
                                 (.unobserve observer el)
                                 )
                               (do
-                                (.log js/console
-                                      (woof-dom/txt el) entry)
+                                (.log js/console (woof-dom/txt el) entry)
                                 )
                               )
                             )
@@ -189,26 +204,101 @@
                            ;:rootMargin "0px 0px -200px 0px" ; (top, right, bottom, left)
                            :rootMargin "0px 0px -100px 0px" ; (top, right, bottom, left)
                            })
+
         ]
     {
 
      :init  [(fn [params]
+
+               ; register the update channel
+               (let [cf (&chan-factory params)]
+                 (own-chan cf :UPD-CHANNEL UPD-CHAN))
+
+               ;; intersection observer
                (doseq [el (q* SCRAPE-SELECTOR)]
                  (.observe intersector el))
+
+               ;; mutation observer
+               (let [el (q "#container")
+                     cfg #js {:characterData true
+                              :childList true
+                              :subtree true}]
+                 (.observe mutator el cfg)
+                 )
+
                {}
                )]
 
-     :ctx   [{
+     :ctx   [(fn [params]
+               (let [_cond-ticker-fn (fn [pred? ticker]
+                                      (let [ch (make-chan (&chan-factory params) (sid))]
+                                        (if (pred? ticker)
+                                          (async/put! ch ticker))
+                                        ch))]
 
-              :observe! {:fn (fn [selector]
-                               (doseq [el (q* selector)]
-                                 (.observe intersector el))
-                               )
+                 {
+                  ; main ticker for wf updates
+                  :ticker {:fn (fn [chan]
+                                 (.log js/console "TICKER")
+                                 ;; maybe some xf here?
 
-                         }
+                                 (go-loop []
+                                   (let [msg (async/alt!
+                                               UPD-CHAN ([v] v)
+                                               ;(alpha/request-idle-callback-chan!) ([] :idle)
+                                               (u/timeout 1000) ([] :tick))]
 
-              :populate-el-queue {:fn (fn [selector]
-                                        (let [els (q* selector)]
+                                     (cond
+                                       (= :mutation msg) (async/put! chan msg)
+
+                                       (and (= :tick msg)
+                                            (not (empty? (:el-queue @*WF-UI))))
+                                       (async/put! chan :process)
+
+                                       :else (do))
+
+                                     (if-not @*ticker-ready?
+                                       (do
+                                         (.log js/console "(RECUR)")
+                                         (recur))
+                                       )
+                                     )
+                                   )
+                                 chan
+                                 )
+                           :infinite true}
+
+
+                  ;; push ticker
+                  :queue-els-ticker {:fn (partial _cond-ticker-fn #(= :mutation %))
+                                    :infinite true}
+
+
+                  ;; pop ticker
+                  :process-els-ticker {:fn (partial _cond-ticker-fn #(= :process %))
+                                       :infinite true}
+                  }
+                 )
+
+               )
+             {
+
+              :queue-in-view! {:fn (fn [ticker]
+                               (.log js/console ":observe!" ticker)
+
+                               (let [selector SCRAPE-SELECTOR]
+                                 (doseq [el (q* selector)]
+                                   (.observe intersector el))
+
+                                 (str "o-" (u/now))
+                                 )
+                               )}
+
+              ;;
+              :queue-all! {:fn (fn [ticker]
+                                        (.log js/console ":queue!")
+                                        (let [selector SCRAPE-SELECTOR
+                                              els (q* selector)]
 
                                           (doseq [el els]
                                             (classes/add el "WOOF-WIP"))
@@ -216,7 +306,13 @@
                                           (swap! *WF-UI update :el-queue into els)
 
                                           :ok))}
-              :process-els {:fn (fn [_]
+
+
+              :process-queue! {:fn (fn [ticker]
+                                  (.log js/console "processing!!!" ticker)
+
+                                  ;; TODO: handle processing
+
                                   ;; process items from the queue
                                   (loop [items (get-in @*WF-UI [:el-queue])]
                                     (if (seq items)
@@ -232,14 +328,35 @@
                                       )
                                     )
                                   )}
+
+
               }]
 
      :opts [(base/build-opt-on-done (fn [_]
+                                      ;; stop the ticker
+                                      (reset! *ticker-ready? true)
+
+                                      ;; disconnect observers
                                       (.disconnect intersector)
+                                      (.disconnect mutator)
                                       ))]
 
      :steps [
-             {::hello [:log "hello!"]}
+             {
+              ;; ::hello [:log "hello!"]
+
+              :EVT/tick [:ticker UPD-CHAN]
+              ;:DOM/intersect-observer [:queue-in-view! :EVT/tick]
+              ;:PROCESS/process [:process-queue! :EVT/tick]
+
+
+              :TICK/el-queue [:queue-els-ticker :EVT/tick]
+                :SCROLL/register-handlers [:queue-in-view! :TICK/el-queue]
+
+              :TICK/el-process [:process-els-ticker :EVT/tick]
+                :DOM/process [:process-queue! :TICK/el-process]
+
+              }
              ]
 
      :api   [
@@ -258,8 +375,9 @@
                       (.log js/console (get-in @*WF-UI [:el-queue]))
                       )]
 
-             (api-action "observe!" #(do {(sid) [:observe! SCRAPE-SELECTOR]}))
-             (api-action "scan!" #(do {(sid) [:populate-el-queue SCRAPE-SELECTOR]}))
+             (api-action "observe: scroll" #(do {(sid) [:queue-in-view! SCRAPE-SELECTOR]}))
+
+             (api-action "queue all!" #(do {(sid) [:queue-all! SCRAPE-SELECTOR]}))
              (api-action "process!" #(do {(sid) [:process-els SCRAPE-SELECTOR]}))
              ]
      }
