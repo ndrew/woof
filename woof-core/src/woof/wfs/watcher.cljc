@@ -56,7 +56,23 @@
         ; ch (base/make-chan cf (base/rand-sid))
 
         ;; as watcher can receive lots of updates - use non-default chan implementation
-        ch (base/own-chan cf (base/sid) (async/chan (async/sliding-buffer 72)))
+
+        ;; todo: migrate to map config instead of just id
+        watcher-cfg (if (map? WATCHER-ID)
+                      WATCHER-ID
+                      {
+                       :watcher-id WATCHER-ID
+                       }
+                      )
+
+        watcher-chan (get watcher-ctx :watcher-chan
+                          (async/chan (async/sliding-buffer 10)))
+
+        send-channel-updates? (get watcher-cfg :send-channel-updates? true)
+
+        ;;
+        ch (base/own-chan cf (base/sid)
+                          watcher-chan)
         ]
 
     ;; why this is not properly working with mult
@@ -73,8 +89,12 @@
                  ;; #?(:cljs (.log js/console "WATCHER UPD:" WATCHER-ID key (= old-state new-state)))
 
                  (when (not= old-state new-state)
+                   ;;
                    (cb *state new-state)
-                   (async/put! ch new-state)
+                   ;; this is needed to use :watch step handler instead of callback
+                   (if send-channel-updates?
+                     (async/put! ch new-state))
+
                    )
                  ))
     {

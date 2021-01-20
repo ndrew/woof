@@ -32,8 +32,6 @@
     [woof.client.browser.scraper.rum-ui :as rum-wf]
     [woof.client.browser.scraper.actions :as api-wf :refer [chord-action]]
     [woof.client.browser.scraper.scrape :as scrape]
-
-
     )
   )
 
@@ -43,6 +41,8 @@
   ;; clean up added css
   (woof-dom/remove-added-css [
                               "WOOF-WIP"
+                              "WOOF-DONE"
+                              "WOOF-ASYNC"
                               ])
   )
 
@@ -122,7 +122,34 @@
 
 
 (def SCRAPE-SELECTOR "article:not(.WOOF-WIP)")
+(def SCRAPE-CONTAINER-SELECTOR "#container")
 
+
+(defn scrape!
+  "scrapes the element"
+  [el]
+  (let [p (rand-int 100)]
+
+    (let [r (cond
+      (< p 10) (u/throw! "STOPPING")
+      (< p 80) (do
+                 ;(classes/add el "WOOF-DONE")
+                 (woof-dom/txt el))
+      (< p 90) (do
+                 (let [c (async/chan)]
+                   (go
+                     (async/<! (u/timeout (rand-int 1500)))
+                     (async/put! c (str "ASYNC:" (woof-dom/txt el)))
+                     )
+                   c)
+                 )
+      :else nil
+      )]
+      (.log js/console "SCRAPE" (woof-dom/txt el) r)
+      r
+      )
+    )
+  )
 
 ;;
 ;; scraping implementation
@@ -132,38 +159,29 @@
 
   ;; init state to hold dom els queue
   (swap! *WF-UI assoc :el-queue #queue [])
+  (swap! *WF-UI assoc :process-queue #queue [])
+
   (swap! *WF-UI assoc :results [])
 
-  (let [
-        api-action (fn [title steps-fn]
+  (let [api-action (fn [title steps-fn]
                      [title (fn []
                               (let [steps (steps-fn)]
                                 (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))])
 
-        process! (fn [el]
-                   ;; todo: implement actual processing
-
-                   ;; process should return nil to short-circuit the processing of el
-
-                   (if (> (rand-int 100) 90)
-                      nil
-                     (woof-dom/txt el)
-                     )
-                   )
-
-        ;; add element to the processing queue
-        queue! (fn [el]
-                 (classes/add el "WOOF-WIP")
-                 (swap! *WF-UI update :el-queue conj el)
-                 )
-
         UPD-CHAN (async/chan)
         *ticker-ready? (atom false)
 
+
+        ;; add element to the processing queue
+        queue! (fn [el]
+                 (.log js/console "QUEUED" (woof-dom/txt el))
+                 (classes/add el "WOOF-WIP")
+                 (swap! *WF-UI update :el-queue conj el)
+
+                 )
+
         mutator (js/MutationObserver.
-                  (fn [mut]
-                    (async/put! UPD-CHAN :mutation)
-                    ))
+                  (fn [mut] (async/put! UPD-CHAN :mutation)))
 
         intersector (js/IntersectionObserver.
                       (fn [entries observer]
@@ -176,8 +194,7 @@
                                          (* 100) int
                                          float (/ 100))
 
-                                use-el? (.-isIntersecting entry)
-                                ]
+                                use-el? (.-isIntersecting entry)]
 
                             (if use-el?
                               (do
@@ -185,17 +202,12 @@
                                 (queue! el)
                                 (.unobserve observer el)
                                 )
-                              (do
-                                (.log js/console (woof-dom/txt el) entry)
-                                )
+                              #_(do
+                                (.log js/console (woof-dom/txt el) entry))
                               )
                             )
                           )
-
-                        (.groupEnd js/console)
-
-                        ;(reset! state (= (.-intersectionRatio (first entries)) 0))
-                        )
+                        (.groupEnd js/console))
                       #js {
                            ;:root nil
                            :threshold 0 ;[0 1]
@@ -219,7 +231,7 @@
                  (.observe intersector el))
 
                ;; mutation observer
-               (let [el (q "#container")
+               (let [el (q SCRAPE-CONTAINER-SELECTOR)
                      cfg #js {:characterData true
                               :childList true
                               :subtree true}]
@@ -245,21 +257,29 @@
                                  (go-loop []
                                    (let [msg (async/alt!
                                                UPD-CHAN ([v] v)
-                                               ;(alpha/request-idle-callback-chan!) ([] :idle)
-                                               (u/timeout 1000) ([] :tick))]
+
+                                               (alpha/request-idle-callback-chan!) ([] :tick) ; instead of idle
+
+                                               (u/timeout 100) ([] :tick))] ;; todo: recur0
 
                                      (cond
                                        (= :mutation msg) (async/put! chan msg)
 
                                        (and (= :tick msg)
+                                            (not (empty? (:process-queue @*WF-UI))))
+                                       (async/put! chan :process)
+
+                                       (and (= :tick msg)
                                             (not (empty? (:el-queue @*WF-UI))))
                                        (async/put! chan :process)
 
-                                       :else (do))
+                                       :else (do
+                                               ;(.log js/console "OTHER" msg)
+                                               ))
 
                                      (if-not @*ticker-ready?
                                        (do
-                                         (.log js/console "(RECUR)")
+                                         ;(.log js/console "(RECUR)")
                                          (recur))
                                        )
                                      )
@@ -302,7 +322,6 @@
 
                                           (doseq [el els]
                                             (classes/add el "WOOF-WIP"))
-
                                           (swap! *WF-UI update :el-queue into els)
 
                                           :ok))}
@@ -311,25 +330,61 @@
               :process-queue! {:fn (fn [ticker]
                                   (.log js/console "processing!!!" ticker)
 
-                                  ;; TODO: handle processing
+                                   (let [p-queue (get-in @*WF-UI [:process-queue])]
+                                     (if (empty p-queue)
+                                       (do
 
-                                  ;; process items from the queue
-                                  (loop [items (get-in @*WF-UI [:el-queue])]
-                                    (if (seq items)
-                                      (let [item (peek items)]
-                                        (.log js/console "processing" item)
-                                        (if-let [result (process! item)]
-                                          (do
-                                            (swap! *WF-UI update :el-queue pop)
-                                            (swap! *WF-UI update :results into [result])
-                                            (recur (pop items)))
-                                          )
-                                        )
-                                      )
-                                    )
+                                         ;; copy the values from el-queue to process-queue
+                                         (swap! *WF-UI update :process-queue into
+                                                (get-in @*WF-UI [:el-queue] []))
+                                         ;; clean-up the el-queue - todo: maybe copy only chunk of elements
+                                         (swap! *WF-UI assoc :el-queue #queue [])
+
+
+                                         (let [el (peek (get-in @*WF-UI [:process-queue]))]
+                                           ;; remove element from queue immediately
+                                           (swap! *WF-UI update :process-queue pop)
+
+                                           (.log js/console "processing" el)
+
+                                           ;; process - res/nil/exception?
+                                           (try
+                                             (if-let [result (scrape! el)]
+                                               (if (u/channel? result)
+                                                 (do
+                                                   ;; handling if channel is returned
+                                                   (classes/add el "WOOF-ASYNC") ; mark element as in progress
+                                                   (go
+                                                     (let [r (async/<! result)] ; wait for result, todo: alts
+                                                       (classes/add el "WOOF-DONE")
+                                                       (swap! *WF-UI update :results into [r]))))
+                                                 (do
+                                                   ;; handling value
+                                                   (classes/add el "WOOF-DONE")
+                                                   (swap! *WF-UI update :results into [result])
+                                                   ))
+                                               (do ;; nil - skip node
+
+                                                 ; can't process further, re-adding el back to the queue
+                                                 ;(swap! *WF-UI update :el-queue conj el)
+
+                                                 ;; add back to process queue?
+                                                 (swap! *WF-UI update :process-queue conj el)
+                                                 )
+                                               )
+                                             (catch js/Error e
+                                               ; can't process further, re-adding el back to the queue
+                                               (swap! *WF-UI update :el-queue conj el)
+                                               )
+                                             )
+                                           )
+                                         )
+                                         )
+                                       (do
+                                         (.log js/console "PROCESSING IN PROGRESS")
+                                         )
+                                       )
                                   )}
-
-
               }]
 
      :opts [(base/build-opt-on-done (fn [_]
@@ -361,6 +416,16 @@
 
      :api   [
 
+             ["find lost els" (fn []
+                                ;; why there are some elements that are .WOOF-WIP, but taken from :el-queue?
+                                (let [els (q* ".WOOF-WIP:not(.WOOF-DONE):not(.WOOF-ASYNC)")
+                                      queued (into [] (:el-queue @*WF-UI))
+                                      ]
+                                  (.log js/console "els:" els
+                                                   "queue:" queued )
+                                  )
+                                )]
+             []
              ["emulate loading" (fn []
                                   (let [container-el (woof-dom/q "#container")]
 

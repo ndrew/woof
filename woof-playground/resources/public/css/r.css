@@ -63,6 +63,18 @@ body {
     outline: 1px solid #cacaca;
 }
 
+.WOOF-DONE {
+    opacity: .5;
+}
+
+article.WOOF-ASYNC {
+    background-color: yellow;
+}
+
+article.WOOF-ASYNC.WOOF-DONE {
+    background-color: crimson;
+    outline: 3px solid yellow;
+}
 
 /* move indicator to right */
 .woof-wf-indicator {

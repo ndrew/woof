@@ -125,7 +125,10 @@
                  {})
 
                ;; state watcher for react like UI updates
-               (partial watcher/_watcher-cf-init-cb WATCHER-ID *state
+               (partial watcher/_watcher-cf-init-cb {
+                                                     :watcher-id WATCHER-ID
+                                                     :send-channel-updates? true
+                                                     } *state
                         (fn [*state state]
                           (.log js/console "UI: upd" state (= state @*state))
                           (<ui> *state state)
