@@ -2,6 +2,8 @@
   (:require
     [goog.dom :as dom]
 
+    [goog.functions :as fs]
+
     [rum.core :as rum]
 
     [woof.base :as base]
@@ -36,7 +38,15 @@
 
 
 (defn ui-impl! [*WF-UI <rum-ui>]
-  (let [WATCHER-ID (base/rand-sid "watcher-")]
+  (let [WATCHER-ID (base/rand-sid "watcher-")
+        WATCHER-CFG {
+                     :watcher-id WATCHER-ID
+                     ;;
+                     :send-channel-updates? false
+                     ;;
+                     }
+        debounce-time 333
+        ]
 
     ;; A) SIDE-EFFECTS
     {
@@ -50,9 +60,15 @@
                  }
                 (watcher/_watcher-cf-init-cb
                   WATCHER-ID *WF-UI
-                  (fn [*state state]
+
+                  (fs/debounce (fn [*state state]
+                                 ;(.log js/console "RENDER")
+                                 (<rum-ui> *state state))
+                               debounce-time)
+                  #_(fn [*state state]
+                    (<rum-ui> *state state)
                     ;; (.log js/console "UI: upd" state (= state @*state))
-                    (<rum-ui> *state state))
+                    )
                   params)))]
 
      :ctx  [watcher/watcher-ctx]
