@@ -48,16 +48,42 @@
 }
 
 
+/* scraper UI styles */
+
+.woof-scraper-ui {
+    opacity: .8;
+}
 
 
+/* height var for  */
 :root {
     --height: 75px;
 }
 
-
 body {
     margin-bottom: var(--height);
 }
+
+
+.woof-scraper-ui table {
+    font-size: 8pt;
+    line-height: 1;
+}
+
+.woof-scraper-ui table {
+    border-spacing: 0;
+    border-collapse: collapse;
+}
+
+.woof-scraper-ui table td,
+.woof-scraper-ui table th {
+    margin: 0;
+    border: 1px solid #cacaca;
+}
+
+
+/* */
+
 
 .WOOF-WIP {
     outline: 1px solid #cacaca;

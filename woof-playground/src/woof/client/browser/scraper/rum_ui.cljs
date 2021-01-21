@@ -45,7 +45,7 @@
                      :send-channel-updates? false
                      ;;
                      }
-        debounce-time 333
+        debounce-time 64;333
         ]
 
     ;; A) SIDE-EFFECTS
