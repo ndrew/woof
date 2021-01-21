@@ -204,7 +204,7 @@
                            :threshold 0 ;[0 1]
                            ; mark fixed bottom: 200px
                            ;:rootMargin "0px 0px -200px 0px" ; (top, right, bottom, left)
-                           :rootMargin "0px 0px -100px 0px" ; (top, right, bottom, left)
+                           :rootMargin "0px 0px 0px 0px" ; (top, right, bottom, left)
                            }
 
         intersector (js/IntersectionObserver.
@@ -291,20 +291,20 @@
 
                            ; (.log js/console "MSG" msg)
                            (cond
-                             ;; start looking for elements
-                             (= :mutation msg)
+                             ;; if we got update from UPD-CHAN - then send ELS event
+                             (= tick-chan port) ;; (= :mutation msg)
                              (do
                                ;; enable idle channel as we have now work
                                (reset! *run-on-idle true)
-
-                               (async/put! chan msg))
+                               (async/put! chan :ELS/mutation-tick))
 
                              ;;
                              (and (= :tick msg)
                                   has-work?)
                              (do
+                               ;; enable idle channel as we have now work
                                (reset! *run-on-idle true)
-                               (async/put! chan :process))
+                               (async/put! chan :PROCESS/process-tick))
 
                              :else (do
                                      ; no work, disable idle-thread
@@ -313,12 +313,13 @@
                                      ;; (if (= tick-chan port) ... )
                                      ))
 
-
                            (if-not @*ticker-ready?
                              (do
-                               (let [t @*t
+
+                               ;; updating tick period
+                               #_(let [t @*t
                                      now (u/now)]
-                                 ;(.log js/console "UPD:" (- now t) "ms" )
+                                 (.log js/console "UPD:" (- now t) "ms" )
                                  (reset! *t now)
                                  )
 
@@ -339,12 +340,12 @@
 
 
                   ;; push ticker
-                  :queue-els-ticker   {:fn       (partial _cond-ticker-fn #(= :mutation %))
+                  :queue-els-ticker   {:fn       (partial _cond-ticker-fn #(= "ELS" (namespace %)))
                                        :infinite true}
 
 
                   ;; pop ticker
-                  :process-els-ticker {:fn       (partial _cond-ticker-fn #(= :process %))
+                  :process-els-ticker {:fn       (partial _cond-ticker-fn #(= "PROCESS" (namespace %)))
                                        :infinite true}
                   }
                  )
@@ -354,10 +355,12 @@
 
               ;; attaches scroll observers on scraped elements
               :queue-in-view! {:fn (fn [ticker]
-                                     (.log js/console ":observe!" ticker)
-
+                                     ;(.log js/console ":observe!" ticker)
                                      (intersect-observe!)
-                                     (str "o-" (u/now)))}
+
+                                     ;;
+                                     (u/now)
+                                     )}
 
               ;; adds all found elements to element queue (without scrolling)
               :queue-all!     {:fn (fn [ticker]
@@ -369,11 +372,12 @@
                                          (classes/add el "WOOF-WIP"))
                                        (swap! *WF-UI update :el-queue into els)
 
-                                       :ok))}
+                                       (u/now)
+                                       ))}
 
               ;; process
               :process-queue! {:fn (fn [ticker]
-                                     (.log js/console "processing!!!" ticker)
+                                     ;(.log js/console "processing!!!" ticker)
 
                                      (let [p-queue (get-in @*WF-UI [:process-queue])]
                                        (if (empty p-queue)
