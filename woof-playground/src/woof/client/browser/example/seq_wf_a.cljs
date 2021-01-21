@@ -40,6 +40,10 @@
 ;; another take on scraping workflow
 ;; - use queue for elements to be processed
 ;; - use queue for processing elements
+
+;; todo: maybe use channel instead queue?
+  ;; channel is not observable. or it is?
+
 ;; - use ticker to trigger queuing elements and processing them
 
 ;; custom css:
@@ -92,6 +96,7 @@
    ]
   )
 
+
 (def <rum-ui> (rum-wf/gen-rum-ui <scraping-ui>))
 
 
@@ -99,11 +104,12 @@
   (assoc
     ;; cfg: debounce interval
     (rum-wf/ui-impl! *WF-UI <rum-ui>)
-    :steps [(fn [params]
-              {
-               :CSS/test-styles    [:css-file "http://localhost:9500/css/t.css"]
-               :CSS/-styles    [:css-file "http://localhost:9500/css/r.css"]
-               })]
+    :steps
+    [(fn [params]
+       {
+        :CSS/test-page-styles [:css-file "http://localhost:9500/css/t.css"]
+        :CSS/scraper-styles   [:css-file "http://localhost:9500/css/r.css"]
+        })]
     )
   )
 
@@ -182,14 +188,11 @@
 
         ;;
         ;;
-        mutator (js/MutationObserver.
-                  (fn [mut] (async/put! UPD-CHAN :mutation)))
-
+        mutator (js/MutationObserver. (fn [mut] (async/put! UPD-CHAN :mutation)))
         ;; <!cfg>
         mutation-cfg #js {:characterData true
                           :childList true
                           :subtree true}
-
         mutations-observe! (fn []
                              (let [el (q SCRAPE-CONTAINER-SELECTOR)]
                                (.observe mutator el mutation-cfg)))
@@ -199,7 +202,6 @@
         intersect-cfg #js {
                            ;:root nil
                            :threshold 0 ;[0 1]
-
                            ; mark fixed bottom: 200px
                            ;:rootMargin "0px 0px -200px 0px" ; (top, right, bottom, left)
                            :rootMargin "0px 0px -100px 0px" ; (top, right, bottom, left)
@@ -210,27 +212,19 @@
                         ;(.group js/console "intersect")
                         (doseq [entry (array-seq entries)]
                           (let [el (.-target entry)
-
-                                frac (-> (.-intersectionRatio entry)
-                                         (* 100) int
-                                         float (/ 100))
-
                                 use-el? (.-isIntersecting entry)]
-
                             (if use-el?
                               (do
                                 ;(.log js/console frac (woof-dom/txt el))
                                 (queue! el)
                                 (.unobserve observer el))
-                              #_(do
-                                (.log js/console (woof-dom/txt el) entry))
                               )))
-                        (.groupEnd js/console))
+                        ;(.groupEnd js/console)
+                        )
                         intersect-cfg)
 
-        intersect-observe! (fn []
-                             (doseq [el (q* SCRAPE-SELECTOR)]
-                               (.observe intersector el)))
+        intersect-observe! (fn [] (doseq [el (q* SCRAPE-SELECTOR)]
+                                    (.observe intersector el)))
 
         ]
     {
@@ -239,68 +233,108 @@
                ; register the update channel
                (let [cf (&chan-factory params)]
                  (own-chan cf :UPD-CHANNEL UPD-CHAN))
+               {})]
 
-               {}
-               )]
-
+     ;;
      ;; ticker implementation
      ;;
      :ctx   [(fn [params]
+               ;; split main tick to a sub-ticks
                (let [_cond-ticker-fn (fn [pred? ticker]
                                        (let [ch (make-chan (&chan-factory params) (sid))]
                                          (if (pred? ticker)
                                            (async/put! ch ticker))
                                          ch))
 
-                     ]
+                     ; ticker configuration/back-pressure
+                     *run-on-idle (atom false)
+                     *tick-t (atom 200)
+                     *t (atom (u/now))
 
+                     ticker-fn (fn [chan]
+                       (.log js/console "TICKER STARTED")
+                       ;; maybe some xf here?
+
+                       (go-loop []
+                         (let [tick-chan (u/timeout @*tick-t)
+                               run-on-idle? @*run-on-idle
+
+                               idle-cb-chan (if run-on-idle? (alpha/request-idle-callback-chan!) nil)
+                               ports (into
+                                       (if @*run-on-idle
+                                         [idle-cb-chan] [])
+                                       [
+                                        UPD-CHAN tick-chan
+                                        ])
+
+                               [_msg port] (async/alts! ports)
+
+                               msg (cond
+                                     (= tick-chan port) :tick
+                                     (and run-on-idle?
+                                          (= idle-cb-chan port)) :tick
+                                     :else _msg)
+
+                               ;; get status of queues
+                               {
+                                prq :process-queue
+                                elq :el-queue
+                                } @*WF-UI
+
+                               has-process-queued? (not (empty? prq))
+                               has-els-queued? (not (empty? elq))
+
+                               has-work? (or
+                                           has-process-queued?
+                                           has-els-queued?)
+                               ]
+
+                           ; (.log js/console "MSG" msg)
+                           (cond
+                             ;; start looking for elements
+                             (= :mutation msg)
+                             (do
+                               ;; enable idle channel as we have now work
+                               (reset! *run-on-idle true)
+
+                               (async/put! chan msg))
+
+                             ;;
+                             (and (= :tick msg)
+                                  has-work?)
+                             (do
+                               (reset! *run-on-idle true)
+                               (async/put! chan :process))
+
+                             :else (do
+                                     ; no work, disable idle-thread
+                                     (reset! *run-on-idle false)
+                                     ;; todo: adjusting timeout if we come from main ticker
+                                     ;; (if (= tick-chan port) ... )
+                                     ))
+
+
+                           (if-not @*ticker-ready?
+                             (do
+                               (let [t @*t
+                                     now (u/now)]
+                                 ;(.log js/console "UPD:" (- now t) "ms" )
+                                 (reset! *t now)
+                                 )
+
+                               ;(.log js/console "(RECUR)")
+                               (recur))
+                             )
+                           )
+                         )
+                       chan
+                       )
+
+                     ]
                  {
                   ; main ticker for wf updates
-                  :ticker             {:fn       (fn [chan]
-                                                   (.log js/console "TICKER")
-                                                   ;; maybe some xf here?
-
-                                                   (go-loop []
-
-                                                     ;; todo: use alts! here
-                                                     ;; (alts! ports & {:as opts})
-                                                     ;; ports is a vector of channel endpoints,
-                                                     ;; which can be either a channel to take from or a vector of
-                                                     ;; [channel-to-put-to val-to-put], in any combination.
-
-
-                                                     (let [msg (async/alt!
-                                                                 UPD-CHAN ([v] v)
-
-                                                                 ;; (alpha/request-idle-callback-chan!) ([] :tick) ; instead of idle
-
-                                                                 (u/timeout 100) ([] :tick))] ;; todo: recur0
-
-                                                       ;(.log js/console "MSG" msg)
-                                                       (cond
-                                                         (= :mutation msg) (async/put! chan msg)
-
-                                                         (and (= :tick msg)
-                                                              (not (empty? (:process-queue @*WF-UI))))
-                                                         (async/put! chan :process)
-
-                                                         (and (= :tick msg)
-                                                              (not (empty? (:el-queue @*WF-UI))))
-                                                         (async/put! chan :process)
-
-                                                         :else (do
-                                                                 ;(.log js/console "OTHER" msg)
-                                                                 ))
-
-                                                       (if-not @*ticker-ready?
-                                                         (do
-                                                           ;(.log js/console "(RECUR)")
-                                                           (recur))
-                                                         )
-                                                       )
-                                                     )
-                                                   chan
-                                                   )
+                  :ticker
+                                      {:fn       ticker-fn
                                        :infinite true}
 
 
