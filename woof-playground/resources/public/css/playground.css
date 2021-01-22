@@ -1,3 +1,80 @@
+/* */
+
+html, body {
+    overscroll-behavior-x: none;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    /*font-family: -apple-system,BlinkMacSystemFont,"avenir next",avenir,helvetica,"helvetica neue",ubuntu,roboto,noto,"segoe ui",arial,sans-serif*/
+
+}
+
+#app {
+    /* mount point of the app */
+
+    padding-bottom: 1.5rem;
+    border-bottom: 3px solid #ddf1f9;
+}
+
+/* PLAYGROUND APPLICATION */
+
+#pg-app {
+
+}
+
+.woof-playground > .menubar + * {
+    padding-left: .1333rem;
+}
+
+/* .default-wf-ui (menu, explanation, body) - container for workflow results ui */
+
+.default-wf-ui .main-menu {
+    border-bottom: 1px solid lightblue;
+
+    padding-top: .1333rem;
+    padding-bottom: .1333rem;
+}
+
+.default-wf-ui .main-menu {
+    background-color: rgba(0,223,202,0.46);
+}
+
+.default-wf-ui .main-menu {
+    display:  flex;
+    flex: 0 1 auto;
+    width: 100%;
+}
+
+.default-wf-ui .main-menu .menubar {
+    flex-grow: 1;
+}
+
+
+
+/* HTML ANALYZER WF STYLES */
+
+.playground-html-analyzer {
+    padding-top: .5rem;
+    margin-left: 1rem;
+}
+
+.woof-toolbar {
+    padding-bottom: .133rem;
+}
+
+.woof-toolbar:hover {
+    background-color: #ddf1f9;
+}
+
+.woof-toolbar > * {
+    align-self: center;
+}
+
+/* other styles */
+
+
 /** {
     outline: 1px solid rgba(0,0,0,.0187777);
 }*/
@@ -5,8 +82,6 @@
 header {
     font-weight: bold;
 }
-
-
 
 
 .wf {
@@ -185,9 +260,6 @@ ul.listbox {
 
 
 
-body {
-    /*font-family: -apple-system,BlinkMacSystemFont,"avenir next",avenir,helvetica,"helvetica neue",ubuntu,roboto,noto,"segoe ui",arial,sans-serif*/
-}
 
 .proto9 .container {
     background-color: rgba(0,0,0,.05);
@@ -765,36 +837,7 @@ pre {
 
 /***********************************/
 
-.woof-playground {
 
-}
-
-.woof-playground > .menubar + * {
-    border-top: 1px solid lightblue;
-    margin-top: .333rem;
-    padding-top: .333rem;
-    padding-left: .1333rem;
-}
-
-
-
-
-/* .default-wf-ui (menu, explanation, body) - container for workflow results ui */
-
-.default-wf-ui .main-menu {
-    display:  flex;
-    flex: 0 1 auto;
-    width: 100%;
-}
-
-.default-wf-ui .main-menu .menubar {
-    flex-grow: 1;
-}
-
-.default-wf-ui .flex > div {
-    /*outline: 1px solid darkolivegreen;*/
-    /*padding: .333rem;*/
-}
 
 
 
@@ -1259,14 +1302,17 @@ pre {
     margin-bottom: .5rem;
 }
 
+/* root of */
 .plans {
     margin-top: .5rem;
+
 }
 
 .plans .plan-root {
     padding-left: .25rem;
     padding-right: .5rem;
-    border-left: 1px solid grey;
+    /*border-left: 1px solid grey;*/
+
 }
 
 
@@ -1288,17 +1334,21 @@ pre {
     display: flex;
     flex-direction: row;
     align-items: center;
+
 }
 
 .plan-header.analyzed {
-    padding: 3px;
-    outline: 3px solid crimson;
+    /*padding: 3px;*/
+    /*outline: 3px solid crimson;*/
+
+    background-color: aquamarine;
 
 }
 
 .node-group {
     border-left: 3px solid transparent;
 }
+
 .node-group:hover {
     border-color: #f0808066;
 }
@@ -1313,7 +1363,7 @@ pre {
 }
 
 .plan {
-    border-left: 1px solid transparent;
+    /*border-left: 1px solid transparent;*/
 }
 
 .plan.unique {
@@ -1604,3 +1654,79 @@ pre {
 
     outline: 1px solid crimson;
 }
+
+
+
+.analysis {
+    margin-top: 1rem;
+}
+
+.tree {
+    /*outline: 1px solid #cacacaca;*/
+}
+
+.plan:not(.not-matched) {
+    outline: 1px solid #cacaca;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* */
+.wf-viz > .flex {
+    /*outline: 1px solid red;*/
+    border-bottom: 1px dashed paleturquoise;
+}
+
+.wf-viz .g {
+    font-weight: bold;
+    outline: 1px solid #ddf1f9;
+
+    min-width: 20px;
+    max-width: 20px;
+
+    padding: .1rem;
+    padding-bottom: 1rem;
+
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+
+}
+
+.wf-viz .init {
+    padding-left: .1333rem;
+}
+
+.wf-viz .flex {
+}
+
+/*
+.wf-viz .init::before {
+    content: "init";
+
+    display: inline-flex;
+    position: relative;
+    top: -10px;
+    left: 0;
+
+    background-color: #29a99f;
+}*/
+
+
+
+
+
+
+

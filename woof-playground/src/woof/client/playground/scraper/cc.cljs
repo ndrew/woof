@@ -13,20 +13,21 @@
     [woof.base :as base]
     [woof.data :as d]
 
-    [clj-fuzzy.metrics :as metrics]
+    ;[clj-fuzzy.metrics :as metrics]
 
     [woof.utils :as utils]
 
     [woof.browser :as woof-browser]
 
-    [woof.client.dom :as wdom]
+    [woof.client.dom :as wdom :refer [q q* html! ]]
     [woof.client.playground.ui :as pg-ui]
     [woof.client.playground.ui.wf :as wf-ui]
     [woof.client.ws :as ws]
     [woof.client.playground.ui.html :as html-ui]
 
     [woof.wfs.evt-loop :as evt-loop]
-    [woof.client.playground.scraper.tw :as dashboard]
+    ; old dashboard
+    ;[woof.client.playground.scraper.tw :as dashboard]
     [woof.utils :as u]
     [woof.client.common :as common]
     )
@@ -34,165 +35,186 @@
   (:require-macros
     [cljs.core.async.macros :refer [go go-loop]]))
 
+;; provide selector to compare items in
 
+;; SELECTOR "#test-html > .catalog-item"
+;; yt
+;; SELECTOR "#test-html > #contents > ytd-video-renderer"
+
+;;
+;; tg
+; history: whole message
+;; (def SELECTOR "#test-html .im_history_wrap .im_history_message_wrap")
+
+;; history message text (kind of lensing)
+(def SELECTOR "#test-html .im_history_wrap .im_history_message_wrap .im_message_text")
 
 
 ;;
 ;; UI
-(rum/defcs <scraping-root> < rum/reactive
-                             (rum/local {} ::inline-results?)
+
+
+;;
+(rum/defc <html-source> < rum/reactive
+  [*dict]
+  (let [ks (get-in @*dict [:kv-ks] [])
+
+        f (fn [x]
+            (let [t0 (u/now)]
+              (ws/GET
+                (str "http://localhost:8081/kv/get/" x)
+                (fn [_data]
+                  (let [t1 (u/now)
+                        data (d/to-primitive _data)]
+
+                    (html! (q "#test-html") data)
+
+                    (let [now (u/now)]
+                      (.log js/console "total: " (- now t0) "parse: " (- now t1) "request: " (- t1 t0)))
+                    )))))
+
+        main-actions [
+                      ["👀" (fn [] (classes/toggle (wdom/q "#test-html-container") "visible"))]
+                      []
+                      ["KV: load" (fn [] (ws/GET "http://localhost:8081/kv/list"
+                                                  (fn [ks]
+                                                    (swap! *dict assoc-in [:kv-ks] (d/to-primitive ks)))))]
+                      []]
+        ]
+
+    [:div.flex.woof-toolbar
+     (pg-ui/menubar "HTML: " (into
+                               main-actions
+                               (map (fn [x] [(str x) (partial f x)]) ks)))
+     ]
+    )
+  )
+
+
+
+(defn enrich-node [ n]
+  (let [node (wdom/enrich-node n)
+        $el (:el n)
+        ]
+
+    ;;(.log js/console n node)
+
+    (merge
+      node
+      {
+       :clazz (.-className $el)
+       }
+      )
+    )
+  )
+
+;;
+;;
+(rum/defcs <html-analyzer> < rum/reactive
+                             (rum/local [0] ::compare-ids)
+                             (rum/local 1 ::compare-max)
+
   [local *wf]
 
-  (let [wf @*wf]
-    [:div
-     (if (= :not-started (:status wf))
-       [:div "wf is not running"]
+  (let [wf @*wf
+        *dict (rum/cursor-in *wf [:state ::dict])]
 
-       ;; for now hadcode actions for ::current
+    [:div.playground-html-analyzer
 
-       (let [*dict (rum/cursor-in *wf [:state ::dict])]
-         [:div {:style {:padding "1rem"}}
+     (<html-source> *dict)
 
-          (pg-ui/menubar "KV"
-                         (into
-                           [
-                            ["toggle html" (fn []
-                                             (classes/toggle (wdom/q "#test-html-container") "visible")
+     ;; todo: ui for providing selector
+     [:div.woof-toolbar
+      (pg-ui/menubar (str "SELECTOR: " SELECTOR)
+                     [["use default" (fn []
+                                         (swap! *dict assoc-in [:curr-selector] SELECTOR))]])
+      ]
 
-                                             )]
+     (if-let [$listings (:curr-selector @*dict)]
+       (let [compare-ids @(::compare-ids local)
+             compare-max @(::compare-max local)
 
-                            ["load keys" (fn []
-                                              (ws/GET "http://localhost:8081/kv/list" (fn [ks]
-                                                                                        (swap! *dict assoc-in [:kv-ks] (d/to-primitive ks) )
-                                                                                        ;; (.log js/console ks)
-                                                                                        )
-                                                       )
-                                              )]
-                               []]
-                           (map (fn [x]
-                                  [(pr-str x) (fn []
-                                                (let [t0 (u/now)]
-                                                  (ws/GET (str "http://localhost:8081/kv/get/" x)
-                                                          (fn [_data]
-                                                            (let [t1 (u/now)
-                                                                  data (d/to-primitive _data)]
-                                                              ;; (.log js/console data)
+             els (wdom/q* $listings)
 
-                                                              (wdom/html!
-                                                                (wdom/q "#test-html")
-                                                                data)
+             skip-fn (fn [$el $]
+                       (#{; "SVG"
+                          "G" "PATH"} (str/upper-case (.-tagName $el))))
 
-                                                              (let [now (u/now)]
-                                                                (.log js/console
+             ]
+         [:div
+          [:div.woof-toolbar.flex
 
-                                                                      "total: " (- now t0)
-                                                                      "parse: " (- now t1)
-                                                                      "request: " (- t1 t0))
+           (pg-ui/menubar (str "Compare " compare-max " elements")
+                          [
+                           ["+" (fn []
+                                  (let [nu-max (swap! (::compare-max local) inc)]
+                                    (swap! (::compare-ids local) assoc (dec nu-max) 0))
 
-                                                                ;; TODO: for now, hardcode the selector
-                                                                (swap! *dict assoc-in [:curr-selector] "#test-html > .catalog-item" )
-                                                                )
+                                  )]
+                           ["-" (fn []
+                                  (swap! (::compare-max local) dec)
+                                  (swap! (::compare-ids local) #(vec (drop-last %)))
+                                  ) ]
+                           []])
 
-                                                              ;;
-                                                              )
-                                                            )
-                                                          )
-                                                  )
-
-                                                )]
-                                  ) (get-in @*dict [:kv-ks] []))
-                           ))
-          ;; (pr-str @*dict)
-
-          (let [$listings "#test-html > .catalog-item"
-                skip-fn (fn [$el $]
-                          (#{; "SVG"
-                             "G" "PATH"} (str/upper-case (.-tagName $el))))
-
-                els (wdom/q* $listings)]
-
-            (if els
-              (let [make-el-map (fn [el]
-                                  (wdom/el-map el
-                                               :skip-fn skip-fn
-                                               :node-fn wdom/enrich-node
-                                               :top-selector-fn (fn [base el] { :nth-child (:i base)})))
-
-                    el-map->nodes (fn [el-map-1]
-                                    (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-1))
-
-                    id-1     (rand-int (count els))
-                    el-map-1 (make-el-map (nth els id-1))
-                    el-1     (el-map->nodes el-map-1)
-
-
-                    id-2     (rand-int (count els))
-                    el-map-2 (make-el-map (nth els id-2))
-                    el-2     (el-map->nodes el-map-2)
-
-                    ]
-
-                [:div
-                 [:header "ELS:"]
-
-                 (html-ui/<dashboard>
-                   [
-                    {:id id-1
-
-                     :el-map el-map-1
-                     :nodes el-1
-                     }
-                    {
-                     :id id-2
-
-                     :el-map el-map-2
-                     :nodes el-2
-                     }
-                    ])
-                 ]
-                )
-              )
-
-
-            )
-
-          ;;html-ui/<plan>
-
-          ;; streets
-
-          ; [:pre (pr-str @*dict)]
-
-          #_(pg-ui/<edn-list> (get-in wf [:state ::dict ::renamings]  []) "")
-
-          #_[:pre
-           (d/pretty! (get-in wf [:state ::dict ::renamings]  []))
+           (let [CHARS (seq "ABCDEF")]
+             [:div
+              (map-indexed
+                (fn [i j]
+                  [:div
+                   (pg-ui/menubar (str (nth CHARS i) ":")
+                                  (map (fn [n]
+                                         [(if (= j n) (str "✅" n) (str n))
+                                          #(swap! (::compare-ids local) assoc i n)])
+                                       (range (count els))))])
+                compare-ids)
+              ]
+             )
            ]
 
+          (if els
+            (let [make-el-map (fn [el]
+                                (wdom/el-map el
+                                             :skip-fn         skip-fn
+                                             :node-fn         enrich-node
+                                             :top-selector-fn (fn [base el] { :nth-child (:i base)})))
+                  el-map->nodes (fn [el-map-1]
+                                  (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-1))
+                  ]
+              [:div
+                [:hr]
+                (html-ui/<dashboard>
+                 (map (fn [id]
+                        (let [el-map (make-el-map (nth els id))]
+                          {:id     id
 
-
-
-
-          #_(let [dom-nfos (get-in wf [:state ::dict ::els]  [])]
-            (<extract-renaming>
-              [(rand-nth dom-nfos) (rand-nth dom-nfos)]
-              ;;dom-nfos
+                           :el-map el-map
+                           :nodes  (el-map->nodes el-map)
+                           }))
+                      compare-ids)
+                 )
+               ]
               )
+
             )
-
-
-          ;;(<streets-cc> *dict)
-
-          ;;(<cc> *dict *categorizator)
 
           ]
          )
-
        )
      ]
     )
   )
 
 
+
+(rum/defcs <scraping-root> < rum/reactive
+  [local *wf]
+
+  (let [wf @*wf]
+    [:div
+     (if (= :not-started (:status wf))
+       [:div "wf is not running"]
+       (<html-analyzer> *wf))]))
 
 
 
@@ -209,7 +231,19 @@
 
      :title       "Scraping command center"
      :explanation [:div.explanation
-                   [:p "Analyze scraped data here"]]
+
+                   [:p [:code "#test-html"] " contains html for analysis"]
+                   [:p "it can be provided manually or via woof KV store"]
+
+                   [:p "Scraper can send html for analysis"]
+                   [:ul
+                    [:li "extract potentially interesting data"]
+                    [:li "compare differences between data"]
+                    ]
+
+
+
+                   ]
 
      ;; this state will be added to a wf?
      :state {
@@ -221,9 +255,7 @@
              }
 
      :init-fns    [
-
                    (fn [params]
-
                      #_(ws/GET "http://localhost:9500/s/yt/channel-tags-mapping.edn" (fn [data]
                                                                                      (reset! *categorizator data)))
 
@@ -253,10 +285,8 @@
                       ::#EVT-LOOP# [:evt-loop (evt-loop/&evt-loop params)]
 
                       ;; ::hello [:log "Hello"]
-
-                      :CSS/custom-css-file [:css-file "http://localhost:9500/css/t.css"]
+                      ; :CSS/custom-css-file [:css-file "http://localhost:9500/css/t.css"]
                       })
-                   ;; parse-renamings-steps
                    ]
 
      :opt-fns     [
@@ -270,7 +300,6 @@
 
      ;; dev stuff
      :playground/keys-to-update-on-reload [
-
                                            :actions
                                            :title
                                            :explanation

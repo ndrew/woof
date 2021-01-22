@@ -24,7 +24,7 @@
                          "menu item component"
   [label action-fn]
 
-  [:a.menu-item
+  [:span.menu-item
    {:href "#" :on-click (fn [e]
                           (action-fn)
                           (.preventDefault e)

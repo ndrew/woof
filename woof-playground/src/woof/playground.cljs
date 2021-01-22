@@ -17,7 +17,7 @@
 (rum/defcs <app-ui>
   < rum/reactive [local <ui>]
 
-  [:div#app (<ui>)]
+  [:div#pg-app (<ui>)]
 )
 
 
