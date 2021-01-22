@@ -57,11 +57,13 @@
 
 /* height var for  */
 :root {
-    --height: 75px;
+    --height: 0px;
+    --width: 0px;
 }
 
 body {
-    margin-bottom: var(--height);
+    /*margin-bottom: var(--height);
+    margin-left: var(--width);*/
 }
 
 
@@ -204,6 +206,18 @@ article.WOOF-ASYNC.WOOF-DONE {
     line-height: 1;
 
 }
+
+
+
+
+
+
+
+
+
+/* YT */
+
+
 
 
 /*body.ZZZ #contents .ytd-section-list-renderer,*/
