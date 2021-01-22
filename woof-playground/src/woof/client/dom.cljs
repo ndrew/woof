@@ -247,21 +247,54 @@
 
 ;; vanilla js
 
-(defn <scraping-ui> []
+(defn <scraping-ui> [options]
   (if-let [prev-el (.querySelector (.-body js/document) ".woof-scraper-ui")]
     (do
       ;; what to do with existing scraping ui?
       (set! (. prev-el -innerHTML) "")
       )
-    (let [el (dom/createDom "div" "woof-scraper-ui"
-                            "")]
+    (let [fixed-side (get options :ui/fixed-side :bottom)
+          el (dom/createDom "div" (str "woof-scraper-ui"
+                                       " "
+                                       "woof-fixed-" (name fixed-side))
+                            "")
+
+          ]
 
       ;; provide default styling
       (set! (-> el .-style .-zIndex) "10000")
       (set! (-> el .-style .-position) "fixed")
-      (set! (-> el .-style .-bottom) "0px")
-      (set! (-> el .-style .-left) "0px")
-      (set! (-> el .-style .-width) "100%")
+
+      (cond
+        (= :bottom fixed-side)
+        (do
+          (set! (-> el .-style .-bottom) "0px")
+          (set! (-> el .-style .-left) "0px")
+          (set! (-> el .-style .-width) "100%")
+
+          (let [doc (-> js/document .-documentElement)]
+            (css-add-rule! "body { margin-bottom: var(--height); }")
+            (css-add-rule! ".woof-scraper-ui { height: var(--height); }")
+            (.setProperty (-> doc .-style ) "--height" (str 75 "px")))
+
+          )
+
+        (= :left fixed-side)
+        (do
+          (set! (-> el .-style .-top) "0px")
+          (set! (-> el .-style .-left) "0px")
+          (set! (-> el .-style .-height) "100%")
+
+          (let [doc (-> js/document .-documentElement)]
+            (css-add-rule! "body { margin-left: var(--width); }")
+            (css-add-rule! ".woof-scraper-ui { width: var(--width); }")
+
+            (.setProperty (-> doc .-style ) "--width" (str 200 "px")))
+          )
+
+        )
+
+
       ; (set! (-> el .-style .-paddingLeft) ".5rem")
       (set! (-> el .-style .-backgroundColor) "rgb(241 251 255)")
       (set! (-> el .-style .-borderTop) "1px solid #000")
@@ -285,12 +318,22 @@
 
 (defn scraping-ui__inc [delta]
   (if-let [el (.querySelector (.-body js/document) ".woof-scraper-ui")]
-    (let [h (-> el .-clientHeight)
-          doc (-> js/document .-documentElement)
-          ]
-      (set! (-> el .-style .-minHeight) (str (+ h delta) "px"))
-      (.setProperty (-> doc .-style ) "--height" (str (+ h delta) "px"))
+    (if (classes/has el "woof-fixed-left")
+      (let [h (-> el .-clientWidth)
+            doc (-> js/document .-documentElement)
+            ]
+        (set! (-> el .-style .-minWidth) (str (+ h delta) "px"))
+        (.setProperty (-> doc .-style ) "--width" (str (+ h delta) "px"))
+        )
+      ;; else bottom
+      (let [h (-> el .-clientHeight)
+            doc (-> js/document .-documentElement)
+            ]
+        (set! (-> el .-style .-minHeight) (str (+ h delta) "px"))
+        (.setProperty (-> doc .-style ) "--height" (str (+ h delta) "px"))
+        )
       )
+
   )
 )
 
@@ -915,6 +958,10 @@
 
 
 (defn outer-html [els]
-  (if (seq els)
-    (reduce (fn [s el] (str s (. el -outerHTML))) "" els)
-    (. els -outerHTML)))
+  (if (instance? js/Element els)
+    (.-outerHTML els)
+    (if (and (seqable? els)
+             (seq els))
+      (reduce (fn [s el] (str s (. el -outerHTML))) "" els)
+      (str els))
+    ))

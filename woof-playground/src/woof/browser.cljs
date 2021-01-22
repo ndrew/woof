@@ -76,16 +76,6 @@
 
 
 ;;
-;; todo: should meta info config be here or inside wf should decide, or wf can override it?
-(def META-INFO {
-             :ws? false
-             :evt-loop? true
-             :ui? true
-             :use-generic-wf? true
-             :debug? false
-             })
-
-;;
 ;; ns for doing in-browser scraping
 
 ;; for now, build as :browser-min and inject in the host page as
@@ -393,10 +383,26 @@
   (swap! *XXX inc) ;;
 
   (.log js/console "RUNNING WORKFLOW" (u/now))
-  (let [url (.. js/document -location -href)]
+  (let [url (.. js/document -location -href)
 
+
+        default-meta-nfo {
+         :ws? false
+         :evt-loop? true
+
+         :ui? true
+         :ui/fixed-side :bottom
+
+         :use-generic-wf? true
+         :debug? false
+         }
+
+        META-INFO (impl/choose-workflow-meta url default-meta-nfo)
+        ]
+
+    ;; add UI scraping panel
     (if (:ui? META-INFO)
-      (woof-dom/<scraping-ui>) )
+      (woof-dom/<scraping-ui> META-INFO))
 
     ;; map localhost to a specific wf implementation
     (if-let [w (impl/choose-workflow url)]
