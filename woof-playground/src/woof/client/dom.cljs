@@ -399,36 +399,54 @@
 
 ;; breadth first search of element children and keep the selector and other nice properties, like
 ;; if the node has text. parsing can be skipped via skip-fn, in order to not traverse svgs, or other stuff
+;; - flattens the tree
 (defn el-map
   [root
-   & {:keys [skip-fn node-fn top-selector-fn]
+   & {:keys [skip-fn node-fn top-selector-fn
+             to-selector $-fn]
       :or   {
              skip-fn         (fn [_ _] false)
              node-fn         (fn [node] {})
+
+             $-fn (fn [i el] {:t (.-tagName el)
+                              :i (inc i)
+                              :nth-child (inc i)})
              top-selector-fn (fn [base el] {})
+             to-selector     to-selector
              }}
    ]
 
-  (let [make-node (fn [node] (merge node (node-fn node)))
+  (let [;; pass root here? or use .-parent el ?
+        make-node (fn [parent-el node]
+                    (merge node
+                          (node-fn parent-el node)))
         queue-fn (fn [i el]
-                   (let [base-selector {:t (.-tagName el)
-                                        :i (inc i)}
-                         selector-data [(merge base-selector (top-selector-fn base-selector el))]]
+                   (let [base-selector ($-fn i el)
+                         selector-data [base-selector]]
 
                      (make-node
+                       root
                        {
-                        :$          selector-data
-                        :tag        (:t (last selector-data))
-                        :_$         (to-selector selector-data)
-
                         :el         el
-                        :parent-idx 0
+
+                        ;;
                         :idx (inc i)
+                        :parent-idx 0
+
+                        ;; stores info for building selector
+                        :$          selector-data
+                        ;; string selector implementation -
+                        :_$         (to-selector selector-data) ;; - can be triggered later, as we may not have all info
+
+
+                        ;; el dependant
+                        :tag        (.-tagName el)
                         ;; todo: handling root node text
                         :text       ""        ;(.-textContent el)
                         })
                      )
                    )
+
         result
         (loop [ret []
                queue (into #queue []
@@ -437,8 +455,10 @@
 
           (if (seq queue)
             (let [node (peek queue)
+
                   $ (get node :$)
-                  $el (get node :el)
+
+                  $el (get node :el) ;; parent/root
 
                   children (array-seq (.-children $el))
                   child-count (count children)
@@ -447,16 +467,16 @@
                   has-text? (not= "" text)
                   use-text? (volatile! true)              ;; ugly, but works
 
-                  ;; migrate to loop some day
-                  *i (volatile! 0)
-
                   idx (:idx node)
 
+                  ;; migrate to loop some day
+                  *i (volatile! 0)
                   children-nodes (reduce
                                    (fn [a el]
                                      (vswap! *i inc)
                                      (if (not (skip-fn el $))
-                                       (let [selector-data (conj $
+                                       (let [
+                                             selector-data (conj $
                                                                  (merge
                                                                    {:t           (.-tagName el)
                                                                     :i           @*i
@@ -476,7 +496,9 @@
 
                                          (conj a
                                                {:$          selector-data
+                                                ;;
                                                 :_$         (to-selector selector-data)
+
                                                 :tag        (:t (last selector-data))
                                                 :el         el
                                                 :idx (+ counter @*i)
@@ -487,7 +509,9 @@
                                    []
                                    children)
 
+                  ;;
                   new-node (make-node
+                             $el
                              (merge
                                {
                                 ;; if at least one of children has same text - ommit
@@ -504,8 +528,6 @@
                                      children-nodes)
 
                   ]
-              ; (.log js/console idx (:parent-idx (last new-ret)) (last new-ret))
-
               (recur new-ret new-children
                      (+ counter (count children-nodes))))
             ret
@@ -835,7 +857,7 @@
   )
 
 
-(defn enrich-node [n]
+(defn enrich-node [root-el n]
   (let [$ (get n :$)
         curr-tag (:t (last $))
         selector (get n :_$)

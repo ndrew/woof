@@ -83,18 +83,19 @@
         ]
 
     [:div.flex.woof-toolbar
-     (pg-ui/menubar "HTML: " (into
+     (pg-ui/menubar "HTML: " (vec (concat
                                main-actions
-                               (map (fn [x] [(str x) (partial f x)]) ks)))
+                               (map (fn [x] [(str x) (partial f x)]) ks)
+                               )))
      ]
     )
   )
 
 
 
-(defn enrich-node [ n]
-  (let [node (wdom/enrich-node n)
-        $el (:el n)
+(defn enrich-node [parent-el nodle]
+  (let [node (wdom/enrich-node parent-el nodle)
+        $el (:el nodle)
         ]
 
     ;;(.log js/console n node)
@@ -126,8 +127,15 @@
      ;; todo: ui for providing selector
      [:div.woof-toolbar
       (pg-ui/menubar (str "SELECTOR: " SELECTOR)
-                     [["use default" (fn []
-                                         (swap! *dict assoc-in [:curr-selector] SELECTOR))]])
+                     [
+                      ["use default" (fn []
+                                         (swap! *dict assoc-in [:curr-selector] SELECTOR))]
+                      ["use own" (fn []
+                                   (swap! *dict assoc-in [:curr-selector]
+                                          (js/prompt "provide selector" SELECTOR)
+                                          )
+                                    )]
+                      ])
       ]
 
      (if-let [$listings (:curr-selector @*dict)]
@@ -177,22 +185,37 @@
                                 (wdom/el-map el
                                              :skip-fn         skip-fn
                                              :node-fn         enrich-node
-                                             :top-selector-fn (fn [base el] { :nth-child (:i base)})))
+                                             ;:top-selector-fn (fn [base el] { :nth-child (:i base)})
+                                             ))
                   el-map->nodes (fn [el-map-1]
                                   (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-1))
+
+                  selected-el-data (map (fn [id]
+                                          (let [el-map (make-el-map (nth els id))]
+
+                                            ;;
+                                            ;; document how these are being produced
+                                            ;;
+                                            {
+                                             ;;
+                                             :id     id
+                                             :el-map el-map
+                                             :nodes  (el-map->nodes el-map)
+                                             }))
+                                        compare-ids)
                   ]
               [:div
-                [:hr]
-                (html-ui/<dashboard>
-                 (map (fn [id]
-                        (let [el-map (make-el-map (nth els id))]
-                          {:id     id
 
-                           :el-map el-map
-                           :nodes  (el-map->nodes el-map)
-                           }))
-                      compare-ids)
-                 )
+
+                [:.html
+                 (d/pretty! (get-in (vec selected-el-data) [0 :nodes] ) )
+                 ]
+
+                ;; dashboard for analyzing selected
+                [:hr]
+               [:header "V1: analysing all data"]
+               ; hide for now
+               (html-ui/<dashboard> selected-el-data)
                ]
               )
 
@@ -229,7 +252,7 @@
         ]
     {
 
-     :title       "Scraping command center"
+     :title       "Scraping HTML Analyzer"
      :explanation [:div.explanation
 
                    [:p [:code "#test-html"] " contains html for analysis"]
@@ -240,9 +263,6 @@
                     [:li "extract potentially interesting data"]
                     [:li "compare differences between data"]
                     ]
-
-
-
                    ]
 
      ;; this state will be added to a wf?
@@ -251,15 +271,10 @@
              ;; just data for the ui
              ::dict {
                      }
-
              }
 
      :init-fns    [
                    (fn [params]
-                     #_(ws/GET "http://localhost:9500/s/yt/channel-tags-mapping.edn" (fn [data]
-                                                                                     (reset! *categorizator data)))
-
-                     ;; todo: maybe returning channel and proceeding with init when the data is ready?
                      {
                       ::categorizator *categorizator
                       ::*dict *dict
@@ -283,8 +298,6 @@
      :steps-fns   [(fn [params]
                      {
                       ::#EVT-LOOP# [:evt-loop (evt-loop/&evt-loop params)]
-
-                      ;; ::hello [:log "Hello"]
                       ; :CSS/custom-css-file [:css-file "http://localhost:9500/css/t.css"]
                       })
                    ]
