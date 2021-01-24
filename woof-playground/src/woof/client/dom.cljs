@@ -399,17 +399,27 @@
 
 
 (defn default-$-fn [parent-node-info node-info]
-  (let [i (:i node-info)
-        el (:el node-info)
+  (let [;
+        i (:i node-info)
         prev-selectors (:$ node-info)
+
+        el (:el node-info)
+
+        el-children (array-seq (.-children el))
+
         child-count (count (get parent-node-info :children []))
 
         $-info (merge
                  {
                   :t         (.-tagName el)
                   :i         i
+
+                  :classes (into #{} (str/split (attr el "class")
+                                                #"\s+"))
                   ;;
-                  :child-count child-count
+                  ; :child-count child-count
+
+                  :child-count (count el-children)
                   }
                  (if (> child-count 1)
                    {:nth-child i}
@@ -477,7 +487,7 @@
                        {
                         :$          selector-data     ;; stores info for building selector
                         ;; string selector implementation -
-                        :_$         (to-selector selector-data) ;; - can be triggered later, as we may not have all info
+                        ;;:_$         (to-selector selector-data) ;; - can be triggered later, as we may not have all info
                         })
                      )
                    )
@@ -537,12 +547,9 @@
                           (conj a
                                 (merge child-node-info
                                        (let [selector-data ($-fn parent-node-info child-node-info)]
-
                                          {
                                           :$  selector-data
-                                          :_$ (to-selector selector-data)
-                                          }
-                                         )
+                                          })
                                        )))
                         a
                         ))
@@ -558,6 +565,9 @@
                                 :text        (if @use-text? text "")
                                 }
                                node
+                               {
+                                :_$ (to-selector $)
+                                }
                                )
                              )
 

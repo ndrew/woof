@@ -83,9 +83,20 @@
 
 (defn build-scrape-plan [cfg plan]
   (.groupCollapsed js/console "SCRAPE PLAN")
-  (let [result (reduce (fn [a n]
+  (let [*stats (volatile! {:tags {}
+                           :classes {}})
+        result (reduce (fn [a n]
                          (let [selector (:_$ n)
                                applied-filters (:applied-filters n)]
+
+                           ;;
+                           ;; TODO: this in no more necessary with updated woof-dom/el-plan
+
+                           (vswap! *stats update-in [:tags (:tag n)] inc)
+                           (let [cls (str/split (get-in n [:attrs "class"] "") #"\s")]
+                             (doseq [c cls]
+                               (vswap! *stats update-in [:classes c] inc)))
+
                            (if
                              (and
                                (not (empty? applied-filters))
@@ -109,6 +120,10 @@
                              )
                            )
                          ) [] plan)]
+
+
+    (.log js/console @*stats)
+
     (.groupEnd js/console)
 
     result
@@ -469,8 +484,12 @@
      #_(if (::debugger? cfg)
          (<full-plan> cfg plan))
 
-     ;; migrate to defcs in order to add flex grow
+     [:ul.legend
+      [:li.unique "unique" ]
+      ]
+
      [:header "TREE:" (pr-str (::ids cfg))]
+
 
      [:.tree-nodes
       (map (fn [item] (<tree-node> (assoc cfg
@@ -522,7 +541,9 @@
   [st cfg node]
 
   [:.tree
-   (merge {:style {:border "1px solid #000"}}
+   (merge {
+           ;:style {:border "1px solid #000"}
+           }
           (if (:tree-UI/horizontal? cfg ) {:class "horizontal"})
           )
 
@@ -600,6 +621,7 @@
      ]
     )
   )
+
 
 (rum/defcs <full-plan> < rum/static
                          (rum/local true ::hide-not-matched?)
@@ -712,32 +734,36 @@
 ;; dashboard
 (rum/defcs <dashboard> < rum/static
     (rum/local {
-                ;; generic cfg
-                ::ids                []
-                ::debugger?          false
+      ;; generic cfg
+      ::ids                []
+      ::debugger?          false
 
-                ;; root ui
-                :root-UI/mode        ::plan ;::tree
-                :root-UI/overflow?   true
+      ;; root ui mode
+      :root-UI/mode        ::tree ;; ::plan
+      :root-UI/overflow?   true
 
-                ;; node ui
-                :node-list-UI/show?  false
+      ;; node ui
+      :node-list-UI/show?  false
 
-                ;; tree ui
-                :tree-UI/horizontal? false
-                :tree-UI/collapse?   true
+      ;; tree ui
+      :tree-UI/horizontal? false
+      :tree-UI/collapse?   true
 
-                ;; filter ui
-                :filter/selected-ids (disj (into #{} (keys filters-map)) :leaf?)
-                :filter/all-ids (keys filters-map)
+      ;; filter ui
+      :filter/selected-ids (disj (into #{} (keys filters-map)) :leaf?)
+      :filter/all-ids (keys filters-map)
 
-                :filter/exclusions #{}
+      :filter/exclusions #{}
 
-                :selector/aliases {}
-                :selector/analysis {}
+      :selector/aliases {}
+      :selector/analysis {}
 
-                } ::cfg)
+      } ::cfg)
   [st nodes]
+
+  [:div
+   "FIXME: RETURN THE DASHBOARD"
+   ]
 
   (let [*cfg (::cfg st)
         _cfg  @(::cfg st)
@@ -813,6 +839,10 @@
        ]
       ]
 
+     ;;
+     ;; analysis part
+     ;;
+
      (let [analysis-map (get cfg :selector/analysis)]
        [:div.analysis
         [:header "ANALYSIS"]
@@ -839,8 +869,7 @@
 
      ;[:.html (d/pretty! selected-filters)]
 
-     [;:div.flex.plans
-      :div.plans
+     [:div.plans
       {:class (if (cfg-v st :root-UI/overflow?) "overflow-x" "")}
       (map #(<plan>
               (update-in cfg [::ids] conj (:id %))
