@@ -191,8 +191,7 @@
                   ]
               [:div
 
-
-                [:.html
+                #_[:.html
                  (d/pretty! (get-in (vec selected-el-data) [0 :nodes] ) )
                  ]
 

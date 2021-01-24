@@ -397,6 +397,32 @@
     (str/trim (subs selector (count parent-selector)))
     selector))
 
+
+(defn default-$-fn [parent-node-info node-info]
+  (let [i (:i node-info)
+        el (:el node-info)
+        prev-selectors (:$ node-info)
+        child-count (count (get parent-node-info :children []))
+
+        $-info (merge
+                 {
+                  :t         (.-tagName el)
+                  :i         i
+                  ;;
+                  :child-count child-count
+                  }
+                 (if (> child-count 1)
+                   {:nth-child i}
+                   {})
+                 )
+        ]
+    ;; append
+    (vec (conj prev-selectors
+               $-info
+               ))
+    )
+  )
+
 ;; breadth first search of element children and keep the selector and other nice properties, like
 ;; if the node has text. parsing can be skipped via skip-fn, in order to not traverse svgs, or other stuff
 ;; - flattens the tree
@@ -408,30 +434,7 @@
              skip-fn     (fn [_ _] false)
              node-fn     (fn [node] {})
 
-
-             $-fn        (fn [parent-node-info node-info]
-                           (let [i (:i node-info)
-                                 el (:el node-info)
-                                 prev-selectors (:$ node-info)
-
-                                 child-count (count (get parent-node-info :children []))
-                                 ]
-                             (vec (conj prev-selectors
-                                        (merge
-                                          {
-                                           :t         (.-tagName el)
-                                           :i         i
-                                           ;;
-                                           :child-count child-count
-                                           }
-                                          (if (> child-count 1)
-                                            {:nth-child i}
-                                            {})
-                                          )
-
-                                   ))
-                             )
-                           )
+             $-fn        default-$-fn
 
              to-selector to-selector
              }}
@@ -443,9 +446,12 @@
                           (node-fn parent-el node)))
         parent-node-info {
                           :el root
+                          :children (array-seq (.-children root))
                           ;;
                           }
-        queue-fn (fn [i el]
+        ;; fills queue with top level nodes
+        initial-queue-fn (fn [i el]
+                   ;; todo: handle skip node on the first level also
                    (let [node-info {
                                     :el         el
 
@@ -453,7 +459,6 @@
 
                                     ;;
                                     :idx        (inc i)
-
                                     :i          (inc i)
 
                                     :parent-idx 0
@@ -466,23 +471,23 @@
 
                          selector-data ($-fn parent-node-info node-info)]
 
-                     (make-node
-                       root
-                       (merge
-                         node-info
-                         {
-                          :$          selector-data     ;; stores info for building selector
-                          ;; string selector implementation -
-                          :_$         (to-selector selector-data) ;; - can be triggered later, as we may not have all info
-                          })
-                         )
+                     ;; queue node-info
+                     (merge
+                       node-info
+                       {
+                        :$          selector-data     ;; stores info for building selector
+                        ;; string selector implementation -
+                        :_$         (to-selector selector-data) ;; - can be triggered later, as we may not have all info
+                        })
                      )
                    )
+
+        ;; todo: merge initial-queue-fn with impl in loop
 
         result
         (loop [ret []
                queue (into #queue []
-                           (map-indexed queue-fn (array-seq (.-children root))))
+                           (map-indexed initial-queue-fn (array-seq (.-children root))))
                counter (count (array-seq (.-children root)))]
 
           (if (seq queue)
