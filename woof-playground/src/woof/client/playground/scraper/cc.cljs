@@ -93,21 +93,6 @@
 
 
 
-(defn enrich-node [parent-el nodle]
-  (let [node (wdom/enrich-node parent-el nodle)
-        $el (:el nodle)
-        ]
-
-    ;;(.log js/console n node)
-
-    (merge
-      node
-      {
-       :clazz (.-className $el)
-       }
-      )
-    )
-  )
 
 ;;
 ;;
@@ -184,7 +169,7 @@
             (let [make-el-map (fn [el]
                                 (wdom/el-map el
                                              :skip-fn         skip-fn
-                                             :node-fn         enrich-node
+                                             :node-fn         wdom/enrich-node
                                              ;:top-selector-fn (fn [base el] { :nth-child (:i base)})
                                              ))
                   el-map->nodes (fn [el-map-1]

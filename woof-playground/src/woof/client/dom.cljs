@@ -409,23 +409,27 @@
              node-fn     (fn [node] {})
 
 
-             $-fn        (fn [node-info]
-                           (let [i (:idx node-info)
+             $-fn        (fn [parent-node-info node-info]
+                           (let [i (:i node-info)
                                  el (:el node-info)
-                                 prev-selectors (:$ node-info)]
-                             (conj prev-selectors
-                                   {
-                                    :t         (.-tagName el)
-                                    :i         i
-                                    ;;
-                                    :nth-child i
+                                 prev-selectors (:$ node-info)
 
-                                    ; :child-count child-count
-                                    }
-                                   #_(if (> child-count 1)
-                                       {:nth-child @*i}
-                                       {})
-                                   )
+                                 child-count (count (get parent-node-info :children []))
+                                 ]
+                             (vec (conj prev-selectors
+                                        (merge
+                                          {
+                                           :t         (.-tagName el)
+                                           :i         i
+                                           ;;
+                                           :child-count child-count
+                                           }
+                                          (if (> child-count 1)
+                                            {:nth-child i}
+                                            {})
+                                          )
+
+                                   ))
                              )
                            )
 
@@ -437,6 +441,10 @@
         make-node (fn [parent-el node]
                     (merge node
                           (node-fn parent-el node)))
+        parent-node-info {
+                          :el root
+                          ;;
+                          }
         queue-fn (fn [i el]
                    (let [node-info {
                                     :el         el
@@ -445,6 +453,9 @@
 
                                     ;;
                                     :idx        (inc i)
+
+                                    :i          (inc i)
+
                                     :parent-idx 0
 
                                     ;; el dependant
@@ -453,7 +464,7 @@
                                     :text       ""        ;(.-textContent el)
                                     }
 
-                         selector-data ($-fn node-info)]
+                         selector-data ($-fn parent-node-info node-info)]
 
                      (make-node
                        root
@@ -492,46 +503,45 @@
 
                   ;; migrate to loop some day
                   *i (volatile! 0)
+
+                  parent-node-info {
+                                    :el $el
+                                    :children children
+                                    :text text
+                                    }
+
                   children-nodes (reduce
-                                   (fn [a el]
-                                     (vswap! *i inc)
-                                     (if (not (skip-fn el $))
-                                       (let []
+                    (fn [a el]
+                      (vswap! *i inc)
+                      (if (not (skip-fn el $))
+                        (let [child-node-info {
+                                               :tag        (.-tagName el)
+                                               :el         el
+                                               :idx        (+ counter @*i)
+                                               :parent-idx idx
+                                               :i          @*i
 
-                                         (if (and has-text? (str/includes? text (.-textContent el)))
-                                           (vreset! use-text? false))
+                                               :$ $ ;; prev-selectors
 
-                                         (conj a
-                                               (merge
-                                                 {
-                                                  :tag        (.-tagName el)
-                                                  :el         el
-                                                  :idx (+ counter @*i)
-                                                  :parent-idx idx
-                                                  }
+                                               }]
 
-                                                 (let [selector-data (conj $
-                                                                           (merge
-                                                                             {:t           (.-tagName el)
-                                                                              :i           @*i
-                                                                              :child-count child-count
-                                                                              }
-                                                                             (if (> child-count 1)
-                                                                               {:nth-child @*i}
-                                                                               {})
-                                                                             )
-                                                                           )]
-                                                   {
-                                                    :$          selector-data
-                                                    :_$         (to-selector selector-data)
-                                                    }
-                                                   )
-                                                 )
-                                               ))
-                                       a
-                                       ))
-                                   []
-                                   children)
+                          ;; tricky way to find extract text
+                          (if (and has-text? (str/includes? text (.-textContent el)))
+                            (vreset! use-text? false))
+
+                          (conj a
+                                (merge child-node-info
+                                       (let [selector-data ($-fn parent-node-info child-node-info)]
+
+                                         {
+                                          :$  selector-data
+                                          :_$ (to-selector selector-data)
+                                          }
+                                         )
+                                       )))
+                        a
+                        ))
+                        [] children)
 
                   ;;
                   new-node (make-node
