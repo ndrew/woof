@@ -402,17 +402,34 @@
 ;; - flattens the tree
 (defn el-map
   [root
-   & {:keys [skip-fn node-fn top-selector-fn
+   & {:keys [skip-fn node-fn
              to-selector $-fn]
       :or   {
-             skip-fn         (fn [_ _] false)
-             node-fn         (fn [node] {})
+             skip-fn     (fn [_ _] false)
+             node-fn     (fn [node] {})
 
-             $-fn (fn [i el] {:t (.-tagName el)
-                              :i (inc i)
-                              :nth-child (inc i)})
-             top-selector-fn (fn [base el] {})
-             to-selector     to-selector
+
+             $-fn        (fn [node-info]
+                           (let [i (:idx node-info)
+                                 el (:el node-info)
+                                 prev-selectors (:$ node-info)]
+                             (conj prev-selectors
+                                   {
+                                    :t         (.-tagName el)
+                                    :i         i
+                                    ;;
+                                    :nth-child i
+
+                                    ; :child-count child-count
+                                    }
+                                   #_(if (> child-count 1)
+                                       {:nth-child @*i}
+                                       {})
+                                   )
+                             )
+                           )
+
+             to-selector to-selector
              }}
    ]
 
@@ -421,29 +438,33 @@
                     (merge node
                           (node-fn parent-el node)))
         queue-fn (fn [i el]
-                   (let [base-selector ($-fn i el)
-                         selector-data [base-selector]]
+                   (let [node-info {
+                                    :el         el
+
+                                    :$ []
+
+                                    ;;
+                                    :idx        (inc i)
+                                    :parent-idx 0
+
+                                    ;; el dependant
+                                    :tag        (.-tagName el)
+                                    ;; todo: handling root node text
+                                    :text       ""        ;(.-textContent el)
+                                    }
+
+                         selector-data ($-fn node-info)]
 
                      (make-node
                        root
-                       {
-                        :el         el
-
-                        ;;
-                        :idx (inc i)
-                        :parent-idx 0
-
-                        ;; stores info for building selector
-                        :$          selector-data
-                        ;; string selector implementation -
-                        :_$         (to-selector selector-data) ;; - can be triggered later, as we may not have all info
-
-
-                        ;; el dependant
-                        :tag        (.-tagName el)
-                        ;; todo: handling root node text
-                        :text       ""        ;(.-textContent el)
-                        })
+                       (merge
+                         node-info
+                         {
+                          :$          selector-data     ;; stores info for building selector
+                          ;; string selector implementation -
+                          :_$         (to-selector selector-data) ;; - can be triggered later, as we may not have all info
+                          })
+                         )
                      )
                    )
 
@@ -475,35 +496,38 @@
                                    (fn [a el]
                                      (vswap! *i inc)
                                      (if (not (skip-fn el $))
-                                       (let [
-                                             selector-data (conj $
-                                                                 (merge
-                                                                   {:t           (.-tagName el)
-                                                                    :i           @*i
-                                                                    :child-count child-count
-                                                                    }
-                                                                   (if (> child-count 1)
-                                                                         {:nth-child @*i}
-                                                                         {})
-                                                                   )
-
-
-
-                                                                 )]
+                                       (let []
 
                                          (if (and has-text? (str/includes? text (.-textContent el)))
                                            (vreset! use-text? false))
 
                                          (conj a
-                                               {:$          selector-data
-                                                ;;
-                                                :_$         (to-selector selector-data)
+                                               (merge
+                                                 {
+                                                  :tag        (.-tagName el)
+                                                  :el         el
+                                                  :idx (+ counter @*i)
+                                                  :parent-idx idx
+                                                  }
 
-                                                :tag        (:t (last selector-data))
-                                                :el         el
-                                                :idx (+ counter @*i)
-                                                :parent-idx idx
-                                                }))
+                                                 (let [selector-data (conj $
+                                                                           (merge
+                                                                             {:t           (.-tagName el)
+                                                                              :i           @*i
+                                                                              :child-count child-count
+                                                                              }
+                                                                             (if (> child-count 1)
+                                                                               {:nth-child @*i}
+                                                                               {})
+                                                                             )
+                                                                           )]
+                                                   {
+                                                    :$          selector-data
+                                                    :_$         (to-selector selector-data)
+                                                    }
+                                                   )
+                                                 )
+                                               ))
                                        a
                                        ))
                                    []
