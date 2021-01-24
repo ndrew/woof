@@ -401,126 +401,118 @@
 ;; if the node has text. parsing can be skipped via skip-fn, in order to not traverse svgs, or other stuff
 (defn el-map
   [root
-   & {:keys [skip-fn node-fn top-selector-fn] :or {
-                                   skip-fn (fn [_ _] false)
-                                   node-fn (fn [node] {})
-                                   top-selector-fn (fn [base el] {})
-                                   }}
+   & {:keys [skip-fn node-fn top-selector-fn]
+      :or   {
+             skip-fn         (fn [_ _] false)
+             node-fn         (fn [node] {})
+             top-selector-fn (fn [base el] {})
+             }}
    ]
 
-  (let [make-node (fn [node] (merge node (node-fn node)))]
+  (let [make-node (fn [node] (merge node (node-fn node)))
+        queue-fn (fn [i el]
+                   (let [base-selector {:t (.-tagName el)
+                                        :i (inc i)}
+                         selector-data [(merge base-selector (top-selector-fn base-selector el))]]
 
-    ;(.groupCollapsed js/console "LMAP: root" root)
-    (let [result
-          (loop [ret []
-                 queue (into cljs.core/PersistentQueue.EMPTY
-                             (map-indexed
-                               (fn [i el]
-                                 (let [base-selector {:t (.-tagName el)
-                                                      :i (inc i)}
-                                       selector-data [(merge base-selector (top-selector-fn base-selector el))]]
+                     (make-node
+                       {
+                        :$          selector-data
+                        :tag        (:t (last selector-data))
+                        :_$         (to-selector selector-data)
 
-                                   (make-node
-                                     {
-                                      :$          selector-data
-                                      :tag        (:t (last selector-data))
-                                      :_$         (to-selector selector-data)
+                        :el         el
+                        :parent-idx 0
+                        :idx (inc i)
+                        ;; todo: handling root node text
+                        :text       ""        ;(.-textContent el)
+                        })
+                     )
+                   )
+        result
+        (loop [ret []
+               queue (into #queue []
+                           (map-indexed queue-fn (array-seq (.-children root))))
+               counter (count (array-seq (.-children root)))]
 
-                                      :el         el
-                                      :parent-idx 0
-                                      :idx (inc i)
-                                      ;; todo: handling root node text
-                                      :text       ""        ;(.-textContent el)
-                                      })
-                                   )
-                                 )
-                               (array-seq (.-children root))))
+          (if (seq queue)
+            (let [node (peek queue)
+                  $ (get node :$)
+                  $el (get node :el)
 
-                 counter (count (array-seq (.-children root)))
-                 ]
+                  children (array-seq (.-children $el))
+                  child-count (count children)
+                  text (.-textContent $el)
 
-            (if (seq queue)
-              (let [node (peek queue)
-                    $ (get node :$)
-                    $el (get node :el)
+                  has-text? (not= "" text)
+                  use-text? (volatile! true)              ;; ugly, but works
 
-                    children (array-seq (.-children $el))
-                    child-count (count children)
-                    text (.-textContent $el)
+                  ;; migrate to loop some day
+                  *i (volatile! 0)
 
-                    has-text? (not= "" text)
-                    use-text? (volatile! true)              ;; ugly, but works
+                  idx (:idx node)
 
-                    ;; migrate to loop some day
-                    *i (volatile! 0)
-
-                    idx (:idx node)
-
-                    children-nodes (reduce
-                                     (fn [a el]
-                                       (vswap! *i inc)
-                                       (if (not (skip-fn el $))
-                                         (let [selector-data (conj $
-                                                                   (merge
-                                                                     {:t           (.-tagName el)
-                                                                      :i           @*i
-                                                                      :child-count child-count
-                                                                      }
-                                                                     (if (> child-count 1)
-                                                                           {:nth-child @*i}
-                                                                           {})
-                                                                     )
+                  children-nodes (reduce
+                                   (fn [a el]
+                                     (vswap! *i inc)
+                                     (if (not (skip-fn el $))
+                                       (let [selector-data (conj $
+                                                                 (merge
+                                                                   {:t           (.-tagName el)
+                                                                    :i           @*i
+                                                                    :child-count child-count
+                                                                    }
+                                                                   (if (> child-count 1)
+                                                                         {:nth-child @*i}
+                                                                         {})
+                                                                   )
 
 
 
-                                                                   )]
+                                                                 )]
 
-                                           (if (and has-text? (str/includes? text (.-textContent el)))
-                                             (vreset! use-text? false))
+                                         (if (and has-text? (str/includes? text (.-textContent el)))
+                                           (vreset! use-text? false))
 
-                                           (conj a
-                                                 {:$          selector-data
-                                                  :_$         (to-selector selector-data)
-                                                  :tag        (:t (last selector-data))
-                                                  :el         el
-                                                  :idx (+ counter @*i)
-                                                  :parent-idx idx
-                                                  }))
-                                         a
-                                         ))
-                                     []
-                                     children)
+                                         (conj a
+                                               {:$          selector-data
+                                                :_$         (to-selector selector-data)
+                                                :tag        (:t (last selector-data))
+                                                :el         el
+                                                :idx (+ counter @*i)
+                                                :parent-idx idx
+                                                }))
+                                       a
+                                       ))
+                                   []
+                                   children)
 
-                    new-node (make-node
-                               (merge
-                                 {
-                                  ;; if at least one of children has same text - ommit
-                                  :child-count child-count
-                                  :text        (if @use-text? text "")
-                                  }
-                                 node
-                                 )
+                  new-node (make-node
+                             (merge
+                               {
+                                ;; if at least one of children has same text - ommit
+                                :child-count child-count
+                                :text        (if @use-text? text "")
+                                }
+                               node
                                )
+                             )
 
-                    new-ret (conj ret new-node)
+                  new-ret (conj ret new-node)
 
-                    new-children (into (pop queue)
-                                       children-nodes)
+                  new-children (into (pop queue)
+                                     children-nodes)
 
-                    ]
+                  ]
+              ; (.log js/console idx (:parent-idx (last new-ret)) (last new-ret))
 
-                ; (.log js/console idx (:parent-idx (last new-ret)) (last new-ret))
-
-                (recur new-ret new-children
-                       (+ counter (count children-nodes))))
-              ret
-              )
-            )]
-      ; (.groupEnd js/console)
-      result
-      )
+              (recur new-ret new-children
+                     (+ counter (count children-nodes))))
+            ret
+            )
+          )]
+    result
     )
-
   )
 
 
