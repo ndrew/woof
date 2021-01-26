@@ -384,7 +384,6 @@
 
         ;; has-children?-1 (seq (get node :children []))
 
-        short-selector (wdom/shorten-selector-string selector parent-selector)
 
         used-by (get (::usage cfg) selector #{})
         node-id (first (::ids cfg))
@@ -399,6 +398,15 @@
 
                                          (map filter-class applied-filters)
                                          ))
+
+      ;  $-stats (:$-stats cfg)
+      ;  nu-$ (map (fn [x]
+      ;              (wdom/_$-enrich $-stats x)) (:$ node))
+
+      ;  nu-selector (wdom/$-selector nu-$)
+
+        short-selector (wdom/shorten-selector-string selector parent-selector)
+
         ]
     [:.tree-node {:class node-class}
 
@@ -433,72 +441,11 @@
         ]
        (if selected?
          [:.detailed
-          [:button {:on-click (fn [_]
-                                (let [$-stats (:$-stats cfg)
-                                      f (fn [$]
-                                          (let [tag (:t $)
-                                                sub-$-stats (get $-stats (:parent-idx $))
-                                                ]
-                                            (-> $
-                                                (assoc :unique [])
-                                                ;; globally unique tag
-                                                (update :unique concat (if (= 1 (get $-stats tag)) [tag] []))
-                                                ;; globally unique class
-                                                (update :unique concat
-                                                        (reduce (fn [a x]
-                                                                  (let [class (str "." x)]
-                                                                    (if (= 1 (get $-stats class))
-                                                                      (conj a class)
-                                                                      a))) [] (:classes $)))
-                                                ;; parent
-                                                (assoc :non-unique [])
-                                                (update :non-unique concat (if (= 1 (get sub-$-stats tag)) [tag] []))
-                                                (update :non-unique concat
-                                                        (reduce (fn [a x]
-                                                                  (let [class (str "." x)]
-                                                                    (if (= 1 (get sub-$-stats class))
-                                                                      (conj a class)
-                                                                      a))) [] (:classes $)))
-                                                )
-                                            )
-                                          )
-                                      nu-$ (map f (:$ node))
 
-                                      ;;
+          ;;
+          ;; FIXME: - how to pass $-stats for analysis ?
+          ;;
 
-                                      selector (loop [$-s (reverse nu-$)
-                                                      res ""]
-                                                 (if-not (seq $-s)
-                                                   res
-                                                   (let [$ (first $-s)]
-
-                                                     (if-let [unique (first (get $ :unique []))]
-                                                       (str unique " " res)
-                                                       (recur (rest $-s)
-                                                              (if-let [non-unique (first (get $ :non-unique []))]
-                                                                (str non-unique " " res)
-                                                                (str res
-                                                                     (:t $) (str/join (map #(str "." %)
-                                                                                           (get $ :classes #{}))))
-                                                                )
-                                                              )
-                                                       )
-                                                     )
-                                                   )
-                                                 )
-                                      ]
-
-
-
-                                  ;; make selector string
-
-                                  (.log js/console (d/pretty! $-stats))
-
-                                  (.log js/console (d/pretty! nu-$))
-                                  (.warn js/console selector)
-                                  )
-
-                                )} "!"]
           #_[:.html.zzz
            (d/pretty!
              {

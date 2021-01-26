@@ -591,10 +591,65 @@
   )
 
 
+
+(defn _$-enrich [$-stats $]
+  (let [tag (:t $)
+        sub-$-stats (get $-stats (:parent-idx $))]
+
+    (-> $
+        (assoc :unique [])
+        ;; globally unique tag
+        (update :unique concat (if (= 1 (get $-stats tag)) [tag] []))
+        ;; globally unique class
+        (update :unique concat
+                (reduce (fn [a x]
+                          (let [class (str "." x)]
+                            (if (= 1 (get $-stats class))
+                              (conj a class)
+                              a))) [] (:classes $)))
+        ;; parent
+        (assoc :non-unique [])
+        (update :non-unique concat (if (= 1 (get sub-$-stats tag)) [tag] []))
+        (update :non-unique concat
+                (reduce (fn [a x]
+                          (let [class (str "." x)]
+                            (if (= 1 (get sub-$-stats class))
+                              (conj a class)
+                              a))) [] (:classes $)))
+        )
+    )
+  )
+
+
+;; builds string selector for $ enriched with usage frequency
+(defn $-selector [nu-$]
+  (loop [$-s (reverse nu-$)
+         res ""]
+    (if-not (seq $-s)
+      res
+      (let [$ (first $-s)]
+
+        (if-let [unique (first (get $ :unique []))]
+          (str unique " " res)
+          (recur (rest $-s)
+                 (if-let [non-unique (first (get $ :non-unique []))]
+                   (str non-unique " " res)
+                   (str res
+                        (:t $) (str/join (map #(str "." %)
+                                              (get $ :classes #{}))))
+                   )
+                 )
+          )
+        )
+      )
+    )
+  )
+
+
+
 ;;
 ;; TODO: next version of el-map
 ;;
-
 (defn nu-el-map
   [root
    & {:keys [skip-fn

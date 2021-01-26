@@ -126,6 +126,23 @@
                                           :skip-fn skip-fn
                                           :node-fn wdom/enrich-node
                                           :$-fn (partial _$-fn *aggr))
+
+                      $-stats @*aggr
+
+                      ;; overwrite el-map
+                      el-map (vec (map (fn [x]
+                                         (let [nu-$ (map (fn [_x]
+                                                      (wdom/_$-enrich $-stats _x)) (:$ x))]
+
+
+                                           (assoc x
+                                             :$ nu-$
+                                             :_$ (wdom/$-selector nu-$)
+                                             )
+                                           )
+                                         )
+                                       el-map))
+
                       r {
                          ;;
                          :id     id
@@ -133,7 +150,7 @@
 
                          :nodes  (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map)
 
-                         :aggr   @*aggr
+                         :aggr   $-stats
                          }
                       ]
                   ; (.warn js/console @*aggr)
