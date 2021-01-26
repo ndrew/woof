@@ -344,6 +344,7 @@
   [cfg _parent _node]
 
   (let [direct-children (get _node :children [])
+
         linear-children (loop [ch direct-children
                                r [_node]]
                           (if (and (= 1 (count ch))
@@ -432,6 +433,82 @@
         ]
        (if selected?
          [:.detailed
+          [:button {:on-click (fn [_]
+                                (let [$-stats (:$-stats cfg)
+                                      f (fn [$]
+                                          (let [tag (:t $)
+                                                sub-$-stats (get $-stats (:parent-idx $))
+                                                ]
+                                            (-> $
+                                                (assoc :unique [])
+                                                ;; globally unique tag
+                                                (update :unique concat (if (= 1 (get $-stats tag)) [tag] []))
+                                                ;; globally unique class
+                                                (update :unique concat
+                                                        (reduce (fn [a x]
+                                                                  (let [class (str "." x)]
+                                                                    (if (= 1 (get $-stats class))
+                                                                      (conj a class)
+                                                                      a))) [] (:classes $)))
+                                                ;; parent
+                                                (assoc :non-unique [])
+                                                (update :non-unique concat (if (= 1 (get sub-$-stats tag)) [tag] []))
+                                                (update :non-unique concat
+                                                        (reduce (fn [a x]
+                                                                  (let [class (str "." x)]
+                                                                    (if (= 1 (get sub-$-stats class))
+                                                                      (conj a class)
+                                                                      a))) [] (:classes $)))
+                                                )
+                                            )
+                                          )
+                                      nu-$ (map f (:$ node))
+
+                                      ;;
+
+                                      selector (loop [$-s (reverse nu-$)
+                                                      res ""]
+                                                 (if-not (seq $-s)
+                                                   res
+                                                   (let [$ (first $-s)]
+
+                                                     (if-let [unique (first (get $ :unique []))]
+                                                       (str unique " " res)
+                                                       (recur (rest $-s)
+                                                              (if-let [non-unique (first (get $ :non-unique []))]
+                                                                (str non-unique " " res)
+                                                                (str res
+                                                                     (:t $) (str/join (map #(str "." %)
+                                                                                           (get $ :classes #{}))))
+                                                                )
+                                                              )
+                                                       )
+                                                     )
+                                                   )
+                                                 )
+                                      ]
+
+
+
+                                  ;; make selector string
+
+                                  (.log js/console (d/pretty! $-stats))
+
+                                  (.log js/console (d/pretty! nu-$))
+                                  (.warn js/console selector)
+                                  )
+
+                                )} "!"]
+          #_[:.html.zzz
+           (d/pretty!
+             {
+              :$ (:$ _node)
+              :p$ (:$ _parent)
+              :selector        selector
+              :parent-selector parent-selector
+            })
+           ;(pr-str short-selector)
+           ]
           (<selector> cfg short-selector node)
           ;; todo: what to show here
           (let [curr-tag (:tag node)]
@@ -465,7 +542,8 @@
 
 (rum/defc <tree-plan> < rum/static
                         {:key-fn (partial _def-key-fn "<tree-ui>")}
-  [cfg plan tree-plan]
+
+  [cfg plan tree-plan $-stats]
 
   (let [selected-idxs (reduce (fn [a n] (conj a (:idx n))) #{} plan)
         ;; get filter mapping per node idx
@@ -484,18 +562,18 @@
      #_(if (::debugger? cfg)
          (<full-plan> cfg plan))
 
-     [:ul.legend
+     #_[:ul.legend
       [:li.unique "unique" ]
       ]
 
      [:header "TREE:" (pr-str (::ids cfg))]
 
-
      [:.tree-nodes
-      (map (fn [item] (<tree-node> (assoc cfg
-                                     :selected selected-idxs
-                                     :filter-info filter-info
-                                     ) nil item)) tree-plan)
+      (let [node-cfg (assoc cfg
+                        :selected selected-idxs
+                        :filter-info filter-info
+                        :$-stats $-stats)]
+        (map (fn [item] (<tree-node> node-cfg nil item)) tree-plan))
       ]
      ]
     )
@@ -668,15 +746,17 @@
   [cfg node]
 
   (let [plan (:el-map node)
-        mode (:root-UI/mode cfg)
-
-        full-tree-plan (wdom/el-plan-as-tree plan)
-        ]
+        mode (:root-UI/mode cfg)]
 
     [:.plan-root.flex
 
      (if (#{::all ::tree} mode)
-       (<tree-plan> cfg plan full-tree-plan))
+       (let [full-tree-plan (wdom/el-plan-as-tree plan)
+             aggr (get node :aggr)
+             ]
+         (<tree-plan> cfg plan full-tree-plan aggr))
+         )
+
 
      (if (#{::all ::plan} mode)
        (<full-plan>    cfg plan))
@@ -707,15 +787,23 @@
   (let [
         html-UI (<menu-btn> st ::html?
                             #(str "html " (pg-ui/shorten-bool %)) not)
-        html (.-outerHTML (.-parentElement (get-in (:el-map n) [0 :el])))
+        el (get-in (vec (:el-map n)) [0 :el])
+
+
         ]
     [:li
      (pg-ui/menubar (str "scrape id=" (pr-str (:id n))) [html-UI])
 
-     (if (cfg-v st ::html?)
-       [:div.html-preview
-        {:dangerouslySetInnerHTML {:__html html}}]
-       [:div.html html]
+     (if-not el
+       [:.html {:style {:color "red"}}
+        "NO EL"
+        ;(d/pretty! (:el-map n))
+        ]
+       (let [html (.-outerHTML (.-parentElement el))]
+         (if (cfg-v st ::html?)
+           [:div.html-preview
+            {:dangerouslySetInnerHTML {:__html html}}]
+           [:div.html html]))
        )
      ]
     )

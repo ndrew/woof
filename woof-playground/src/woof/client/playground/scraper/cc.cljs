@@ -92,6 +92,58 @@
   )
 
 
+;; two-pass version of $-fn for el-map, that collects usage of tags & classes
+(defn _$-fn [*aggr parent-node-info node-info]
+  (let [full-selector (wdom/default-$-fn parent-node-info node-info)
+        $ (last full-selector)
+
+        {t           :t
+         i           :i
+         classes     :classes
+         child-count :child-count
+         p-idx       :parent-idx} $
+
+        clazzes (reduce #(assoc %1 (str "." %2) 1) {} classes)
+
+        ;; stats aggregation fn
+        aggr-fn #(-> %
+                     (update-in [t] (fnil inc 0))
+                     ((partial merge-with + clazzes)))]
+
+    (vswap! *aggr #(-> %
+                       (aggr-fn)
+                       (update p-idx (fnil aggr-fn {}))))
+    full-selector))
+
+
+;; returns all data for <dashboard>
+(defn dashboard-data [el-cfg els compare-ids]
+  (let [skip-fn (get el-cfg :skip-fn (fn [$el $] (#{"G" "PATH"} (str/upper-case (.-tagName $el)))))
+
+        el-fn (fn [id]
+                (let [*aggr (volatile! {})
+                      el-map (wdom/el-map (nth els id)
+                                          :skip-fn skip-fn
+                                          :node-fn wdom/enrich-node
+                                          :$-fn (partial _$-fn *aggr))
+                      r {
+                         ;;
+                         :id     id
+                         :el-map el-map
+
+                         :nodes  (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map)
+
+                         :aggr   @*aggr
+                         }
+                      ]
+                  ; (.warn js/console @*aggr)
+                  ;;
+                  ;; document how these are being produced
+                  ;;
+                  r))]
+    (vec (map el-fn compare-ids))
+    )
+  )
 
 
 ;;
@@ -165,46 +217,20 @@
              )
            ]
 
+          ;;
+          ;; aggregate all :$
           (if els
-            (let [make-el-map (fn [el]
-                                (wdom/el-map el
-                                             :skip-fn         skip-fn
-                                             :node-fn         wdom/enrich-node
-                                             ;:top-selector-fn (fn [base el] { :nth-child (:i base)})
-                                             ))
-                  el-map->nodes (fn [el-map-1]
-                                  (reduce (fn [a node] (assoc a (:_$ node) node)) {} el-map-1))
-
-                  selected-el-data (map (fn [id]
-                                          (let [el-map (make-el-map (nth els id))]
-
-                                            ;;
-                                            ;; document how these are being produced
-                                            ;;
-                                            {
-                                             ;;
-                                             :id     id
-                                             :el-map el-map
-                                             :nodes  (el-map->nodes el-map)
-                                             }))
-                                        compare-ids)
-                  ]
+            (let [el-cfg {:skip-fn skip-fn}
+                  all-data (dashboard-data el-cfg els compare-ids)]
               [:div
-
-                #_[:.html
-                 (d/pretty! (get-in (vec selected-el-data) [0 :nodes] ) )
-                 ]
-
                 ;; dashboard for analyzing selected
                 [:hr]
                [:header "V1: analysing all data"]
                ; hide for now
-               (html-ui/<dashboard> selected-el-data)
+               (html-ui/<dashboard> all-data)
                ]
               )
-
             )
-
           ]
          )
        )

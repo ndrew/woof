@@ -409,13 +409,17 @@
 
         child-count (count (get parent-node-info :children []))
 
+        ;; _ (.log js/console node-info)
+
         $-info (merge
                  {
                   :t         (.-tagName el)
                   :i         i
 
-                  :classes (into #{} (str/split (attr el "class")
-                                                #"\s+"))
+                  :idx (:idx node-info)
+                  :parent-idx (:parent-idx node-info)
+
+                  :classes (into #{} (str/split (attr el "class") #"\s+")) ;; todo: filter out empty?
                   ;;
                   ; :child-count child-count
 
@@ -782,7 +786,6 @@
                         parent-keys (reverse roots)]
 
                    ;; (.warn js/console "parent keys=" parent-keys)
-
                    (if (and (seq parent-keys) (>= (first parent-keys) 0))
                      (let [parent-k (first parent-keys)
 
@@ -806,7 +809,6 @@
                        ;;(.warn js/console parent-k "new plan=" new-plan)
 
                        (recur new-plan (rest parent-keys))
-
                        )
                      plan
                      )
