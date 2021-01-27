@@ -515,6 +515,9 @@
                                                     "WOOF-WIP"
                                                     "WOOF-DONE"
                                                     "WOOF-ASYNC"
+
+
+                                                    "WOOF-PARSE-ERROR"
                                                     ;; debug
                                                     "DDD"
                                                     ])

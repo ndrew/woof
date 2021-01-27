@@ -13,7 +13,7 @@
 
     [woof.data :as d]
 
-    [woof.client.dom :as wdom :refer [q q* attr txt]]))
+    [woof.client.dom :as wdom :refer [q q* attr txt txt-only mark!]]))
 
 
 ;;;;;;;;;;;
@@ -23,46 +23,17 @@
     (attr sub-el "href")
     (do
       (.log js/console "can't find element for selector: " selector "parent-el" el)
-      (classes/add el "parsed-error")
-      ""
-      )
-    )
-  )
+      (classes/add el "WOOF-PARSE-ERROR")
+      "")))
 
 
 (defn safe-txt [el selector]
   (if-let [sub-el (q el selector)]
-
-    ;; don't trim for now
-    (txt sub-el)
+    (txt sub-el) ;; don't trim for now
     (do
       (.log js/console "can't find element for selector: " selector "parent-el" el)
-      (classes/add el "parsed-error")
-      ""
-      )
-    )
-  )
-
-
-;;
-(defn mark! [el parse-id]
-  (when el
-    (if (instance? js/Element el)
-      (do
-        (classes/set el "DDD")
-        (dataset/set el "parseId" parse-id)
-        )
-      (if (and (seqable? el)
-               (seq el))
-        (doseq [el el]
-          (classes/set el "DDD")
-          (dataset/set el "parseId" parse-id)
-          )
-        )
-      )
-    )
-  el)
-
+      (classes/add el "WOOF-PARSE-ERROR")
+      "")))
 
 
 
@@ -165,7 +136,7 @@
 
 (defn parse-UPD [$UPD]
   (let [t (-> $UPD
-              (txt)
+              txt
               (js/decodeURI)
               (str/replace " " "")
               )
@@ -181,8 +152,8 @@
 
 
 (defn parse-AGENT [$AGENT]
-  (let [n (wdom/txt $AGENT)
-        tel (-> (wdom/attr $AGENT "href"))
+  (let [n   (txt $AGENT)
+        tel (-> (attr $AGENT "href"))
 
         [_ _tel] (re-find #"(\d+)\.rieltor.ua" tel)
         ]
@@ -196,19 +167,15 @@
 
 (defn ->addr [$ADDR]
   (let [t (-> $ADDR
-              (wdom/txt)
-              ;(js/decodeURI)
-              ;(str/replace " " "")
-              )
+              txt)
         [_str _house-n _district] (str/split t ",")
-
         ;;[_ _upd _added] (re-find #"^Онов:(.+)\sДод:(.+)$" t)
         ]
     {
      :_ADDR t
 
-     :addr_street (str/trim _str)
-     :addr_house (str/trim _house-n)
+     :addr_street   (str/trim _str)
+     :addr_house    (str/trim _house-n)
      :addr_district (str/trim _district)
      }
     )
@@ -217,32 +184,30 @@
 
 (defn ->img [$IMG $IMG-NUM]
 
-  (let [src (wdom/attr $IMG "src")
-        src-set (wdom/attr $IMG "srcset")
-        alt (wdom/attr $IMG "alt")
+  (let [src (attr $IMG "src")
+        src-set (attr $IMG "srcset")
+        alt (attr $IMG "alt")
 
         img-n (-> $IMG-NUM
-                  (wdom/txt-only)
+                  (txt-only)
                   (str/trim)
-                  (d/to-primitive)
-                  )
+                  (d/to-primitive))
         ]
 
     {
-     :imgs [src
-            ; src-set
-            ]
+     :imgs [src] ; ; maybe use src-set
+     :img-1 src
      :img-n img-n
      :img-alt alt
      }
     )
   )
 
+
 (defn parse-LABELS [$LABELS label-map ]
   (reduce (fn [m $lbl]
             (let [classes' (attr $lbl "class")
                   classes (into #{} (str/split classes' #"\s"))]
-
               (merge
                 m
                 (if (classes "label_no_commission") {:no_commission true})
@@ -255,8 +220,8 @@
 
                 (if (or (classes "label_location")
                         (classes "label_location_subway"))
-                  (let [distr-url (wdom/attr $lbl "href")
-                        distr (wdom/txt $lbl)]
+                  (let [distr-url (attr $lbl "href")
+                        distr (txt $lbl)]
                     (merge
                       {
                        :district_1     distr
@@ -264,10 +229,7 @@
                        }
                       (if (classes "label_location_subway")
                         {:subway distr}))))
-                (if (classes "label_new-building") {:house_new true})
-
-                )
-              )
+                (if (classes "label_new-building") {:house_new true})))
             )
           label-map
           $LABELS)
@@ -279,37 +241,51 @@
 
 (defn do-scrape! [id el]
   (merge
+    ;;
+    ;; GENERAL
     {
      :source :riel
      :id     id
      :url    (str "https://rieltor.ua" id)
      }
-    ;; todo: meta info block
-    (when-let [$LABELS (q* el ".catalog-item__general-info > H2:nth-child(1) > DIV .label")]
-      (let [initial (if (q el ".paid") {:paid true} {})]
-        (-> $LABELS ;(mark! "LABELS")
-            (parse-LABELS initial))))
-
+    ;;
+    ;; INFO
+    (if-let [$INFO (q el ".catalog-item__info .catalog-item_info-description") ]
+      {:info (-> $INFO
+                 ; (mark! "DESCR")
+                 (txt)
+                 (str/replace "... далі" "…")
+                 (str/trim))}
+      {:info ""})
+    ;;
+    ;; ADDR
     (when-let [$ADDR (q el ".catalog-item__general-info > H2:nth-child(1) > A:nth-child(1)")]
       (-> $ADDR ;(mark! "ADDR")
           ->addr))
-
+    ;;
+    ;; PRICE
     (let [$PRICE    (q el ".catalog-item__price-column .catalog-item__price")
           $PRICE-M2 (q el ".catalog-item__price-column .catalog-item__price-per-sqm")]
       ;;(mark! $PRICE "PRICE USD")
       ;;(mark! $PRICE-M2 "PRICE M^2")
+
+      ;; todo: commision
       (->price $PRICE $PRICE-M2))
 
-    ;; todo: commision
+    ;;
+    ;; IMG
     (let [$IMG     (q el ".catalog-item__img IMG")
           $IMG-NUM (q el ".catalog-item__img .catalog-item__img-num")]
       (->img $IMG $IMG-NUM))
 
+    ;;
+    ;; HOUSE
     (when-let [$HOUSE (q el ".catalog-item__general-info .catalog-item_info-item-row")]
       (-> $HOUSE ;(mark! "HOUSE")
           ->house))
 
-
+    ;;
+    ;; META
     (when-let [$AGENT (q el ".ov-author__info .ov-author__name A")]
       (-> $AGENT ;(mark! "AGENT")
           parse-AGENT))
@@ -318,13 +294,10 @@
       (-> $UPD ;(mark! "UPD")
           parse-UPD))
 
-    (if-let [$INFO (q el ".catalog-item__info .catalog-item_info-description") ]
-      {:info (-> $INFO
-                 ; (mark! "DESCR")
-                 (txt)
-                 (str/replace "... далі" "…")
-                 (str/trim))}
-      {:info ""})
+    (when-let [$LABELS (q* el ".catalog-item__general-info > H2:nth-child(1) > DIV .label")]
+      (let [initial (if (q el ".paid") {:paid true} {})]
+        (-> $LABELS ;(mark! "LABELS")
+            (parse-LABELS initial))))
     )
   )
 

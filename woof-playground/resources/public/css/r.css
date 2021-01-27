@@ -95,6 +95,11 @@ body {
     opacity: .5;
 }
 
+
+.WOOF-PARSE-ERROR {
+    outline: 3px solid limegreen;
+}
+
 article.WOOF-ASYNC {
     background-color: yellow;
 }

@@ -4,6 +4,7 @@
     [goog.events]
     [goog.dom :as dom]
     [goog.dom.classes :as classes]
+    [goog.dom.dataset :as dataset]
 
     [cljs.core.async :as async]
     [clojure.string :as str]
@@ -1085,3 +1086,17 @@
       (reduce (fn [s el] (str s (. el -outerHTML))) "" els)
       (str els))
     ))
+
+
+(defn mark! [el parse-id]
+  (when el
+    (if (instance? js/Element el)
+      (do
+        (classes/set el "DDD")
+        (dataset/set el "parseId" parse-id))
+      (if (and (seqable? el)
+               (seq el))
+        (doseq [el el]
+          (classes/set el "DDD")
+          (dataset/set el "parseId" parse-id)))))
+  el)
