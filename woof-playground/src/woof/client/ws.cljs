@@ -233,3 +233,12 @@
      }
     )
   )
+
+
+
+
+(defn send-html-for-analysis [html]
+  (POST "http://localhost:8081/kv/put" (fn [] (.log js/console "HTML was saved"))
+        {:k :html
+         :v html})
+    )

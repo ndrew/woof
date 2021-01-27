@@ -22,7 +22,7 @@
 
     [woof.client.browser.kga.scraper :as kga]
 
-    [woof.client.browser.rieltor.wf :as riel]
+    [woof.client.browser.scraper.scrape-wf :as scrape-wf]
     [woof.client.browser.domik.scraper :as domik]
 
     ))
@@ -44,23 +44,23 @@
     ;;
     ;; examples
 
-      ;; the example of workflow that scrapes data from web page and stores them in the scraping session
-      (clojure.string/starts-with? url "http://localhost:9500/scraper") test-scraper-wf/scrapping-test-wf!
+    ;; the example of workflow that scrapes data from web page and stores them in the scraping session
+    (clojure.string/starts-with? url "http://localhost:9500/scraper") test-scraper-wf/scrapping-test-wf!
 
-      ;; react like UI updates
-      (= url "http://localhost:9500/example/ui.html") ex-ui-wf/wf!
+    ;; react like UI updates
+    (= url "http://localhost:9500/example/ui.html") ex-ui-wf/wf!
 
     ;; sequential processing of dom elements
-      ;(= url "http://localhost:9500/example/seq.html") ex-seq-wf/wf!
+    ;(= url "http://localhost:9500/example/seq.html") ex-seq-wf/wf!
 
-      (= url "http://localhost:9500/example/seq.html") nu-seq-wf/wf!
-      (clojure.string/starts-with? url "https://web.telegram.org") nu-seq-wf/wf!
+    (= url "http://localhost:9500/example/seq.html") nu-seq-wf/wf!
+    (clojure.string/starts-with? url "https://web.telegram.org") nu-seq-wf/wf!
 
-      (clojure.string/starts-with? url "https://www.deezer.com/uk/playlist/") nu-seq-wf/wf!
+    (clojure.string/starts-with? url "https://www.deezer.com/uk/playlist/") nu-seq-wf/wf!
 
-      ;; scraper examples
-      (clojure.string/starts-with? url "http://localhost:9500/example/scroll-inview.html") ex-scroll-wf/in-view-wf!
-      (clojure.string/starts-with? url "http://localhost:9500/example/scroll-brute.html")  ex-scroll-wf/brute-wf!
+    ;; scraper examples
+    (clojure.string/starts-with? url "http://localhost:9500/example/scroll-inview.html") ex-scroll-wf/in-view-wf!
+    (clojure.string/starts-with? url "http://localhost:9500/example/scroll-brute.html") ex-scroll-wf/brute-wf!
 
 
     ;; yt
@@ -76,10 +76,10 @@
     ;; kga
     (clojure.string/starts-with? url "https://mkk.kga.gov.ua/map/") kga/wf!
 
-    (clojure.string/starts-with? url "http://localhost:9500/r.html") riel/wf!
 
-
-    (clojure.string/starts-with? url "https://rieltor.ua/") riel/wf!
+    ;;
+    (clojure.string/starts-with? url "http://localhost:9500/r.html") scrape-wf/wf!
+    (clojure.string/starts-with? url "https://rieltor.ua/") scrape-wf/wf!
 
     ;; return wf map
 
@@ -88,11 +88,11 @@
 
 
     ;; domik
-   ; (= url "http://localhost:9500/domik.html") domik-scraper/parse-listings-steps
-   ; (= url "http://localhost:9500/domik_house.html") domik-scraper/parse-house-steps
+    ; (= url "http://localhost:9500/domik.html") domik-scraper/parse-listings-steps
+    ; (= url "http://localhost:9500/domik_house.html") domik-scraper/parse-house-steps
 
- ;   (clojure.string/starts-with? url "http://domik.ua/poleznoe/photoalbum/")  domik-scraper/parse-house-steps
- ;   (clojure.string/starts-with? url "http://domik.ua/nedvizhimost/") domik-scraper/parse-listings-steps
+    ;   (clojure.string/starts-with? url "http://domik.ua/poleznoe/photoalbum/")  domik-scraper/parse-house-steps
+    ;   (clojure.string/starts-with? url "http://domik.ua/nedvizhimost/") domik-scraper/parse-listings-steps
 
 
     )

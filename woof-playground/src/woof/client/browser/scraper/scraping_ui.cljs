@@ -85,7 +85,7 @@
 
 
 (defn- indicate [color cl blink?]
-  (.warn js/console "indicate" color cl blink?)
+  ;(.warn js/console "indicate" color cl blink?)
   (when-let [indicator (.querySelector (.-body js/document) "#wf-indicator")]
     (set! (-> indicator .-style .-backgroundColor) color)
     (if blink?
@@ -115,3 +115,73 @@
 
 ;;
 
+;; should be in other place
+(rum/defc <listing> < rum/static {
+                                  :key-fn (fn [item] (str (:id item)))}
+  [item]
+
+  (let [z (into (sorted-map) item)]
+
+    [:div.listing-row
+     {:on-click (fn [e] (.log js/console item))
+      :class    (get item :css "")}
+
+     [:div
+
+      #_(let [usd (usd-fmt (get x :USD 0))
+              uah (uah-fmt (get x :UAH 0))
+              usd-m2 (usd-fmt (get x :USD_M2 0))
+              uah-m2 (uah-fmt (get x :UAH_M2 0))
+              padded-usd-m2 (lpad (count usd) usd-m2)
+              padded-uah-m2 (lpad (count uah) uah-m2)]
+          [:div.prices-block.html
+           [:span.tag.small-tag usd " / " uah] "\n"
+           [:span.tag.small-tag padded-usd-m2 " / " padded-uah-m2 " м²"]
+           ]
+          )
+
+      #_[:.langs
+         (if t [:.t t])
+         [:.ua ua]
+         [:.ru ru]
+         [:.en en]
+         ]
+      ]
+     [:pre
+      (d/pretty! z)
+
+
+
+      #_[:div
+         [:span.tag.small-tag.idx (get item :i -1)]
+         [:span.tag.small-tag.idx idx]
+         [:span.tag.small-tag.district district]
+         #_[:span.districts
+            (map (fn [d] [:span.small-tag.district {:key (pr-str d)} d]) districts)]
+         [:span.aliaes
+          (map (fn [d] [:span.tag.small-tag.alias {:key (pr-str d)} d]) alias)]
+
+         ]
+
+      #_[:.langs
+         (if t [:.t t])
+         [:.ua ua]
+         [:.ru ru]
+         [:.en en]
+         ]
+      ]
+
+     #_[:.other other]
+
+     #_(if (:test item)
+         [:div {:style {:outline "1px solid red"}}
+          (:test item)
+          ]
+         )
+     ]
+    #_[:pre.street-row
+       (d/pretty! item)
+       ]
+    )
+
+  )

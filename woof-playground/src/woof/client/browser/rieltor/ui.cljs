@@ -26,7 +26,16 @@
 
     [woof.client.dom :as woof-dom]
     [rum.core :as rum]
-    [woof.client.playground.ui :as ui]))
+    [woof.client.playground.ui :as ui]
+    [woof.client.playground.ui :as pg-ui]
+
+
+    [woof.client.browser.scraper.scraping-ui :as s-ui]
+
+    [woof.client.browser.scraper.rum-ui :as rum-wf]
+
+    )
+  )
 
 ;; ui for scraping workflow
 
@@ -36,25 +45,40 @@
   [:div.woof-scraper-control
 
    (when (seq (:api STATE))
-     (ui/menubar "API" (:api STATE)))
+     (ui/menubar "API" (:api STATE) :class "woof_api"))
 
 
-   [:header "some ui here. Unfortunately, evt handlers should be set separately"]
-   [:button {:on-click (fn [e]
-                         (.log js/console e)
-                         (swap! *state assoc :now (u/now))
-                         )} "foo"]
+   (when-let [data (:scraped STATE)]
 
-   [:div.resize-test
-    "foo"
+     (pg-ui/<transform-list>
+       s-ui/<listing>
+       data
+       ;; filters
+       {} ;(group-by :ID @*asserts)
+       :id-fn :id
+       ;:copy-fn #(dissoc % :test)
+       ;:sort-fn (fn [a b] (compare (:code a) (:code b)))
+       :filter-map {
+                    ;"test-street" (partial pg-ui/_marker-class-filter "test-street")
+                    ;"drv-street" (partial pg-ui/_marker-class-filter "drv-street")
+                    ;"non drv-street" (partial pg-ui/_marker-except-class-filter "drv-street")
+                    ;"no-house" (partial pg-ui/_marker-class-filter "no-house")
+                    }
+       )
+     )
+
+   ;[:hr]
+   #_[:pre
+    (d/pretty! (-> STATE
+                   (dissoc :api)
+                   (dissoc :scraped)
+                   ))
     ]
 
-   [:hr]
-   (pr-str STATE)
    ])
 
 
-(defn <rum-ui>
+#_(defn <rum-ui>
   ([]
    ;; init UI
    (let [$panel (dom/createDom "div" "panel woof-scrape-panel ui-container")]
@@ -67,3 +91,25 @@
                 container-el)
 
      )))
+
+
+(def <rum-ui> (rum-wf/gen-rum-ui <scraping-ui>))
+
+
+;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;
+
+
+(defn ui-sub-wf [*WF-UI API]
+  (assoc
+    ;; cfg: debounce interval
+    (rum-wf/ui-impl! *WF-UI <rum-ui>)
+    :steps
+    [(fn [params]
+       {
+        :CSS/test-page-styles [:css-file "http://localhost:9500/css/t.css"]
+
+        :CSS/scraper-styles   [:css-file "http://localhost:9500/css/r.css"]
+        })]
+    )
+  )
