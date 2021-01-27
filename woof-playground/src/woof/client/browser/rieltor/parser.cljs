@@ -103,9 +103,11 @@
      :rooms rooms-n
 
      ;; " 66.7 / 32 / 10 м² " total bedrooms kitchen
+     :area _area
+
      :_floor _floor
      :_rooms _room_n
-     :_area _area
+
      }
     )
   )
@@ -185,7 +187,7 @@
         ;;[_ _upd _added] (re-find #"^Онов:(.+)\sДод:(.+)$" t)
         ]
     {
-     :_ADDR t
+     :addr t
 
      :addr_street   (str/trim _str)
      :addr_house    (str/trim _house-n)
@@ -198,8 +200,8 @@
 (defn ->img [$IMG $IMG-NUM]
 
   (let [src (attr $IMG "src")
-        src-set (attr $IMG "srcset")
-        alt (attr $IMG "alt")
+        ;src-set (attr $IMG "srcset")
+        ;alt (attr $IMG "alt")
 
         img-n (-> $IMG-NUM
                   (txt-only)
@@ -208,10 +210,11 @@
         ]
 
     {
-     :imgs [src] ; ; maybe use src-set
      :img-1 src
-     :img-n img-n
-     :img-alt alt
+
+     :_imgs [src] ; ; maybe use src-set
+     :_img-n img-n
+     ;:img-alt alt
      }
     )
   )
@@ -225,7 +228,7 @@
                   classes (into #{} (str/split classes' #"\s"))]
               (merge
                 m
-                (if (classes "label_no_commission") {:no_commission true})
+                (if (classes "label_no_commission") {:commission "0"})
                 (if (classes "label_attention")
                   {
                    ;:paid true
@@ -238,11 +241,11 @@
                         distr-url (attr $lbl "href")]
                     (merge
                       {
-                       :district     distr
-                       :url_district distr-url
+                       :addr_district_1    distr
+                       :_url_district distr-url
                        }
                       (if (classes "label_location_subway")
-                        {:subway distr}))))
+                        {:addr_subway distr}))))
                 (if (classes "label_new-building") {:house_new true})))
             )
           label-map
