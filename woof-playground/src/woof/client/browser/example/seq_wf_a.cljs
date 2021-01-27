@@ -11,11 +11,11 @@
     [woof.utils :as u]
 
     ;; client utils
-    [woof.client.dom :as woof-dom :refer [q q*]]
+    [woof.client.dom :as woof-dom :refer [q q* txt dataset ]]
     [woof.client.dbg :as dbg :refer [__log]]
 
     ;; wf helpers -
-    ; [woof.client.ws :as ws]
+    [woof.client.ws :as ws]
 
     ; helpers from base
     [woof.wfs.alpha :as alpha]
@@ -87,7 +87,22 @@
         ]
        [:td
         (when (seq (:results STATE))
-          (pr-str (:results STATE)))
+          (let [data (:results STATE)]
+            [:div.html
+             (pr-str (count data))
+             [:button {:on-click (fn[_] (.log js/console
+                                              (d/pretty!
+                                                (->> data
+                                                     (sort (fn [a b] (compare (:id a) (:id b))))
+                                                     ;; (reverse)
+                                                    )
+
+                                                )))}
+              "RESULTS"
+              ]
+             ]
+            ;(pr-str (map :id (:results STATE)))  )
+          ))
         ]
        ]
       ]
@@ -108,6 +123,7 @@
     [(fn [params]
        {
         :CSS/test-page-styles [:css-file "http://localhost:9500/css/t.css"]
+
         :CSS/scraper-styles   [:css-file "http://localhost:9500/css/r.css"]
         })]
     )
@@ -120,9 +136,113 @@
 
 
 
-(def SCRAPE-SELECTOR "article:not(.WOOF-WIP)")
-(def SCRAPE-CONTAINER-SELECTOR "#container")
+;(def SCRAPE-SELECTOR "article:not(.WOOF-WIP)")
+;(def SCRAPE-CONTAINER-SELECTOR "#container")
 
+
+;; tg
+(def TG-SCRAPE-SELECTOR ".im_history_message_wrap:not(.WOOF-WIP)")
+(def TG-SCRAPE-CONTAINER-SELECTOR ".im_history_wrap")
+
+
+
+(defn tg-scrape!
+  [el]
+
+  (let [$id (q el ".im_message_outer_wrap")]
+    (merge
+      {
+        :id (cljs.reader/read-string (get (dataset $id) :msgId "-1"))
+       }
+
+      (if-let [$author (q el ".im_message_author")]
+        {:tg (txt $author)} {})
+
+      (if-let [$day (q el ".im_message_date_split_text")]
+        {:day (txt $day)} {})
+
+      (if-let [$date (q el ".im_message_date_text")]
+        {:time (get (dataset $date) :content)} {})
+
+      (if-let [$text (q el ".im_message_text")]
+        {:txt (txt $text)
+         :_txt (woof-dom/outer-html $text)
+         }
+        {}
+        )
+      (if-let [$media (q el ".im_message_media")]
+        {:media (txt $media)
+         :_media (woof-dom/outer-html $media)
+         }
+        {}
+        )
+      )
+    )
+
+
+  #_(let [p (rand-int 100)]
+
+    (let [r (cond
+              (< p 10) (u/throw! "STOPPING")
+              (< p 60) (do
+                         ;(classes/add el "WOOF-DONE")
+                         (woof-dom/txt el))
+              (< p 80) (do
+                         (let [c (async/chan)]
+                           (go
+                             (async/<! (u/timeout (rand-int 1500)))
+                             (async/put! c (str "ASYNC:" (woof-dom/txt el)))
+                             )
+                           c)
+                         )
+              :else nil
+              )]
+      (.log js/console "SCRAPE" (woof-dom/txt el) r)
+      r
+      )
+    )
+
+  )
+
+(def SCRAPE-SELECTOR TG-SCRAPE-SELECTOR)
+(def SCRAPE-CONTAINER-SELECTOR TG-SCRAPE-CONTAINER-SELECTOR)
+
+(defn scrape!
+  [el]
+  (tg-scrape! el)
+  )
+
+(comment
+  ; deezer
+  (def DEEZER-SCRAPE-SELECTOR ".datagrid .datagrid-row.song:not(.WOOF-WIP)")
+  (def DEEZER-SCRAPE-CONTAINER-SELECTOR ".datagrid ")
+
+
+  (defn deezer-scrape! [el]
+    ;; .datagrid-cell .datagrid-track-number
+
+    ;; .datagrid-cell.cell-title *[itemprop="name"]
+    ;; .datagrid-cell.cell-artist *[itemprop="byArtist"]
+    ;; .datagrid-cell.cell-album *[itemprop="inAlbum"]
+    ;; .datagrid-cell.cell-duration span
+
+    {
+     :n (txt (q el ".datagrid-cell .datagrid-track-number"))
+     :title (txt (q el ".datagrid-cell.cell-title *[itemprop=\"name\"]"))
+     :artist (txt (q el ".datagrid-cell.cell-artist *[itemprop=\"byArtist\"]"))
+     :album (txt (q el ".datagrid-cell.cell-album *[itemprop=\"inAlbum\"]"))
+     :duration (txt (q el ".datagrid-cell.cell-duration span"))
+     }
+    )
+
+  (def SCRAPE-SELECTOR DEEZER-SCRAPE-SELECTOR)
+  (def SCRAPE-CONTAINER-SELECTOR DEEZER-SCRAPE-CONTAINER-SELECTOR)
+
+  (defn scrape!
+    [el]
+    (deezer-scrape! el)
+    )
+  )
 
 ;;
 ;; prototype of scrape function
@@ -130,7 +250,7 @@
 ;; - can return chan: and do async procession
 ;; - can throw exception - ???
 ;; - can return nil - ???
-(defn scrape!
+#_(defn scrape!
   "scrapes the element"
   [el]
   (let [p (rand-int 100)]
@@ -422,6 +542,7 @@
                                                    )
                                                  )
                                                (catch js/Error e
+                                                 (.error js/console e)
                                                  ; can't process further, re-adding el back to the queue
                                                  (swap! *WF-UI update :el-queue conj el)
                                                  )
@@ -453,28 +574,27 @@
              ]
 
      :api   [
+             ;;
+             (chord-action (woof-dom/chord 49 :shift true :meta true) ;; shift+cmd+!
+               "START(scroll)"
+                           (fn []
+                             (intersect-observe!)
+                             (mutations-observe!)
 
-             ;; start tick and handlers
-             (<API> "START(scroll)"
-                    #(do
-
-                       (intersect-observe!)
-                       (mutations-observe!)
-
-
-                       {
-                        :EVT/tick                 [:ticker UPD-CHAN]
-                        ;:DOM/intersect-observer [:queue-in-view! :EVT/tick]
-                        ;:PROCESS/process [:process-queue! :EVT/tick]
+                             (let [steps {
+                                          :EVT/tick                 [:ticker UPD-CHAN]
+                                          ;:DOM/intersect-observer [:queue-in-view! :EVT/tick]
+                                          ;:PROCESS/process [:process-queue! :EVT/tick]
 
 
-                        :TICK/el-queue            [:queue-els-ticker :EVT/tick]
-                        :SCROLL/register-handlers [:queue-in-view! :TICK/el-queue]
+                                          :TICK/el-queue            [:queue-els-ticker :EVT/tick]
+                                          :SCROLL/register-handlers [:queue-in-view! :TICK/el-queue]
 
-                        :TICK/el-process          [:process-els-ticker :EVT/tick]
-                        :DOM/process              [:process-queue! :TICK/el-process]
+                                          :TICK/el-process          [:process-els-ticker :EVT/tick]
+                                          :DOM/process              [:process-queue! :TICK/el-process]
 
-                        }))
+                                          }]
+                          (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps))))
 
              (<API> "START(greedy)"
                     #(do
@@ -528,6 +648,12 @@
 
              (<API> "manual: queue" #(do {(sid) [:queue-all! (u/now)]}))
              (<API> "manual: process!" #(do {(sid) [:process-queue! (u/now)]}))
+             []
+             ;; extract all html so
+             ["KV: 👨🏻‍🔬 html" (fn []
+                           (let [html (woof-dom/outer-html (q SCRAPE-CONTAINER-SELECTOR))]
+                             (.log js/console html)
+                             (ws/send-html-for-analysis html)))]
              ]
      }
     )
