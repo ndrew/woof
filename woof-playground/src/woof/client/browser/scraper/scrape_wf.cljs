@@ -51,7 +51,7 @@
 (defn get-scrape-selector [url]
   ;; :not(.WOOF-WIP) is very important
   (cond
-    (riel? url) ".index-list-container > .catalog-item:not(.WOOF-WIP)"))
+    (riel? url) ".index-list-container > .catalog-item:not(.WOOF-WIP):not(.WOOF-ERROR)"))
 
 
 (defn get-scrape-fn [url]
@@ -331,19 +331,26 @@
                                                        (classes/add el "WOOF-DONE")
                                                        (RESULTS_ADD result)
                                                        ))
-                                                   (do ;; nil - skip node
+                                                   (do
+                                                     ;; nil - skip node
+
+                                                     ;;
+                                                     ;; FIXME: HANDLE PROPERTY SKIP
+                                                     ;;
 
                                                      ; can't process further, re-adding el back to the queue
                                                      ;(swap! *WF-UI update :el-queue conj el)
 
                                                      ;; add back to process queue?
+                                                     ;; maybe add with some delay?
                                                      (swap! *WF-UI update :process-queue conj el)
                                                      )
                                                    )
                                                  (catch js/Error e
                                                    (.error js/console e)
                                                    ; can't process further, re-adding el back to the queue
-                                                   (swap! *WF-UI update :el-queue conj el)
+                                                   (classes/add el "WOOF-ERROR")
+                                                   ;; (swap! *WF-UI update :el-queue conj el)
                                                    )
                                                  )
                                                )
@@ -516,7 +523,7 @@
                                                     "WOOF-DONE"
                                                     "WOOF-ASYNC"
 
-
+                                                    "WOOF-ERROR"
                                                     "WOOF-PARSE-ERROR"
                                                     ;; debug
                                                     "DDD"

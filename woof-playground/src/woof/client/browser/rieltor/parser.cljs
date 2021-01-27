@@ -13,7 +13,8 @@
 
     [woof.data :as d]
 
-    [woof.client.dom :as wdom :refer [q q* attr txt txt-only mark!]]))
+    [woof.client.dom :as wdom :refer [q q* attr txt txt-only mark!]]
+    [woof.utils :as u]))
 
 
 ;;;;;;;;;;;
@@ -308,7 +309,20 @@
 (defn scrape-element [el]
   ;; $ID      (q el ".catalog-item__img A")
   (if-let [_id (safe-href el ".catalog-item__img A")]
-    (do-scrape! (gen-id _id) el))
+    (do
+      #_(try
+          (do-scrape! (gen-id _id) el)
+          (catch js/Error e
+            (.error js/console e)
+            (u/throw! "AAAAAAAAA. STOP!!!")
+            )
+          )
+
+      (do-scrape! (gen-id _id) el)
+      )
+    (u/throw! "CAN'T FIND IN ELEMENT")
+
+    )
 
   ;; todo: handle errors and nils?
   )
