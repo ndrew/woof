@@ -104,6 +104,19 @@ body {
     outline: 3px solid limegreen;
 }
 
+.WOOF-PARSE-ERROR:after {
+    text-decoration: none;
+    line-height: 1.5;
+    display: block;
+    white-space: pre-wrap;
+    content: "↓" attr(data-exception) "↓";
+    background-color: orangered;
+    color: white;
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 8pt;
+}
+
+
 .WOOF-ERROR {
     outline: 3px solid #cc1605;
 }

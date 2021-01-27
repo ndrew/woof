@@ -166,6 +166,18 @@
   )
 
 
+(defn safe-process! [f el]
+  (try
+    (f el)
+    (catch js/Error e
+      (dataset/set el "exception" (str (.-stack e)))
+      (classes/add el "WOOF-PARSE-ERROR")
+
+      (u/throw! e)
+      )
+    )
+  )
+
 (defn ->addr [$ADDR]
   (let [t (-> $ADDR
               txt)
@@ -177,7 +189,7 @@
 
      :addr_street   (str/trim _str)
      :addr_house    (str/trim _house-n)
-     :addr_district (str/trim _district)
+     :addr_district ((fnil str/trim "") _district)
      }
     )
   )
@@ -205,6 +217,8 @@
   )
 
 
+;;
+;; todo: analyze labels
 (defn parse-LABELS [$LABELS label-map ]
   (reduce (fn [m $lbl]
             (let [classes' (attr $lbl "class")
@@ -212,21 +226,20 @@
               (merge
                 m
                 (if (classes "label_no_commission") {:no_commission true})
-
                 (if (classes "label_attention")
                   {
                    ;:paid true
-                   :paid_info (str/trim (wdom/txt $lbl))
+                   :paid_info (str/trim (txt $lbl))
                    })
 
                 (if (or (classes "label_location")
                         (classes "label_location_subway"))
-                  (let [distr-url (attr $lbl "href")
-                        distr (txt $lbl)]
+                  (let [distr (txt $lbl)
+                        distr-url (attr $lbl "href")]
                     (merge
                       {
-                       :district_1     distr
-                       :district_1_url distr-url
+                       :district     distr
+                       :url_district distr-url
                        }
                       (if (classes "label_location_subway")
                         {:subway distr}))))
@@ -262,7 +275,8 @@
     ;; ADDR
     (when-let [$ADDR (q el ".catalog-item__general-info > H2:nth-child(1) > A:nth-child(1)")]
       (-> $ADDR ;(mark! "ADDR")
-          ->addr))
+          ((partial safe-process! ->addr))
+          ))
     ;;
     ;; PRICE
     (let [$PRICE    (q el ".catalog-item__price-column .catalog-item__price")
@@ -296,9 +310,13 @@
           parse-UPD))
 
     (when-let [$LABELS (q* el ".catalog-item__general-info > H2:nth-child(1) > DIV .label")]
-      (let [initial (if (q el ".paid") {:paid true} {})]
+      (let [initial (if (q el ".paid") {:paid true} {})
+            ;dbg! (fn [v] (.warn js/console v)  v)
+            ]
         (-> $LABELS ;(mark! "LABELS")
-            (parse-LABELS initial))))
+            (parse-LABELS initial)
+            ;dbg!
+            )))
     )
   )
 

@@ -124,7 +124,7 @@
 
     [:span.listing-row
      {:on-click (fn [e]
-                  (.log js/console (pr-str z)))
+                  (.log js/console (d/pretty! z)))
       :class    (get item :css "")}
 
      (pr-str (:id z))
