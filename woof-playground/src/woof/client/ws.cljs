@@ -242,3 +242,11 @@
         {:k :html
          :v html})
     )
+
+
+(defn send-scrape-results! [rows]
+  (POST "http://localhost:8081/kv/append" (fn []
+                                            (.log js/console "rows were saved"))
+        {:k :rows
+         :v rows})
+  )

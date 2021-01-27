@@ -67,6 +67,8 @@
 (defn _results-add [*WF-UI r]
   (swap! *WF-UI update :scraped into [r]))
 
+(defn _results-read [*WF-UI]
+  (get @*WF-UI :scraped))
 
 
 ;;
@@ -78,7 +80,8 @@
   (let [url (.. js/document -location -href)
 
         RESULTS_INIT (partial _results-init *WF-UI)
-        RESULTS_ADD (partial _results-add *WF-UI)
+        RESULTS_ADD  (partial _results-add *WF-UI)
+        RESULTS_READ (partial _results-read *WF-UI)
 
         SCRAPE-CONTAINER-SELECTOR (get-container-selector url)
         SCRAPE-SELECTOR (get-scrape-selector url)
@@ -436,6 +439,11 @@
                                      (let [html (woof-dom/outer-html (q SCRAPE-CONTAINER-SELECTOR))]
                                        (.log js/console html)
                                        (ws/send-html-for-analysis html)))]
+
+               ["KV: results" (fn []
+                                (.log js/console "sending...")
+                                (ws/send-scrape-results! (RESULTS_READ)))]
+
                ]
        }
       )
