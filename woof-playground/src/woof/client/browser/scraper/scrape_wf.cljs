@@ -366,6 +366,12 @@
        :steps [
                {
                 ::hello [:log "hello!"]
+                ;; debug css
+                :css/attr-0 [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
+                :css/attr-1 [:css-rules* [".DDD > *" "z-index: 100;"]]
+                :css/attr-2 [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+                :css/attr-3 [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+
                 }
                ]
 
@@ -509,6 +515,8 @@
                                                     "WOOF-WIP"
                                                     "WOOF-DONE"
                                                     "WOOF-ASYNC"
+                                                    ;; debug
+                                                    "DDD"
                                                     ])
 
                         ;; for now do not return channel
