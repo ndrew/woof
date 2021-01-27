@@ -122,11 +122,16 @@
 
   (let [z (into (sorted-map) item)]
 
-    [:div.listing-row
-     {:on-click (fn [e] (.log js/console item))
+    [:span.listing-row
+     {:on-click (fn [e]
+                  (.log js/console (pr-str z)))
       :class    (get item :css "")}
 
-     [:div
+     (pr-str (:id z))
+
+     #_[:div
+
+
 
       #_(let [usd (usd-fmt (get x :USD 0))
               uah (uah-fmt (get x :UAH 0))
@@ -147,7 +152,7 @@
          [:.en en]
          ]
       ]
-     [:pre
+     #_[:pre
       (d/pretty! z)
 
 

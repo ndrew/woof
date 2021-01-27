@@ -246,7 +246,7 @@
     {
      :source :riel
      :id     id
-     :url    (str "https://rieltor.ua" id)
+     :url    (str "https://rieltor.ua" (safe-href el ".catalog-item__img A"))
      }
     ;;
     ;; INFO

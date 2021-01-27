@@ -47,9 +47,8 @@
    (when (seq (:api STATE))
      (ui/menubar "API" (:api STATE) :class "woof_api"))
 
-
+   ;;
    (when-let [data (:scraped STATE)]
-
      (pg-ui/<transform-list>
        s-ui/<listing>
        data
@@ -78,20 +77,6 @@
    ])
 
 
-#_(defn <rum-ui>
-  ([]
-   ;; init UI
-   (let [$panel (dom/createDom "div" "panel woof-scrape-panel ui-container")]
-     (woof-dom/ui-add-el! $panel))
-   )
-  ([*state STATE]
-   (let [container-el (woof-dom/q ".ui-container")]
-     ;; react UI
-     (rum/mount (<scraping-ui> *state STATE)
-                container-el)
-
-     )))
-
 
 (def <rum-ui> (rum-wf/gen-rum-ui <scraping-ui>))
 
@@ -107,8 +92,7 @@
     :steps
     [(fn [params]
        {
-        :CSS/test-page-styles [:css-file "http://localhost:9500/css/t.css"]
-
+        ; :CSS/test-page-styles [:css-file "http://localhost:9500/css/t.css"]
         :CSS/scraper-styles   [:css-file "http://localhost:9500/css/r.css"]
         })]
     )
