@@ -211,6 +211,8 @@
 (defn server-init-fn
   "provides ::server with compojure routes for "
   [params]
+
+  (info "[KV] server-init-fn")
   (let [PORT (get params :port 8081)
         ;; for now, use the global scrapping session atom
         *SCRAPING-SESSION (&scraping-session params)]
@@ -315,13 +317,12 @@
                              )
 
                            (compojure/POST "/kv/append" [:as request]
-
                              (let [edn (-> request :body slurp read-string)
                                    {k :k v :v} edn]
 
                                (info "[KV] /kv/append" k )
 
-                               (swap! state/*kv update k concat v)
+                               (swap! state/*kv update k into v)
 
                                {:status  200
                                 :headers {
