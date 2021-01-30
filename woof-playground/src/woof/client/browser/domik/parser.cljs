@@ -20,7 +20,20 @@
 
 
 
-(defn extract-listing-text [bodyEls]
+(defn parse-area [area-string]
+  (let [z (str/replace area-string "Площадь (общ./жил./кух.): " "")
+        [total-area living-area kitchen-area] (str/split z "/")
+        ]
+    {
+     :area z  ;s
+     :area_total (d/to-primitive total-area)
+     :area_living (d/to-primitive living-area)
+     :area_kitchen (d/to-primitive kitchen-area)
+     }
+    )
+  )
+
+(defn parse-listing-text [$ID bodyEls]
   (reduce
     (fn [m s]
       (cond
@@ -30,55 +43,26 @@
                      [floor floor-total] (str/split (str/replace raw-floor #"Этаж: " "") #"/")]
                  {
                   :floor       (js/parseInt floor 10)
-                  :floor-total (js/parseInt floor-total 10)
-                  :material (str/join ", " material)
+                  :floor_total (js/parseInt floor-total 10)
+
+                  :house_walls (str/join ", " material)
                   }))
 
         (str/starts-with? s "Площадь")
-        (merge m
-               {
-                :square s
-                }
-               )
+        (merge m (parse-area s))
 
         :else (assoc
                 m :other s)
         )
       )
     {
-     :full-text (reduce (fn [a p] (str a (goog.dom/getTextContent p) "\n")) "" bodyEls)
+     :info (str (dom/getTextContent $ID) "\n"
+                (reduce (fn [a p] (str a (goog.dom/getTextContent p) "\n")) "" bodyEls))
      } (map goog.dom/getTextContent bodyEls))
-
-  #_(let [[raw-floor & rest] (map goog.dom/getTextContent bodyEls)
-
-          full-text (reduce (fn [a p] (str a (goog.dom/getTextContent p) "\n")) "" bodyEls)
-          [floor-str & type ] (str/split raw-floor #", ")
-
-          ]
-
-
-      ;(prn rest )
-
-      (merge {
-              :full-text full-text
-              ;:square raw-sq
-              }
-             (if floor-str
-               (let [[floor floor-total] (str/split (str/replace floor-str #"Этаж: " "") #"/")]
-                 {
-                  :floor (js/parseInt floor 10)
-                  :floor-total (js/parseInt floor-total 10)
-                  :material (str/join ", " type)
-                  })
-               {}
-               )
-
-             )
-      )
   )
 
 
-(defn extract-listing-price [costEl commissionEl]
+(defn extract-listing-price [costEl commissionEl area]
   (let [raw-cost (dom/getTextContent costEl)
 
         cost-uah (str/replace raw-cost #"₴|\s" "")
@@ -86,34 +70,50 @@
 
         _commission (str/replace raw-commission #"\$|\s" "")
         [cost-usd commission] (str/split _commission #"\+")
+
+        UAH (js/parseInt cost-uah 10)
+        USD (js/parseInt cost-usd 10)
         ]
 
     {
-     :uah (js/parseInt cost-uah 10)
-     :usd (js/parseInt cost-usd 10)
-     :commission commission
+     :UAH UAH
+     :USD USD
+     :UAH_M2 (.floor js/Math (/ UAH area))
+     :USD_M2 (.floor js/Math (/ USD area))
+
+     :commission (if commission commission "")
      }
     )
 
   )
 
 
-(defn parse-images [el]
-  (let [imgs (array-seq (.querySelectorAll el ".informer_fotka_block .image"))]
+(defn parse-img [img-el]
+  {
+   :img-1 (. img-el -src)
+   }
+  )
+
+
+(def domik-upd-format (time-fmt/formatter "dd.MM.yyyy hh:mm"))
+
+(def out-format (time-fmt/formatter "yyyy.MM.dd"))
+
+
+(defn parse-updated [$date]
+  (let [s (txt $date)]
+;; 30.01.2021 13:21
     {
-     :images (vec
-               (map (fn [img-el]
-                      (. img-el -src)
-                      ) imgs ))
+     ;; :upd
+     :added (time-fmt/unparse out-format
+                              (time-fmt/parse domik-upd-format s))
      }
     )
   )
-
 
 (defn do-scrape! [id el]
-  (let [aEl (q el ".tittle_obj [clickcntid]")
-        houseEls (.querySelectorAll el ".adress_addInfo a")
-        metroEl  (.querySelector el ".adress_addInfo .metro")
+  (let [$ID (q el ".tittle_obj [clickcntid]")
+
 
         ;; to know that it's a novobudova
         projectEl (.querySelector el ".objava_detal_info .project_link")
@@ -122,7 +122,6 @@
         ;         el
         ;         (.querySelector el ".objava_detal_info .project_link"))
 
-        bodyEls (array-seq (.querySelectorAll el ".objava_detal_info .color-gray"))
 
         houseTypeEl (.querySelector el ".objava_detal_info .color-gray a")
         ; color-gray
@@ -133,54 +132,125 @@
 
         project (if projectEl (.getAttribute projectEl "href") nil)
 
-        birka (.querySelector el ".birka")
 
 
 
-        model {
-               :birka (if birka
-                        (dom/getTextContent birka)
-                        "")
 
-               ;; :html    (. el -innerHTML)
-               :id      id
-
-               :kod     (dom/getTextContent (.querySelector el ".objava_data_cod > span"))
-               :date    (dom/getTextContent (.querySelector el ".objava_data_cod > span + span"))
-
-               :url     (.getAttribute aEl "href")
-               :project project
-
-               :title   (dom/getTextContent aEl)
-
-               :addr    {
-                         :lat          (.getAttribute el "geolat")
-                         :lng          (.getAttribute el "geolng")
-
-                         :full-addr    raw-address
-                         :district     district
-                         :street       street
-                         :building     building
-
-                         :metro        (if metroEl (.getAttribute metroEl "title") nil)
-                         :house        (if houseEls (map #(.getAttribute % "href") (array-seq houseEls)) nil)
-                         :houseTypeUrl (if houseTypeEl (.getAttribute houseTypeEl "href"))
-                         :houseType    (if houseTypeEl (dom/getTextContent houseTypeEl))
-                         }
-
-
-               :price   (extract-listing-price (.querySelector el ".price .cost")
-                                               (.querySelector el ".price .commission"))
-
-               }
         ]
 
-    (let [listing (merge model
-                         (extract-listing-text bodyEls)
-                         (parse-images el)
-                         (if project {:ad? true} {}))]
+    (merge
+      ;;
+      ;; GENERAL
+      {
+       :source :domik
+       :id     id
+       :url    (str "http://domik.ua"  (attr $ID "href"))
+       }
+      ;;
+      ;; INFO
 
-      listing
+      ;; PRICE+INFO
+      (let [$info-els (q* el ".objava_detal_info .color-gray")
+
+            data (parse-listing-text $ID $info-els)
+            ;;
+            ;; PRICE
+            ]
+        (merge
+          data
+          (extract-listing-price (q el ".price .cost")
+                                 (q el ".price .commission")
+                                 (:area_total data)
+                                 )
+
+          )
+
+
+        )
+
+      ;;
+      ;; ADDR
+      {
+       :lat          (attr el "geolat")
+       :lng          (attr el "geolng")
+
+       :addr    raw-address
+
+       :addr_district     district
+       :addr_street       street
+       :addr_house     building
+
+       :addr_subway        (if-let [metroEl (q el ".adress_addInfo .metro")]
+                             (.getAttribute metroEl "title"))
+
+       ;:house        (if houseEls (map #(.getAttribute % "href") (array-seq houseEls)) nil)
+       ;:houseTypeUrl (if houseTypeEl (.getAttribute houseTypeEl "href"))
+       :house_walls    (if houseTypeEl
+                         (let [ht (dom/getTextContent houseTypeEl)]
+                           (if (= "Сталинки" ht)
+                             (classes/add el "WOOF-CANDIDATE"))
+                           ht) "")
+       }
+
+      ;; guess rooms
+      (let [full-txt (str/lower-case (txt (q el ".objava_content"))) ]
+
+        {
+         :rooms (cond
+                  (str/includes? full-txt "одно") 1
+                  (str/includes? full-txt "1-к") 1
+
+                  (str/includes? full-txt "двух") 2
+                  (str/includes? full-txt "2-комн") 2
+                  (str/includes? full-txt "2-х") 2
+                  (str/includes? full-txt "2х") 2
+                  (str/includes? full-txt "2 кім") 2
+                  (str/includes? full-txt "2-к") 2
+
+                  (str/includes? full-txt "трех") 3
+                  (str/includes? full-txt "3-х") 3
+                  (str/includes? full-txt "3-к") 3
+                  (str/includes? full-txt "3х") 3
+
+                  (str/includes? full-txt "4-х") 4
+                  (str/includes? full-txt "4-к") 4
+                  :else (do
+                          (classes/add el "WOOF-ERROR")
+                          -1)
+                  )
+         }
+        )
+
+
+
+
+
+      ;;
+      ;; IMG
+      (if-let [$img (q el ".informer_fotka_block .image")]
+        (-> $img
+            parse-img))
+
+      ;; META
+      (if-let [$date (q el ".objava_data_cod > span + span")]
+        (-> $date ;(mark! "UPD")
+            parse-updated))
+
+      ;; :paid-info
+
+      ;;         birka (.querySelector el ".birka")
+      #_{
+       ; numer of imgs?
+       :birka (if birka
+                (dom/getTextContent birka)
+                "")
+       ;; :html    (. el -innerHTML)
+       ;;:kod     (dom/getTextContent (.querySelector el ".objava_data_cod > span"))
+       ; :project project
+       }
+      (if project {:paid true} {})
+      (if-let [$paid (q el ".objava_data_hot .hot")] {:paid-info "hot"})
+      (if-let [$paid (q el ".objava_data_hot .vip")] {:paid-info "vip"})
       )
     )
   )
@@ -189,7 +259,10 @@
 (defn scrape-element [params el]
   (let [$id (q el ".tittle_obj [clickcntid]")]
     (if-let [id (attr $id "clickcntid")]
-      (let [cf (&chan-factory params)
+      (do
+
+        ;; uncomment for choosing
+        (let [cf (&chan-factory params)
             chan (make-chan cf (base/sid))
             result (do-scrape! id el)
             btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
@@ -199,12 +272,14 @@
           (if-not (get ids (:id result))
             (do
               (swap! (:*IDS params) conj (:id result))
-              (dom/appendChild el btn)
-              (woof-dom/on-click btn
-                                 (fn [e]
-                                   (async/put! chan result))
-                                 )
-              chan)
+
+              (if false ;; FIXME
+                (do
+                  (dom/appendChild el btn)
+                  (woof-dom/on-click btn (fn [e] (async/put! chan result)))
+                  chan)
+                result
+                ))
             (do
               ;; (.warn js/console "ALREADY PROCESSED!!!")
 
@@ -215,6 +290,7 @@
               )
             )
           )
+        )
         )
       (u/throw! "CAN'T FIND ID IN ELEMENT")
       )

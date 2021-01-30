@@ -207,6 +207,29 @@
           intersect-observe! (fn [] (doseq [el (q* SCRAPE-SELECTOR)]
                                       (.observe intersector el)))
 
+
+          start-parse-fn (fn []
+
+            (intersect-observe!)
+            (mutations-observe!)
+
+            ;; todo: wait for ids to be loaded
+            ;; todo: emit only after certain step is done
+
+            (let [steps {
+                         :EVT/tick                 [:ticker UPD-CHAN]
+                         ;:DOM/intersect-observer [:queue-in-view! :EVT/tick]
+                         ;:PROCESS/process [:process-queue! :EVT/tick]
+
+
+                         :TICK/el-queue            [:queue-els-ticker :EVT/tick]
+                         :SCROLL/register-handlers [:queue-in-view! :TICK/el-queue]
+
+                         :TICK/el-process          [:process-els-ticker :EVT/tick]
+                         :DOM/process              [:process-queue! :TICK/el-process]
+
+                         }]
+              (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))
           ]
       {
 
@@ -337,6 +360,11 @@
                  )
                (fn [params]
                  {
+
+                  :scroll-parse  {:fn (fn [_]
+                                        (start-parse-fn)
+                                        :started
+                                        )}
 
                   :load-ids       {:fn (fn [SRC]
                                          (let [ch (make-chan (&chan-factory params) (rand-sid))]
@@ -470,45 +498,28 @@
 
        :steps [
                {
-                :WS/LOAD-IDS    [:load-ids SRC]
-                ;; :log/loaded-ids [:log :WS/LOAD-IDS]
+                :WS/LOAD-IDS [:load-ids SRC]
 
+                ;; add auto start
+
+                ;; :log/loaded-ids [:log :WS/LOAD-IDS]
+                :scraping/start [:scroll-parse :WS/LOAD-IDS]
 
                 ;; debug css
-                :css/attr-0     [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
-                :css/attr-1     [:css-rules* [".DDD > *" "z-index: 100;"]]
-                :css/attr-2     [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
-                :css/attr-3     [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+                :css/attr-0  [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
+                :css/attr-1  [:css-rules* [".DDD > *" "z-index: 100;"]]
+                :css/attr-2  [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+                :css/attr-3  [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
 
                 }
                ]
 
        :api   [
                ;;
-               (chord-action (woof-dom/chord 49 :shift true :meta true) ;; shift+cmd+!
-                             "START(scroll)"
-                             (fn []
-
-                               (intersect-observe!)
-                               (mutations-observe!)
-
-                               ;; todo: wait for ids to be loaded
-                               ;; todo: emit only after certain step is done
-
-                               (let [steps {
-                                            :EVT/tick                 [:ticker UPD-CHAN]
-                                            ;:DOM/intersect-observer [:queue-in-view! :EVT/tick]
-                                            ;:PROCESS/process [:process-queue! :EVT/tick]
-
-
-                                            :TICK/el-queue            [:queue-els-ticker :EVT/tick]
-                                            :SCROLL/register-handlers [:queue-in-view! :TICK/el-queue]
-
-                                            :TICK/el-process          [:process-els-ticker :EVT/tick]
-                                            :DOM/process              [:process-queue! :TICK/el-process]
-
-                                            }]
-                                 (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps))))
+               (chord-action
+                 (woof-dom/chord 49 :shift true :meta true) ;; shift+cmd+!
+                 "START(scroll)"
+                 start-parse-fn)
 
                (<API> "START(greedy)"
                       #(do
