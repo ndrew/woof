@@ -47,6 +47,9 @@
    (when (seq (:api STATE))
      (ui/menubar "API" (:api STATE) :class "woof_api"))
 
+   (str "ids: (" (count (get STATE :ids #{})) ")")
+
+
    ;;
    (when-let [data (:scraped STATE)]
      (pg-ui/<transform-list>

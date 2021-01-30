@@ -237,3 +237,29 @@ article.WOOF-ASYNC.WOOF-DONE {
     padding: 0;
 }
 
+
+.ok-btn {
+    width: 100%;
+    font-weight: bolder;
+    padding: .1rem;
+}
+
+
+.WOOF-SEEN {
+
+    /*outline: 5px solid #f8af0f;*/
+    opacity: .5;
+    /*background-color: #cc160599 !important;*/
+}
+
+.WOOF-SEEN:before {
+    text-decoration: none;
+    line-height: 1.5;
+    display: block;
+    white-space: pre-wrap;
+    content: "↓↓↓ ALREADY 👁";
+    background-color: orangered;
+    color: white;
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 8pt;
+}

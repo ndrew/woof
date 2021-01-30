@@ -1,5 +1,6 @@
 (ns woof.client.browser.rieltor.parser
   (:require
+    [goog.dom :as dom]
     [goog.dom.classes :as classes]
     [goog.dom.dataset :as dataset]
 
@@ -11,9 +12,10 @@
 
     [clojure.string :as str]
 
+    [woof.base :as base :refer [&chan-factory make-chan]]
     [woof.data :as d]
 
-    [woof.client.dom :as wdom :refer [q q* attr txt txt-only mark!]]
+    [woof.client.dom :as woof-dom :refer [q q* attr txt txt-only mark!]]
     [woof.utils :as u]))
 
 
@@ -324,25 +326,40 @@
   )
 
 
-
 ;;
 ;; element scraping function
-(defn scrape-element [el]
-  ;; $ID      (q el ".catalog-item__img A")
+(defn scrape-element [params el]
   (if-let [_id (safe-href el ".catalog-item__img A")]
     (do
-      #_(try
-          (do-scrape! (gen-id _id) el)
-          (catch js/Error e
-            (.error js/console e)
-            (u/throw! "AAAAAAAAA. STOP!!!")
+      (let [cf (&chan-factory params)
+            chan (make-chan cf (base/sid))
+            result (do-scrape! (gen-id _id) el)
+            btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
+
+        (let [ids @(:*IDS params)]
+          ; (.warn js/console (:id result) ids)
+          (if-not (get ids (:id result))
+            (do
+              (swap! (:*IDS params) conj (:id result))
+              (dom/appendChild el btn)
+              (woof-dom/on-click btn
+                                 (fn [e]
+                                   (async/put! chan result))
+                                 )
+              chan)
+            (do
+              (.warn js/console "ALREADY PROCESSED!!!")
+
+              (classes/add el "WOOF-SEEN")
+              (classes/add el "WOOF-SKIP")
+
+              nil
+              )
             )
           )
-
-      (do-scrape! (gen-id _id) el)
+        )
       )
     (u/throw! "CAN'T FIND IN ELEMENT")
-
     )
 
   ;; todo: handle errors and nils?

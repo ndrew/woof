@@ -10,7 +10,7 @@
     [woof.utils :as u]
 
     ;; client utils
-    [woof.client.dom :as woof-dom :refer [q q* txt dataset ]]
+    [woof.client.dom :as woof-dom :refer [q q* txt dataset]]
 
     ;; wf helpers -
     [woof.client.ws :as ws]
@@ -32,7 +32,7 @@
     [woof.client.browser.rieltor.parser :as riel-parser]
 
     ;; domik
-    ))
+    [woof.data :as d]))
 
 
 ;;
@@ -42,26 +42,35 @@
     (str/starts-with? url "http://localhost:9500/r.html")
     (str/starts-with? url "https://rieltor.ua/")))
 
-
-(defn get-container-selector [url]
+(defn get-source [url]
   (cond
-    (riel? url) ".index-list-container"))
+    (riel? url) :riel)
+  )
 
 
-(defn get-scrape-selector [url]
+(defn get-container-selector [src]
+  (cond
+    (= :riel src) ".index-list-container"))
+
+
+(defn get-scrape-selector [src]
   ;; :not(.WOOF-WIP) is very important
   (cond
-    (riel? url) ".index-list-container > .catalog-item:not(.WOOF-WIP):not(.WOOF-ERROR)"))
+    (= :riel src) ".index-list-container > .catalog-item:not(.WOOF-WIP):not(.WOOF-ERROR)"))
 
 
-(defn get-scrape-fn [url]
+(defn get-scrape-fn [src]
   (cond
-    (riel? url) riel-parser/scrape-element))
+    (= :riel src) riel-parser/scrape-element))
 
 
 ;; results processing aspect
 (defn _results-init [*WF-UI]
-  (swap! *WF-UI assoc :scraped []))
+  (swap! *WF-UI assoc :scraped [])
+
+  ;;
+
+  )
 
 
 (defn _results-add [*WF-UI r]
@@ -79,19 +88,55 @@
 
   (let [url (.. js/document -location -href)
 
+        SRC (get-source url)
+
         RESULTS_INIT (partial _results-init *WF-UI)
         RESULTS_ADD  (partial _results-add *WF-UI)
         RESULTS_READ (partial _results-read *WF-UI)
 
-        SCRAPE-CONTAINER-SELECTOR (get-container-selector url)
-        SCRAPE-SELECTOR (get-scrape-selector url)
-        SCRAPE! (get-scrape-fn url)
+        SCRAPE-CONTAINER-SELECTOR (get-container-selector SRC)
+        SCRAPE-SELECTOR (get-scrape-selector SRC)
+
+
+        ;; pass *IDS
+        *IDS (rum/cursor-in *WF-UI [:ids])
+        SCRAPE! (get-scrape-fn SRC)
         ]
+
+
+
+    ;; clean up added css
+    (woof-dom/remove-added-css [
+                                "WOOF-WIP"
+                                "WOOF-DONE"
+                                "WOOF-ASYNC"
+                                "WOOF-SEEN"
+                                "WOOF-SKIP"
+
+                                "WOOF-ERROR"
+                                "WOOF-PARSE-ERROR"
+                                ;; debug
+                                "DDD"
+                                ])
+
+    ;; remove added dom by woof
+    ;(.warn js/console "REMOVING" (q* ".WOOF-DOM"))
+    (doseq [el (q* ".WOOF-DOM")]
+      (if-let [parent (.-parentElement el)]
+        (.removeChild parent el)
+        (do
+          (.warn js/console "!!!" el)
+          )
+        )
+      )
+
+
 
     ;; init state to hold dom els queue
     (swap! *WF-UI assoc :el-queue #queue [])
     (swap! *WF-UI assoc :process-queue #queue [])
 
+    (swap! *WF-UI assoc :ids #{})
     (RESULTS_INIT)
 
     (let [<API> (fn [title steps-fn]
@@ -153,7 +198,10 @@
                  ; register the update channel
                  (let [cf (&chan-factory params)]
                    (own-chan cf :UPD-CHANNEL UPD-CHAN))
-                 {})]
+                 {})
+               (fn [_]
+                 {:*IDS *IDS})
+               ]
 
        ;;
        ;; ticker implementation
@@ -239,7 +287,7 @@
                                            ;; updating tick period
                                            #_(let [t @*t
                                                    now (u/now)]
-                                               (.log js/console "UPD:" (- now t) "ms" )
+                                               (.log js/console "UPD:" (- now t) "ms")
                                                (reset! *t now)
                                                )
 
@@ -271,96 +319,130 @@
                    )
 
                  )
-               {
+               (fn [params]
+                 {
 
-                ;; attaches scroll observers on scraped elements
-                :queue-in-view! {:fn (fn [ticker]
-                                       ;(.log js/console ":observe!" ticker)
-                                       (intersect-observe!)
-                                       ;;
-                                       (u/now))}
+                  :load-ids       {:fn (fn [SRC]
+                                         (let [ch (make-chan (&chan-factory params) (rand-sid))]
 
-                ;; adds all found elements to element queue (without scrolling)
-                :queue-all!     {:fn (fn [ticker]
-                                       (.log js/console ":queue!")
-                                       (let [selector SCRAPE-SELECTOR
-                                             els (q* selector)]
+                                           (ws/GET (str "http://localhost:8081/kv/get/" SRC)
+                                                   (fn [_data]
+                                                     (let [backend-ids (d/to-primitive _data)]
+                                                       (if (nil? backend-ids)
+                                                         (ws/POST "http://localhost:8081/kv/put"
+                                                                  (fn []
+                                                                    (async/put! ch #{}))
+                                                                  {:k SRC :v #{}})
+                                                         (do
+                                                           (.log js/console "loaded ids" (pr-str backend-ids))
+                                                           (async/put! ch backend-ids)
+                                                           (swap! *WF-UI assoc :ids backend-ids)
+                                                           )
+                                                         )
+                                                       )
+                                                     ))
+                                           ch
+                                           )
+                                         )}
 
-                                         (doseq [el els]
-                                           (classes/add el "WOOF-WIP"))
-                                         (swap! *WF-UI update :el-queue into els)
+                  ;; attaches scroll observers on scraped elements
+                  :queue-in-view! {:fn (fn [ticker]
+                                         ;(.log js/console ":observe!" ticker)
+                                         (intersect-observe!)
+                                         ;;
+                                         (u/now))}
 
-                                         (u/now)))}
+                  ;; adds all found elements to element queue (without scrolling)
+                  :queue-all!     {:fn (fn [ticker]
+                                         (.log js/console ":queue!")
+                                         (let [selector SCRAPE-SELECTOR
+                                               els (q* selector)]
 
-                ;; process
-                :process-queue! {:fn (fn [ticker]
-                                       ;(.log js/console "processing!!!" ticker)
+                                           (doseq [el els]
+                                             (classes/add el "WOOF-WIP"))
+                                           (swap! *WF-UI update :el-queue into els)
 
-                                       (let [p-queue (get-in @*WF-UI [:process-queue])]
-                                         (if (empty p-queue)
-                                           (do
+                                           (u/now)))}
 
-                                             ;; copy the values from el-queue to process-queue
-                                             (swap! *WF-UI update :process-queue into
-                                                    (get-in @*WF-UI [:el-queue] []))
-                                             ;; clean-up the el-queue - todo: maybe copy only chunk of elements
-                                             (swap! *WF-UI assoc :el-queue #queue [])
+                  ;; process
+                  :process-queue! {:fn (fn [ticker]
+                                         ;(.log js/console "processing!!!" ticker)
+
+                                         (let [p-queue (get-in @*WF-UI [:process-queue])
+                                               ;; enrich ids
+
+                                               ]
+                                           (if (empty p-queue)
+                                             (do
+
+                                               ;; copy the values from el-queue to process-queue
+                                               (swap! *WF-UI update :process-queue into
+                                                      (get-in @*WF-UI [:el-queue] []))
+                                               ;; clean-up the el-queue - todo: maybe copy only chunk of elements
+                                               (swap! *WF-UI assoc :el-queue #queue [])
 
 
-                                             (when-let [el (peek (get-in @*WF-UI [:process-queue]))]
-                                               ;; remove element from queue immediately
-                                               (swap! *WF-UI update :process-queue pop)
+                                               (when-let [el (peek (get-in @*WF-UI [:process-queue]))]
+                                                 ;; remove element from queue immediately
+                                                 (swap! *WF-UI update :process-queue pop)
 
-                                               (.log js/console "processing" el)
-                                               ;; process - res/nil/exception?
-                                               (try
-                                                 (if-let [result (SCRAPE! el)]
-                                                   (if (u/channel? result)
+                                                 (.log js/console "processing" el)
+                                                 ;; process - res/nil/exception?
+                                                 (try
+                                                   (if-let [result (SCRAPE! params el)]
+                                                     (if (u/channel? result)
+                                                       (do
+                                                         ;; handling if channel is returned
+                                                         (classes/add el "WOOF-ASYNC") ; mark element as in progress
+                                                         (go
+                                                           (let [r (async/<! result)] ; wait for result, todo: alts
+                                                             (classes/add el "WOOF-DONE")
+                                                             (RESULTS_ADD r)
+                                                             ;(swap! *WF-UI update :results into [r])
+
+                                                             )))
+                                                       (do
+                                                         ;; handling value
+                                                         (classes/add el "WOOF-DONE")
+                                                         (RESULTS_ADD result)
+                                                         ))
                                                      (do
-                                                       ;; handling if channel is returned
-                                                       (classes/add el "WOOF-ASYNC") ; mark element as in progress
-                                                       (go
-                                                         (let [r (async/<! result)] ; wait for result, todo: alts
-                                                           (classes/add el "WOOF-DONE")
-                                                           (RESULTS_ADD r)
-                                                           ;(swap! *WF-UI update :results into [r])
+                                                       ;; nil - skip node
 
-                                                           )))
-                                                     (do
-                                                       ;; handling value
-                                                       (classes/add el "WOOF-DONE")
-                                                       (RESULTS_ADD result)
-                                                       ))
-                                                   (do
-                                                     ;; nil - skip node
+                                                       ;;
+                                                       ;; FIXME: HANDLE PROPERTY SKIP
+                                                       ;;
 
-                                                     ;;
-                                                     ;; FIXME: HANDLE PROPERTY SKIP
-                                                     ;;
+                                                       ; can't process further, re-adding el back to the queue
+                                                       ;(swap! *WF-UI update :el-queue conj el)
 
-                                                     ; can't process further, re-adding el back to the queue
-                                                     ;(swap! *WF-UI update :el-queue conj el)
+                                                       ;; add back to process queue?
+                                                       ;; maybe add with some delay?
 
-                                                     ;; add back to process queue?
-                                                     ;; maybe add with some delay?
-                                                     (swap! *WF-UI update :process-queue conj el)
+                                                       (when-not (classes/has el "WOOF-SKIP")
+                                                         (.log js/console "RE-PROCESSING EL AGAIN")
+                                                         (swap! *WF-UI update :process-queue conj el)
+                                                         )
+
+                                                       )
                                                      )
-                                                   )
-                                                 (catch js/Error e
-                                                   (.error js/console e)
-                                                   ; can't process further, re-adding el back to the queue
-                                                   (classes/add el "WOOF-ERROR")
-                                                   ;; (swap! *WF-UI update :el-queue conj el)
+                                                   (catch js/Error e
+                                                     (.error js/console e)
+                                                     ; can't process further, re-adding el back to the queue
+                                                     (classes/add el "WOOF-ERROR")
+                                                     ;; (swap! *WF-UI update :el-queue conj el)
+                                                     )
                                                    )
                                                  )
                                                )
                                              )
+                                           (do
+                                             (.log js/console "PROCESSING IN PROGRESS"))
                                            )
-                                         (do
-                                           (.log js/console "PROCESSING IN PROGRESS"))
-                                         )
-                                       )}
-                }]
+                                         )}
+                  }
+                 )
+               ]
 
        :opts  [(base/build-opt-on-done (fn [_]
                                          ;; stop the ticker
@@ -372,12 +454,15 @@
 
        :steps [
                {
-                ::hello [:log "hello!"]
+                :WS/LOAD-IDS    [:load-ids SRC]
+                ;; :log/loaded-ids [:log :WS/LOAD-IDS]
+
+
                 ;; debug css
-                :css/attr-0 [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
-                :css/attr-1 [:css-rules* [".DDD > *" "z-index: 100;"]]
-                :css/attr-2 [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
-                :css/attr-3 [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+                :css/attr-0     [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
+                :css/attr-1     [:css-rules* [".DDD > *" "z-index: 100;"]]
+                :css/attr-2     [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+                :css/attr-3     [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
 
                 }
                ]
@@ -387,8 +472,12 @@
                (chord-action (woof-dom/chord 49 :shift true :meta true) ;; shift+cmd+!
                              "START(scroll)"
                              (fn []
+
                                (intersect-observe!)
                                (mutations-observe!)
+
+                               ;; todo: wait for ids to be loaded
+                               ;; todo: emit only after certain step is done
 
                                (let [steps {
                                             :EVT/tick                 [:ticker UPD-CHAN]
@@ -453,9 +542,28 @@
                                        (.log js/console html)
                                        (ws/send-html-for-analysis html)))]
 
-               ["KV: results" (fn []
-                                (.log js/console "sending...")
-                                (ws/send-scrape-results! (RESULTS_READ)))]
+               []
+               []
+               []
+               ["IDS: save"
+                (fn []
+                  (let [ROWS (RESULTS_READ)
+                        IDS @*IDS]
+                    (.group js/console "SAVE:")
+                    ;; chain saving results
+                    (ws/POST "http://localhost:8081/kv/append"
+                             (fn []
+                               (.log js/console "IDS...saved!")
+                               (ws/POST "http://localhost:8081/kv/append"
+                                        (fn []
+                                          (.log js/console "ROWS...saved!")
+                                          (.groupEnd js/console))
+                                        {:k :rows :v ROWS}))
+                             {:k SRC :v IDS})
+                    )
+
+                  )
+                ]
 
                ]
        }
@@ -515,19 +623,10 @@
      ;; expose some wf API
      :api             api
 
-     :on-stop         (fn [state]
-                        ; (__log "ON STOP")
-                        ;; clean up added css
-                        (woof-dom/remove-added-css [
-                                                    "WOOF-WIP"
-                                                    "WOOF-DONE"
-                                                    "WOOF-ASYNC"
 
-                                                    "WOOF-ERROR"
-                                                    "WOOF-PARSE-ERROR"
-                                                    ;; debug
-                                                    "DDD"
-                                                    ])
+     :on-stop         (fn [state]
+                        ;;
+
 
                         ;; for now do not return channel
                         nil)
