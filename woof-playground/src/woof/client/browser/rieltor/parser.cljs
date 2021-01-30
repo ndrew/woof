@@ -330,37 +330,34 @@
 ;; element scraping function
 (defn scrape-element [params el]
   (if-let [_id (safe-href el ".catalog-item__img A")]
-    (do
-      (let [cf (&chan-factory params)
-            chan (make-chan cf (base/sid))
-            result (do-scrape! (gen-id _id) el)
-            btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
+    (let [cf (&chan-factory params)
+          chan (make-chan cf (base/sid))
+          result (do-scrape! (gen-id _id) el)
+          btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
 
-        (let [ids @(:*IDS params)]
-          ; (.warn js/console (:id result) ids)
-          (if-not (get ids (:id result))
-            (do
-              (swap! (:*IDS params) conj (:id result))
-              (dom/appendChild el btn)
-              (woof-dom/on-click btn
-                                 (fn [e]
-                                   (async/put! chan result))
-                                 )
-              chan)
-            (do
-              (.warn js/console "ALREADY PROCESSED!!!")
+      (let [ids @(:*IDS params)]
+        ; (.warn js/console (:id result) ids)
+        (if-not (get ids (:id result))
+          (do
+            (swap! (:*IDS params) conj (:id result))
+            (dom/appendChild el btn)
+            (woof-dom/on-click btn
+                               (fn [e]
+                                 (async/put! chan result))
+                               )
+            chan)
+          (do
+            ;; (.warn js/console "ALREADY PROCESSED!!!")
 
-              (classes/add el "WOOF-SEEN")
-              (classes/add el "WOOF-SKIP")
+            (classes/add el "WOOF-SEEN")
+            (classes/add el "WOOF-SKIP")
 
-              nil
-              )
+            nil
             )
           )
         )
       )
-    (u/throw! "CAN'T FIND IN ELEMENT")
+    (u/throw! "CAN'T FIND ID IN ELEMENT")
     )
-
   ;; todo: handle errors and nils?
   )

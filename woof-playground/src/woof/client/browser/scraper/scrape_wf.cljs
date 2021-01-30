@@ -7,6 +7,7 @@
     ;; woof core
     [woof.base :as base :refer [rand-sid sid
                                 &chan-factory make-chan own-chan]]
+    [woof.data :as d]
     [woof.utils :as u]
 
     ;; client utils
@@ -32,36 +33,51 @@
     [woof.client.browser.rieltor.parser :as riel-parser]
 
     ;; domik
-    [woof.data :as d]))
+    [woof.client.browser.domik.parser :as domik-parser]
+    ))
 
 
 ;;
 ;;
 (defn- riel? [url]
-  (or
-    (str/starts-with? url "http://localhost:9500/r.html")
-    (str/starts-with? url "https://rieltor.ua/")))
+  (or (str/starts-with? url "http://localhost:9500/r.html")
+      (str/starts-with? url "https://rieltor.ua/")))
+
+(defn- domik? [url]
+  (or (str/starts-with? url "http://localhost:9500/d.html")
+      (str/starts-with? url "http://domik.ua/")))
+
 
 (defn get-source [url]
   (cond
-    (riel? url) :riel)
-  )
+    (riel? url) :riel
+    (domik? url) :domik))
 
 
 (defn get-container-selector [src]
   (cond
-    (= :riel src) ".index-list-container"))
+    (= :riel src) ".index-list-container"
+    (= :domik src) "#divListObjects"
+    ))
 
 
 (defn get-scrape-selector [src]
   ;; :not(.WOOF-WIP) is very important
-  (cond
-    (= :riel src) ".index-list-container > .catalog-item:not(.WOOF-WIP):not(.WOOF-ERROR)"))
+  (let [exclude-processed ":not(.WOOF-WIP):not(.WOOF-ERROR)"]
+    (cond
+      (= :riel src)  (str ".index-list-container > .catalog-item" exclude-processed)
+      (= :domik src) (str "#divListObjects .objava" exclude-processed)
+      )
+    )
+  )
 
 
 (defn get-scrape-fn [src]
   (cond
-    (= :riel src) riel-parser/scrape-element))
+    (= :riel src) riel-parser/scrape-element
+    (= :domik src) domik-parser/scrape-element
+    )
+  )
 
 
 ;; results processing aspect
