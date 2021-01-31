@@ -116,6 +116,7 @@
 
         ;; pass *IDS
         *IDS (rum/cursor-in *WF-UI [:ids])
+        *SENT-RESULT-IDS (atom #{})
         SCRAPE! (get-scrape-fn SRC)
         ]
 
@@ -230,6 +231,45 @@
 
                          }]
               (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))
+
+          save-data! (fn []
+                       ;; TODO: autosave ids
+                       ;; todo: store which results had been already send
+                       (let [ROWS (RESULTS_READ)
+                             sent-ids @*SENT-RESULT-IDS
+
+                             r (filter (fn [x]
+                                         (not (contains? sent-ids (:id x)))) ROWS)
+                             IDS @*IDS]
+
+                         (when-not (empty? IDS)
+                           (.group js/console "SAVE:")
+                           ;; chain saving results
+                           (ws/POST "http://localhost:8081/kv/append"
+                                    (fn []
+                                      (.log js/console "IDS...saved!")
+                                      (when (> (count r) 0)
+                                        (.log js/console "sending rows...")
+                                        (ws/POST "http://localhost:8081/kv/append"
+                                                 (fn []
+                                                   (.log js/console "ROWS...saved!")
+                                                   (swap! *SENT-RESULT-IDS into (map :id r))
+                                                   (.log js/console @*SENT-RESULT-IDS)
+
+                                                   (.groupEnd js/console))
+                                                 {:k :rows :v r})
+                                        )
+                                      )
+                                    {:k SRC :v IDS})
+                           )
+                         )
+                       )
+
+          ;; TODO: this is not working without service worker, so manually need to
+          SAVE-DATA-ON-LEAVE? false
+
+          PERIODIC-SAVE -1 ;; 0 to disable
+          *periodic-save-id (atom nil)
           ]
       {
 
@@ -239,6 +279,13 @@
                    (own-chan cf :UPD-CHANNEL UPD-CHAN))
                  {})
                (fn [_]
+
+                 (if SAVE-DATA-ON-LEAVE?
+                   (js/addEventListener "beforeunload" save-data! false))
+
+                 (if (> PERIODIC-SAVE 0)
+                   (reset! *periodic-save-id (js/setInterval save-data! PERIODIC-SAVE)))
+
                  {:*IDS *IDS})
                ]
 
@@ -373,12 +420,26 @@
                                                    (fn [_data]
                                                      (let [backend-ids (d/to-primitive _data)]
                                                        (if (nil? backend-ids)
-                                                         (ws/POST "http://localhost:8081/kv/put"
-                                                                  (fn []
-                                                                    (async/put! ch #{}))
-                                                                  {:k SRC :v #{}})
                                                          (do
-                                                           (.log js/console "loaded ids" (pr-str backend-ids))
+                                                           (.log js/console "loading ids from FS")
+                                                           (ws/GET (str "http://localhost:9500/s/drv/" (name SRC) "_ids.edn")
+                                                                   (fn [raw-edn]
+                                                                     (let [ids (d/to-primitive raw-edn)]
+                                                                       (ws/POST "http://localhost:8081/kv/append"
+                                                                                (fn []
+                                                                                  (async/put! ch ids)
+                                                                                  (swap! *WF-UI assoc :ids backend-ids)
+                                                                                  ) {:k SRC :v ids})
+                                                                       )
+                                                                     )
+                                                                   )
+                                                           #_(ws/POST "http://localhost:8081/kv/put"
+                                                                      (fn []
+                                                                        (async/put! ch #{}))
+                                                                      {:k SRC :v #{}})
+                                                           )
+                                                         (do
+                                                           (.log js/console "loaded ids" (pr-str (count backend-ids)))
                                                            (async/put! ch backend-ids)
                                                            (swap! *WF-UI assoc :ids backend-ids)
                                                            )
@@ -489,12 +550,18 @@
                ]
 
        :opts  [(base/build-opt-on-done (fn [_]
+                                         (if SAVE-DATA-ON-LEAVE?
+                                           (js/removeEventListener "beforeunload" save-data! false))
+
+                                         (if (> PERIODIC-SAVE 0)
+                                           (js/clearInterval @*periodic-save-id))
+
                                          ;; stop the ticker
                                          (reset! *ticker-ready? true)
-
                                          ;; disconnect observers
                                          (.disconnect intersector)
-                                         (.disconnect mutator)))]
+                                         (.disconnect mutator)))
+               ]
 
        :steps [
                {
@@ -571,25 +638,26 @@
 
                []
                []
+
+               ;;
+               ;;
+               ["LOAD IDS FROM FS"
+                (fn []
+                  (ws/GET (str "http://localhost:9500/s/drv/" (name SRC) "_ids.edn")
+                          (fn [raw-edn]
+                            (let [ids (d/to-primitive raw-edn)]
+                              (ws/POST "http://localhost:8081/kv/append"
+                                       (fn []) {:k SRC :v ids})
+                              )
+                            )
+                          )
+
+                  )
+                ]
                []
                ["IDS: save"
                 (fn []
-                  (let [ROWS (RESULTS_READ)
-                        IDS @*IDS]
-                    (.group js/console "SAVE:")
-                    ;; chain saving results
-                    (ws/POST "http://localhost:8081/kv/append"
-                             (fn []
-                               (.log js/console "IDS...saved!")
-                               (ws/POST "http://localhost:8081/kv/append"
-                                        (fn []
-                                          (.log js/console "ROWS...saved!")
-                                          (.groupEnd js/console))
-                                        {:k :rows :v ROWS}))
-                             {:k SRC :v IDS})
-                    )
-
-                  )
+                  (save-data!))
                 ]
 
                ]

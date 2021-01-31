@@ -273,7 +273,7 @@
             (do
               (swap! (:*IDS params) conj (:id result))
 
-              (if false ;; FIXME
+              (if true ;; FIXME
                 (do
                   (dom/appendChild el btn)
                   (woof-dom/on-click btn (fn [e] (async/put! chan result)))
