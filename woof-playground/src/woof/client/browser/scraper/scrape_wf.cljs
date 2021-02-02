@@ -29,15 +29,7 @@
     [woof.client.browser.scraper.rum-ui :as rum-wf]
     [woof.client.browser.scraper.actions :as api-wf :refer [chord-action]]
 
-    ;; riel
-    [woof.client.browser.rieltor.parser :as riel-parser]
-
-    ;; domik
-    [woof.client.browser.domik.parser :as domik-parser]
-
-    ;; blago
-    [woof.client.browser.blago.listings :as blago-parser]
-
+    ;;
     [woof.client.browser.scraper.listings :as l]
     ))
 
@@ -64,8 +56,7 @@
         (let [btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
           (swap! *IDS conj (:id result))
           (dom/appendChild el btn)
-          (woof-dom/on-click btn
-                             (fn [e]
+          (woof-dom/on-click btn (fn [e]
                                (async/put! chan result)))
           chan)
         (do
@@ -78,8 +69,6 @@
       )
     )
   )
-
-
 
 
 (defn build-scrape-fn [src]
@@ -139,7 +128,8 @@
 
         ]
 
-
+    ;;
+    ;; BEFORE WF
 
     ;; clean up added css
     (woof-dom/remove-added-css [
@@ -148,9 +138,7 @@
                                 "WOOF-ASYNC"
                                 "WOOF-SEEN"
                                 "WOOF-SKIP"
-
                                 "WOOF-GIVNO"
-
 
                                 "WOOF-ERROR"
                                 "WOOF-PARSE-ERROR"
@@ -164,13 +152,14 @@
       (if-let [parent (.-parentElement el)]
         (.removeChild parent el)))
 
-
-
     ;; init state to hold dom els queue
     (swap! *WF-UI assoc :el-queue #queue [])
     (swap! *WF-UI assoc :process-queue #queue [])
 
     (RESULTS_INIT)
+
+    ;;
+    ;;
 
     (let [<API> (fn [title steps-fn]
                   [title (fn []
@@ -226,7 +215,6 @@
 
 
           start-parse-fn (fn []
-
             (intersect-observe!)
             (mutations-observe!)
 
@@ -247,6 +235,7 @@
 
                          }]
               (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))
+
 
           save-data! (fn []
                        ;; todo: store which results had been already send
@@ -692,6 +681,7 @@
   )
 
 
+
 (defn ui-sub-wf [*WF-UI API]
   (assoc
     ;; cfg: debounce interval
@@ -699,11 +689,11 @@
     :steps
     [(fn [params]
        {
-        ; :CSS/test-page-styles [:css-file "http://localhost:9500/css/t.css"]
-        :CSS/scraper-styles   [:css-file "http://localhost:9500/css/r.css"]
+        :CSS/scraper-styles   [:css-file "http://localhost:9500/css/scraper.css"]
         })]
     )
   )
+
 
 ;;;;;
 ;;
@@ -715,7 +705,6 @@
         *WF-UI (rum/cursor-in *WF-STATE [:wf/UI])
 
         ;_RUN_ (runner-sub-wf :execute-mode :idle-w-timeout :t 10)
-
 
         ;; todo: extract all configuration to here, so there will be single place of configuring wf
 
@@ -760,11 +749,12 @@
      :on-stop         (fn [state]
                         ;;
 
-
                         ;; for now do not return channel
                         nil)
 
-     ;; for now provide custom on-run handler - as older wf APIs are a map
+     ;; fixme:
+     ;; for now provide custom on-run handler to handle the API in [["action" (fn [] ...)]], instead of older wf APIs
+     ;; that are a map
      :scraper/on-run! (partial rum-wf/_on-run! *WF-UI)
      }
     )
