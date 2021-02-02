@@ -115,6 +115,12 @@
 
 ;;
 
+
+;;
+;; react part
+
+
+
 ;; should be in other place
 (rum/defc <listing> < rum/static {
                                   :key-fn (fn [item] (str (:id item)))}

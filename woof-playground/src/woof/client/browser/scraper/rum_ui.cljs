@@ -1,14 +1,26 @@
 (ns woof.client.browser.scraper.rum-ui
   (:require
     [goog.dom :as dom]
-
     [goog.functions :as fs]
+
+    [cljs.core.async :refer [go go-loop] :as async]
+    [cljs.core.async.interop :refer-macros [<p!]]
+
 
     [rum.core :as rum]
 
     [woof.base :as base]
+    [woof.data :as d]
+    [woof.utils :as u]
+
     [woof.client.dom :as woof-dom]
     [woof.wfs.watcher :as watcher]
+
+
+    [woof.client.playground.ui :as ui]
+    [woof.client.playground.ui :as pg-ui]
+
+    [woof.client.browser.scraper.scraping-ui :as s-ui]
 
     ))
 
@@ -106,3 +118,84 @@
                     []]
                    api)
              ))))
+
+
+
+;;
+;;
+
+
+;; ui for scraping workflow
+
+(rum/defc <scraping-ui> < rum/static
+  [*state STATE]
+
+  [:div.woof-scraper-control
+
+   (when (seq (:api STATE))
+     (ui/menubar "API" (:api STATE) :class "woof_api"))
+
+
+   (pr-str (count (get STATE :ids #{})))
+   ;(str "ids: (" (count (get STATE :ids #{})) ")")
+
+
+   #_[:button {:on-click (fn [e]
+                           #_(.log js/console
+                                   (filter #(= -1 (get % :rooms)) (:scraped STATE)))
+                           (doseq [z (:scraped STATE)]
+                             (.log js/console (select-keys z
+                                                           #{:area
+                                                             :area_total
+                                                             :area_living
+                                                             :area_kitchen}
+                                                           ))
+                             )
+                           )} "YYYYYY"]
+
+   ;;
+   (when-let [data (:scraped STATE)]
+     (pg-ui/<transform-list>
+       s-ui/<listing>
+       data
+       ;; filters
+       {} ;(group-by :ID @*asserts)
+       :id-fn :id
+       ;:copy-fn #(dissoc % :test)
+       ;:sort-fn (fn [a b] (compare (:code a) (:code b)))
+       :filter-map {
+                    ;"test-street" (partial pg-ui/_marker-class-filter "test-street")
+                    ;"drv-street" (partial pg-ui/_marker-class-filter "drv-street")
+                    ;"non drv-street" (partial pg-ui/_marker-except-class-filter "drv-street")
+                    ;"no-house" (partial pg-ui/_marker-class-filter "no-house")
+                    }
+       )
+     )
+
+   ;[:hr]
+   #_[:pre
+      (d/pretty! (-> STATE
+                     (dissoc :api)
+                     (dissoc :scraped)
+                     ))
+      ]
+
+   ])
+
+
+
+(def <rum-ui> (gen-rum-ui <scraping-ui>))
+
+
+(defn ui-sub-wf [*WF-UI API]
+  (assoc
+    ;; cfg: debounce interval
+    (ui-impl! *WF-UI <rum-ui>)
+    :steps
+    [(fn [params]
+       {
+        ; :CSS/test-page-styles [:css-file "http://localhost:9500/css/t.css"]
+        :CSS/scraper-styles   [:css-file "http://localhost:9500/css/r.css"]
+        })]
+    )
+  )

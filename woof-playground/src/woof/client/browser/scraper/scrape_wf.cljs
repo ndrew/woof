@@ -22,6 +22,7 @@
 
     ;; ui
     [goog.dom.classes :as classes]
+    [goog.dom :as dom]
 
     [rum.core :as rum]
 
@@ -29,7 +30,6 @@
     [woof.client.browser.scraper.actions :as api-wf :refer [chord-action]]
 
     ;; riel
-    [woof.client.browser.rieltor.ui :as wf-ui]
     [woof.client.browser.rieltor.parser :as riel-parser]
 
     ;; domik
@@ -37,69 +37,73 @@
 
     ;; blago
     [woof.client.browser.blago.listings :as blago-parser]
+
+    [woof.client.browser.scraper.listings :as l]
     ))
 
 
-;;
-;;
-(defn- riel? [url]
-  (or (str/starts-with? url "http://localhost:9500/r.html")
-      (str/starts-with? url "https://rieltor.ua/")))
 
-(defn- domik? [url]
-  (or (str/starts-with? url "http://localhost:9500/d.html")
-      (str/starts-with? url "http://domik.ua/")))
+(defn quick-analysis-scrape! [params el data]
 
-(defn- blago? [url]
-  (or (str/starts-with? url "http://localhost:9500/b.html")
-      (str/starts-with? url "https://blagovist.ua/")))
+  ;; todo: add more rules
+  (if (re-find #"Набережно" (:addr_street data))
+    (classes/add el "WOOF-GIVNO"))
 
-(defn get-source [url]
-  (cond
-    (riel? url) :riel
-    (domik? url) :domik
-    (blago? url) :blago
-    ))
+  nil
+  )
 
+(defn user-confirm-scrape! [params el result]
+  (let [*IDS (:*IDS params)
 
-(defn get-container-selector [src]
-  (cond
-    (= :riel src) ".index-list-container"
-    (= :domik src) "#divListObjects"
-    (= :blago src) "#map_fix"
-    ))
+        cf (&chan-factory params)
+        chan (make-chan cf (base/sid))]
 
-
-(defn get-scrape-selector [src]
-  ;; :not(.WOOF-WIP) is very important
-  (let [exclude-processed ":not(.WOOF-WIP):not(.WOOF-ERROR)"]
-    (cond
-      (= :riel src)  (str ".index-list-container > .catalog-item" exclude-processed)
-      (= :domik src) (str "#divListObjects .objava" exclude-processed)
-      (= :blago src) (str "#map_fix .search-item" exclude-processed)
+    (let [ids @*IDS]
+      ; (.warn js/console (:id result) ids)
+      (if-not (get ids (:id result))
+        (let [btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
+          (swap! *IDS conj (:id result))
+          (dom/appendChild el btn)
+          (woof-dom/on-click btn
+                             (fn [e]
+                               (async/put! chan result)))
+          chan)
+        (do
+          (classes/add el "WOOF-SEEN")
+          (classes/add el "WOOF-SKIP")
+          ;;
+          nil
+          )
+        )
       )
     )
   )
 
 
-(defn get-scrape-fn [src]
-  ;; these are basically the same fn
 
-  (cond
-    (= :riel src) riel-parser/scrape-element
-    (= :domik src) domik-parser/scrape-element
-    (= :blago src) blago-parser/scrape-element
 
-    )
+(defn build-scrape-fn [src]
+
+  (let [parse-listing-fn (l/get-parse-fn src)
+
+        post-scrape-fn (fn [params el result]
+                         (quick-analysis-scrape! params el result)
+                         (user-confirm-scrape! params el result))]
+
+    (fn [params el]
+      (let [result (parse-listing-fn el)]
+        (post-scrape-fn params el result))))
   )
 
 
 ;; results processing aspect
 (defn _results-init [*WF-UI]
+  ;; result of scraping
   (swap! *WF-UI assoc :scraped [])
 
-  ;;
-
+  ;; ids
+  (swap! *WF-UI assoc :ids #{})
+  (swap! *WF-UI assoc :sent-ids #{})
   )
 
 
@@ -118,20 +122,20 @@
 
   (let [url (.. js/document -location -href)
 
-        SRC (get-source url)
+        SRC (l/get-source url)
 
         RESULTS_INIT (partial _results-init *WF-UI)
         RESULTS_ADD  (partial _results-add *WF-UI)
         RESULTS_READ (partial _results-read *WF-UI)
 
-        SCRAPE-CONTAINER-SELECTOR (get-container-selector SRC)
-        SCRAPE-SELECTOR (get-scrape-selector SRC)
+        SCRAPE-CONTAINER-SELECTOR (l/get-container-selector SRC)
+        SCRAPE-SELECTOR (l/get-scrape-selector SRC)
 
 
         ;; pass *IDS
         *IDS (rum/cursor-in *WF-UI [:ids])
-        *SENT-RESULT-IDS (atom #{})
-        SCRAPE! (get-scrape-fn SRC)
+        *SENT-RESULT-IDS (rum/cursor-in *WF-UI [:sent-ids])
+        SCRAPE! (build-scrape-fn SRC)
 
         ]
 
@@ -158,12 +162,7 @@
     ;(.warn js/console "REMOVING" (q* ".WOOF-DOM"))
     (doseq [el (q* ".WOOF-DOM")]
       (if-let [parent (.-parentElement el)]
-        (.removeChild parent el)
-        (do
-          (.warn js/console "!!!" el)
-          )
-        )
-      )
+        (.removeChild parent el)))
 
 
 
@@ -171,7 +170,6 @@
     (swap! *WF-UI assoc :el-queue #queue [])
     (swap! *WF-UI assoc :process-queue #queue [])
 
-    (swap! *WF-UI assoc :ids #{})
     (RESULTS_INIT)
 
     (let [<API> (fn [title steps-fn]
@@ -251,9 +249,9 @@
               (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))
 
           save-data! (fn []
-                       ;; TODO: autosave ids
                        ;; todo: store which results had been already send
                        (let [ROWS (RESULTS_READ)
+
                              sent-ids @*SENT-RESULT-IDS
 
                              r (filter (fn [x]
@@ -261,10 +259,8 @@
                              IDS @*IDS]
 
                          (.log js/console "TRYING TO SAVE")
-
                          (when-not (empty? IDS)
                            (.group js/console "SAVE:")
-
                            (.warn js/console "APPEND IDS - 1 - " IDS)
 
                            ;; chain saving results
@@ -307,17 +303,8 @@
                  {})
 
                (fn [_]
-                 {
-                  :scraper/post-scrape-fn (fn [el data]
-                                            (if (re-find #"Набережно" (:addr_street data))
-                                              (classes/add el "WOOF-GIVNO"))
 
-                                             )
-                  }
-                 )
-
-               (fn [_]
-
+                 ;; makes no sense - as two requests won't be send
                  (if SAVE-DATA-ON-LEAVE?
                    (js/addEventListener "beforeunload" save-data! false))
 
@@ -454,6 +441,8 @@
                   :load-ids       {:fn (fn [SRC]
                                          (let [ch (make-chan (&chan-factory params) (rand-sid))]
 
+                                           ;; todo:
+
                                            (ws/GET (str "http://localhost:8081/kv/get/" SRC)
                                                    (fn [_data]
                                                      (let [backend-ids (d/to-primitive _data)]
@@ -464,6 +453,7 @@
                                                                    (fn [raw-edn]
                                                                      (let [ids (into #{} (d/to-primitive raw-edn))]
                                                                        (.warn js/console "APPEND IDS" ids)
+
 
                                                                        (swap! *WF-UI assoc :ids ids)
 
@@ -623,7 +613,7 @@
 
        :api   [
 
-
+               ;; TODO: keep this in sync with :steps
                (<API> "START" #(do {
                                     :WS/LOAD-IDS [:load-ids SRC]
                                     :zzz [:log :WS/LOAD-IDS]
@@ -631,8 +621,9 @@
                                     }))
 
                ["START(scroll)" start-parse-fn]
-               ;;
 
+
+               ;; <?> does greedy scraping makes sense?
 
                #_(<API> "START(greedy)"
                       #(do
@@ -659,22 +650,9 @@
                           }))
 
                []
-               ["debug-info"
-                (fn []
-                  ;; why there are some elements that are .WOOF-WIP, but taken from :el-queue?
-                  (let [els (q* ".WOOF-WIP:not(.WOOF-DONE):not(.WOOF-ASYNC)")
-                        queued (into [] (:el-queue @*WF-UI))
-                        process-q (into [] (:process-queue @*WF-UI))
-                        ]
-                    (.log js/console "els:" els
-                          "queue:" queued
-                          "process" process-q)
-                    )
-                  )]
-               []
 
-               (<API> "manual: queue" #(do {(sid) [:queue-all! (u/now)]}))
-               (<API> "manual: process!" #(do {(sid) [:process-queue! (u/now)]}))
+               ; (<API> "manual: queue" #(do {(sid) [:queue-all! (u/now)]}))
+               ; (<API> "manual: process!" #(do {(sid) [:process-queue! (u/now)]}))
                []
                ;; extract all html so
                ["KV: 👨🏻‍🔬 html" (fn []
@@ -704,8 +682,7 @@
                (chord-action
                  (woof-dom/chord 49 :shift true :meta true) ;; shift+cmd+!
                  "IDS: save"
-                 (fn []
-                   (save-data!))
+                 (fn [] (save-data!))
                  )
 
                ]
@@ -714,6 +691,19 @@
     )
   )
 
+
+(defn ui-sub-wf [*WF-UI API]
+  (assoc
+    ;; cfg: debounce interval
+    (rum-wf/ui-impl! *WF-UI rum-wf/<rum-ui>)
+    :steps
+    [(fn [params]
+       {
+        ; :CSS/test-page-styles [:css-file "http://localhost:9500/css/t.css"]
+        :CSS/scraper-styles   [:css-file "http://localhost:9500/css/r.css"]
+        })]
+    )
+  )
 
 ;;;;;
 ;;
@@ -732,7 +722,7 @@
         _SCRAPE_ (scraping-sub-wf *WF-STATE *WF-UI)
         api (get _SCRAPE_ :api [])
 
-        _UI_ (wf-ui/ui-sub-wf *WF-UI api)
+        _UI_ (ui-sub-wf *WF-UI api)
         _API_ (api-wf/actions-impl! api api-wf/default-on-chord)
 
         ]

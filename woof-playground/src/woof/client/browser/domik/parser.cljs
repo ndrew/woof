@@ -255,6 +255,12 @@
     )
   )
 
+(defn parse-listing [el]
+  (let [$id (q el ".tittle_obj [clickcntid]")
+        id (attr $id "clickcntid")]
+    (do-scrape! id el)
+    ))
+
 
 (defn scrape-element [params el]
   (let [$id (q el ".tittle_obj [clickcntid]")]

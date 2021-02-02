@@ -326,6 +326,12 @@
   )
 
 
+(defn parse-listing [el]
+  (let [_id (safe-href el ".catalog-item__img A")]
+    (do-scrape! (gen-id _id) el)
+    )
+  )
+
 ;;
 ;; element scraping function
 (defn scrape-element [params el]
