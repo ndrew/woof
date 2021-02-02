@@ -22,7 +22,7 @@
 
     [woof.client.browser.scraper.scraping-ui :as s-ui]
 
-    ))
+    [clojure.set :as set]))
 
 ;;
 ;; wrapper to add rum ui to a scraping workflow
@@ -139,14 +139,15 @@
          sent-ids (get STATE :IDs/sent #{})
          ]
      [:div
-      [:header (str "IDS (" (count ids)) ")"]
-
-      [:.html
-       "ids:" (pr-str ids)
-       "\n"
-       "sent:" (pr-str sent-ids)
-       "\n"
+      ;; todo: do same stuff for listings
+      [:header (str "IDS (" (count ids)) ") - "
+       (let [ids2save (set/difference ids sent-ids)]
+         [:span.tag.small-tag  (if (empty? ids2save)
+                                      "saved"
+                                      (str "saving..."(count ids2save))) ]
+         )
        ]
+
 
       ;(pr-str (clojure.set/difference ids sent-ids))
       ]

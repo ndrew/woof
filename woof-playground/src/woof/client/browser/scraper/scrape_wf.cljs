@@ -100,90 +100,6 @@
 
 
 
-;;
-(defn load-ids-impl! [params SRC]
-
-  (let [ch (make-chan (&chan-factory params) (rand-sid))
-        *WF-UI (:wf/*UI params)]
-    (ws/GET (str "http://localhost:8081/kv/get/" SRC)
-            (fn [_data]
-              (let [backend-ids (d/to-primitive _data)]
-                (if (nil? backend-ids)
-                  (do                                       ;; no ids in-memory - load via GET request
-
-                    (ws/GET (str "http://localhost:9500/s/drv/" (name SRC) "_ids.edn")
-                            (fn [raw-edn]
-                              (let [ids (into #{} (d/to-primitive raw-edn))]
-
-                                (.warn js/console "APPEND IDS" ids)
-
-                                ;; put the loaded ids into server memory
-                                (ws/POST "http://localhost:8081/kv/append-set"
-                                         (fn []
-                                           (async/put! ch ids)
-                                           (swap! *WF-UI merge {:IDs/ids #{}
-                                                                :IDs/initial ids})
-
-                                           ) {:k SRC :v ids})
-                                )))
-                    )
-                  ;; there are ids in memory
-                  (let [ids (into #{} backend-ids)]
-                    (async/put! ch ids)
-                    (swap! *WF-UI merge {:IDs/ids #{}
-                                         :IDs/initial ids})
-                    )
-                  )
-                )
-              ))
-    ch
-    )
-  )
-
-
-;; todo: migrate from using cursors to params ??
-(defn save-ids-impl! [SRC ROWS
-                      *SENT-RESULT-IDS
-                      *IDS]
-  (let [sent-ids @*SENT-RESULT-IDS
-
-        IDS @*IDS
-        r (filter (fn [x]
-                    (not (contains? sent-ids (:id x)))) ROWS)
-
-        ;;
-        ]
-    (.log js/console "TRYING TO SAVE")
-    (when-not (empty? IDS)
-      (.warn js/console "APPEND IDS - 1 - " IDS)
-
-      ;; chain saving results
-      (ws/POST "http://localhost:8081/kv/append-set"
-               (fn []
-                 (swap! *SENT-RESULT-IDS into IDS)
-
-                 (.log js/console "IDS...saved!")
-                 (if (> (count r) 0)
-                   (do
-                     ;;(.group js/console "SAVE:")
-
-                     (.log js/console "sending rows...")
-                     (ws/POST "http://localhost:8081/kv/append"
-                              (fn []
-                                (.log js/console "ROWS...saved!")
-                                ;(.groupEnd js/console)
-                                )
-                              {:k :rows :v r})
-                     )
-                   )
-                 )
-               {:k SRC :v IDS})
-      )
-    )
-  )
-
-
-
 (defn IDs-sub-wf [*wf-state *WF-UI]
   ;; before
 
@@ -205,8 +121,43 @@
                       ;; todo: store which results had been already send
 
                       (let [ROWS (get @*WF-UI :scraped)]
-                        (save-ids-impl! SRC ROWS *SENT-RESULT-IDS *IDS)
-                        )
+
+                        (let [sent-ids @*SENT-RESULT-IDS
+
+                              IDS @*IDS
+                              r (filter (fn [x]
+                                          (not (contains? sent-ids (:id x)))) ROWS)
+
+                              ;;
+                              ]
+                          (.log js/console "TRYING TO SAVE")
+                          (when-not (empty? IDS)
+                            (.warn js/console "APPEND IDS - 1 - " IDS)
+
+                            ;; chain saving results
+                            (ws/POST "http://localhost:8081/kv/append-set"
+                                     (fn []
+                                       (swap! *SENT-RESULT-IDS into IDS)
+
+                                       (.log js/console "IDS...saved!")
+                                       (if (> (count r) 0)
+                                         (do
+                                           ;;(.group js/console "SAVE:")
+
+                                           (.log js/console "sending rows...")
+                                           (ws/POST "http://localhost:8081/kv/append"
+                                                    (fn []
+                                                      (.log js/console "ROWS...saved!")
+                                                      ;(.groupEnd js/console)
+                                                      )
+                                                    {:k :rows :v r})
+                                           )
+                                         )
+                                       )
+                                     {:k SRC :v IDS})
+                            )
+                          )
+                       )
                       )
 
         ;; TODO: this is not working without service worker, so manually need to
@@ -234,7 +185,42 @@
 
      :ctx  [(fn [params]
               {:load-ids {:fn (fn [SRC]
-                                (load-ids-impl! params SRC))}
+                                (let [ch (make-chan (&chan-factory params) (rand-sid))
+                                      *WF-UI (:wf/*UI params)]
+                                  (ws/GET (str "http://localhost:8081/kv/get/" SRC)
+                                          (fn [_data]
+                                            (let [backend-ids (d/to-primitive _data)]
+                                              (if (nil? backend-ids)
+                                                (do                                       ;; no ids in-memory - load via GET request
+
+                                                  (ws/GET (str "http://localhost:9500/s/drv/" (name SRC) "_ids.edn")
+                                                          (fn [raw-edn]
+                                                            (let [ids (into #{} (d/to-primitive raw-edn))]
+
+                                                              (.warn js/console "APPEND IDS" ids)
+
+                                                              ;; put the loaded ids into server memory
+                                                              (ws/POST "http://localhost:8081/kv/append-set"
+                                                                       (fn []
+                                                                         (async/put! ch ids)
+                                                                         (swap! *WF-UI merge {:IDs/ids #{}
+                                                                                              :IDs/initial ids})
+
+                                                                         ) {:k SRC :v ids})
+                                                              )))
+                                                  )
+                                                ;; there are ids in memory
+                                                (let [ids (into #{} backend-ids)]
+                                                  (async/put! ch ids)
+                                                  (swap! *WF-UI merge {:IDs/ids #{}
+                                                                       :IDs/initial ids})
+                                                  )
+                                                )
+                                              )
+                                            ))
+                                  ch
+                                  )
+                                )}
                }
               )]
 
@@ -250,6 +236,18 @@
                                         )
                                       ))
             ]
+     ;; TODO: provide sub-api
+
+     #_(chord-action
+         (woof-dom/chord 49 :shift true :meta true) ;; shift+cmd+!
+         "IDS: save"
+         (fn []
+           (let [params (get @*wf-state :WF/params {})]
+             (_save-data! params)
+             )
+           )
+         )
+
      }
 
     )
@@ -709,36 +707,6 @@
                                        (ws/send-html-for-analysis html)))]
 
                []
-               []
-
-               ;;
-               ;;
-               #_["LOAD IDS FROM FS"
-                (fn []
-                  (ws/GET (str "http://localhost:9500/s/drv/" (name SRC) "_ids.edn")
-                          (fn [raw-edn]
-                            (let [ids (d/to-primitive raw-edn)]
-                              (ws/POST "http://localhost:8081/kv/append"
-                                       (fn []) {:k SRC :v ids})
-                              )
-                            )
-                          )
-
-                  )
-                ]
-               []
-               ;; for now use auto-save
-               #_(chord-action
-                 (woof-dom/chord 49 :shift true :meta true) ;; shift+cmd+!
-                 "IDS: save"
-                 (fn []
-                   (let [params (get @*wf-state :WF/params {})]
-                     (_save-data! params)
-                     )
-
-
-                   )
-                 )
 
                ]
        }
