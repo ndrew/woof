@@ -141,40 +141,16 @@
          listings (get STATE :scraped [])
          sent-listing-ids (get STATE :IDs/sent-listings #{})
          ]
-     [:div
+     [:span
       ;; todo: do same stuff for listings
-      [:header (str "IDS (" (count ids)) ") - "
-       (let [ids2save (set/difference ids sent-ids)]
-         [:span.tag.small-tag  (if (empty? ids2save)
-                                      "saved"
-                                      (str "saving..."(count ids2save))) ]
-         )
 
-       (if (not= (count listings) (count sent-listing-ids))
-         [:header "NOT SAVED"])
+      [:span.tag {:class (if-not (empty? (set/difference ids sent-ids)) "pending")}
+       (str "ids: " (count sent-ids) "/" (count ids))]
+
+      [:span.tag {:class (if (not= (count listings) (count sent-listing-ids)) "pending")}
+       (str "listings: " (count sent-listing-ids) "/" (count listings))]
        ]
-
-
-      ;(pr-str (clojure.set/difference ids sent-ids))
-      ]
-
      )
-
-   ;(str "ids: (" (count (get STATE :ids #{})) ")")
-
-
-   #_[:button {:on-click (fn [e]
-                           #_(.log js/console
-                                   (filter #(= -1 (get % :rooms)) (:scraped STATE)))
-                           (doseq [z (:scraped STATE)]
-                             (.log js/console (select-keys z
-                                                           #{:area
-                                                             :area_total
-                                                             :area_living
-                                                             :area_kitchen}
-                                                           ))
-                             )
-                           )} "YYYYYY"]
 
    ;;
    (when-let [data (:scraped STATE)]
