@@ -262,47 +262,4 @@
     ))
 
 
-(defn scrape-element [params el]
-  (let [$id (q el ".tittle_obj [clickcntid]")]
-    (if-let [id (attr $id "clickcntid")]
-      (do
 
-        ;; uncomment for choosing
-        (let [cf (&chan-factory params)
-            chan (make-chan cf (base/sid))
-            result (do-scrape! id el)
-            btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
-
-          (if-let [post-scrape-fn (:scraper/post-scrape-fn params)]
-            (post-scrape-fn el result))
-
-        (let [ids @(:*IDS params)]
-          ; (.warn js/console (:id result) ids)
-          (if-not (get ids (:id result))
-            (do
-              (swap! (:*IDS params) conj (:id result))
-
-              (if true ;; FIXME
-                (do
-                  (dom/appendChild el btn)
-                  (woof-dom/on-click btn (fn [e] (async/put! chan result)))
-                  chan)
-                result
-                ))
-            (do
-              ;; (.warn js/console "ALREADY PROCESSED!!!")
-
-              (classes/add el "WOOF-SEEN")
-              (classes/add el "WOOF-SKIP")
-
-              nil
-              )
-            )
-          )
-        )
-        )
-      (u/throw! "CAN'T FIND ID IN ELEMENT")
-      )
-    )
-
-  )

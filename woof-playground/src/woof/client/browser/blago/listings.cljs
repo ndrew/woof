@@ -259,38 +259,3 @@
   )
 
 
-
-(defn scrape-element [params el]
-  (let [cf (&chan-factory params)
-        chan (make-chan cf (base/sid))
-        result (parse-listing el)
-        btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
-
-    (if-let [post-scrape-fn (:scraper/post-scrape-fn params)]
-      (post-scrape-fn el result))
-
-    (let [ids @(:*IDS params)]
-
-      ; (.warn js/console (:id result) ids)
-      (if-not (get ids (:id result))
-        (do
-          (swap! (:*IDS params) conj (:id result))
-          (dom/appendChild el btn)
-          (woof-dom/on-click btn
-                             (fn [e]
-                               (async/put! chan result))
-                             )
-          chan)
-        (do
-          ;; (.warn js/console "ALREADY PROCESSED!!!")
-
-          (classes/add el "WOOF-SEEN")
-          (classes/add el "WOOF-SKIP")
-
-          nil
-          )
-        )
-      )
-    )
-
-  )

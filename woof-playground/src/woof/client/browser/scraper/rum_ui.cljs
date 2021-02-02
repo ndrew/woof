@@ -57,7 +57,7 @@
                      :send-channel-updates? false
                      ;;
                      }
-        debounce-time 64;333
+        debounce-time 33;333
         ]
 
     ;; A) SIDE-EFFECTS
@@ -72,7 +72,6 @@
                  }
                 (watcher/_watcher-cf-init-cb
                   WATCHER-ID *WF-UI
-
                   (fs/debounce (fn [*state state]
                                  ;(.log js/console "RENDER")
                                  (<rum-ui> *state state))
@@ -136,7 +135,17 @@
      (ui/menubar "API" (:api STATE) :class "woof_api"))
 
 
-   (pr-str (count (get STATE :ids #{})))
+   (let [ids (get STATE :IDs/ids #{})
+         sent-ids (get STATE :IDs/sent #{})
+         ]
+     [:div
+      [:header (str "IDS (" (count ids)) ")"]
+
+      (pr-str (clojure.set/difference ids sent-ids))
+      ]
+
+     )
+
    ;(str "ids: (" (count (get STATE :ids #{})) ")")
 
 

@@ -44,6 +44,8 @@
   nil
   )
 
+
+
 (defn user-confirm-scrape! [params el result]
   (let [*IDS (:*IDS params)
 
@@ -91,8 +93,12 @@
   (swap! *WF-UI assoc :scraped [])
 
   ;; ids
-  (swap! *WF-UI assoc :ids #{})
-  (swap! *WF-UI assoc :sent-ids #{})
+  (swap! *WF-UI merge
+         {
+          :IDs/ids #{}
+          :IDs/initial #{}
+          :IDs/sent #{}
+          })
   )
 
 
@@ -101,6 +107,60 @@
 
 (defn _results-read [*WF-UI]
   (get @*WF-UI :scraped))
+
+
+
+
+
+
+
+;;
+(defn load-ids-impl! [params SRC]
+
+  (let [ch (make-chan (&chan-factory params) (rand-sid))
+        *WF-UI (:wf/*UI params)]
+    (ws/GET (str "http://localhost:8081/kv/get/" SRC)
+            (fn [_data]
+              (let [backend-ids (d/to-primitive _data)]
+                (if (nil? backend-ids)
+                  (do                                       ;; no ids in-memory - load via GET request
+
+                    (ws/GET (str "http://localhost:9500/s/drv/" (name SRC) "_ids.edn")
+                            (fn [raw-edn]
+                              (let [ids (into #{} (d/to-primitive raw-edn))]
+
+                                (.warn js/console "APPEND IDS" ids)
+
+                                ;; put the loaded ids into server memory
+                                (ws/POST "http://localhost:8081/kv/append-set"
+                                         (fn []
+                                           (async/put! ch ids)
+                                           (swap! *WF-UI merge {:IDs/ids ids
+                                                                :IDs/initial ids})
+
+                                           ) {:k SRC :v ids})
+                                )))
+                    )
+                  ;; there are ids in memory
+                  (let [ids (into #{} backend-ids)]
+                    (async/put! ch ids)
+                    (swap! *WF-UI merge {:IDs/ids ids
+                                         :IDs/initial ids})
+                    )
+                  )
+                )
+              ))
+    ch
+    )
+  )
+
+(defn IDs-sub-wf [*wf-state *WF-UI]
+  ;; before
+
+
+  ;; todo: extract all the id stuff to be a subworkflow
+  {}
+  )
 
 
 ;;
@@ -122,14 +182,14 @@
 
 
         ;; pass *IDS
-        *IDS (rum/cursor-in *WF-UI [:ids])
-        *SENT-RESULT-IDS (rum/cursor-in *WF-UI [:sent-ids])
+        *IDS (rum/cursor-in *WF-UI [:IDs/ids])
+        *SENT-RESULT-IDS (rum/cursor-in *WF-UI [:IDs/sent])
         SCRAPE! (build-scrape-fn SRC)
 
         ]
 
     ;;
-    ;; BEFORE WF
+    ;; BEFORE WF -
 
     ;; clean up added css
     (woof-dom/remove-added-css [
@@ -428,48 +488,8 @@
                                         )}
 
                   :load-ids       {:fn (fn [SRC]
-                                         (let [ch (make-chan (&chan-factory params) (rand-sid))]
+                                           (load-ids-impl! params SRC )
 
-                                           ;; todo:
-
-                                           (ws/GET (str "http://localhost:8081/kv/get/" SRC)
-                                                   (fn [_data]
-                                                     (let [backend-ids (d/to-primitive _data)]
-                                                       (if (nil? backend-ids)
-                                                         (do
-                                                           (.log js/console "loading ids from FS")
-                                                           (ws/GET (str "http://localhost:9500/s/drv/" (name SRC) "_ids.edn")
-                                                                   (fn [raw-edn]
-                                                                     (let [ids (into #{} (d/to-primitive raw-edn))]
-                                                                       (.warn js/console "APPEND IDS" ids)
-
-
-                                                                       (swap! *WF-UI assoc :ids ids)
-
-                                                                       (ws/POST "http://localhost:8081/kv/append-set"
-                                                                                (fn []
-                                                                                  (async/put! ch ids)
-                                                                                  ) {:k SRC :v ids})
-                                                                       )
-                                                                     )
-                                                                   )
-                                                           #_(ws/POST "http://localhost:8081/kv/put"
-                                                                      (fn []
-                                                                        (async/put! ch #{}))
-                                                                      {:k SRC :v #{}})
-                                                           )
-                                                         (let [set-ids (into #{} backend-ids)]
-                                                           (.warn js/console "loaded ids" set-ids
-                                                                  ; (pr-str (count backend-ids))
-                                                                  )
-                                                           (async/put! ch set-ids)
-                                                           (swap! *WF-UI assoc :ids set-ids)
-                                                           )
-                                                         )
-                                                       )
-                                                     ))
-                                           ch
-                                           )
                                          )}
 
                   ;; attaches scroll observers on scraped elements
