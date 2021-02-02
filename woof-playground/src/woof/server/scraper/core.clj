@@ -316,11 +316,30 @@
                                )
                              )
 
+
+                           (compojure/POST "/kv/append-set" [:as request]
+                             (let [edn (-> request :body slurp read-string)
+                                   {k :k v :v} edn]
+
+                               (info "[KV] /kv/append-set" k (type v))
+                               (swap! state/*kv update k (fnil into #{}) v)
+
+                               {:status  200
+                                :headers {
+                                          "Content-Type" "application/edn; charset=utf-8"
+                                          "Access-Control-Allow-Headers" "Content-Type"
+                                          "Access-Control-Allow-Origin" "*"
+                                          }
+                                :body (pr-str :ok)}
+                               )
+                             )
+
+
                            (compojure/POST "/kv/append" [:as request]
                              (let [edn (-> request :body slurp read-string)
                                    {k :k v :v} edn]
 
-                               (info "[KV] /kv/append" k )
+                               (info "[KV] /kv/append" k (type v))
 
                                (swap! state/*kv update k into v)
 

@@ -78,11 +78,26 @@
 
 
     ;;
+    ;;
+    ;;
+
+    ; blago
+    (= url "http://localhost:9500/b.html") scrape-wf/wf!
+    (clojure.string/starts-with? url "https://blagovist.ua/") scrape-wf/wf!
+
+
+    ; rieltor.ua
     (clojure.string/starts-with? url "http://localhost:9500/r.html") scrape-wf/wf!
     (clojure.string/starts-with? url "https://rieltor.ua/") scrape-wf/wf!
 
-    ;; return wf map
+    ; domik.ua
+    (= url "http://localhost:9500/d.html") scrape-wf/wf!
+    (clojure.string/starts-with? url "http://domik.ua/") scrape-wf/wf!
 
+    ;
+
+
+    ;; old domik scraping
     (= url "http://localhost:9500/domik.html") (domik/domik-scraping! url)
     ;(clojure.string/starts-with? url "http://domik.ua/") (domik/domik-scraping! url) ;;riel/wf!
 

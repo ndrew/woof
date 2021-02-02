@@ -263,3 +263,31 @@ article.WOOF-ASYNC.WOOF-DONE {
     font-family: "DejaVu Sans Mono", monospace;
     font-size: 8pt;
 }
+
+.WOOF-CANDIDATE {
+    outline: 3px dashed #29a99f;
+}
+
+.WOOF-CANDIDATE:before {
+    text-decoration: none;
+    line-height: 1.5;
+    display: block;
+    white-space: pre-wrap;
+    content: "↓↓↓ CANDIDATE";
+    background-color: #29a99f;
+    color: white;
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 8pt;
+}
+
+.WOOF-GIVNO:before {
+    text-decoration: none;
+    line-height: 1.5;
+    display: block;
+    white-space: pre-wrap;
+    content: "↓↓↓ 💩💩💩💩💩";
+    background-color: #a97547;
+    color: white;
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 8pt;
+}

@@ -267,6 +267,9 @@
             result (do-scrape! id el)
             btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
 
+          (if-let [post-scrape-fn (:scraper/post-scrape-fn params)]
+            (post-scrape-fn el result))
+
         (let [ids @(:*IDS params)]
           ; (.warn js/console (:id result) ids)
           (if-not (get ids (:id result))

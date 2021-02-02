@@ -2,19 +2,17 @@
   (:require
     [goog.object]
     [goog.dom :as dom]
-    [goog.object]
     [goog.dom.classes :as classes]
+    [goog.dom.dataset :as dataset]
 
     [cljs.core.async :as async :refer  [go go-loop]]
     [clojure.string :as str]
 
-    [woof.base :as base]
-    [woof.client.dom :as woof-dom]
+    [woof.base :as base :refer [&chan-factory make-chan]]
     [woof.data :as d]
     [woof.utils :as u]
 
-    [goog.dom.dataset :as dataset]
-
+    [woof.client.dom :as woof-dom :refer [q q* attr txt txt-only mark!]]
 
     [woof.client.browser.scraper.scraping-ui :as sui]
     ))
@@ -107,81 +105,78 @@
   )
 
 
-
-(defn- extract-uah [uah]
-  {:uah (->
-          uah
-          (str/replace #"\s" "")
-          (str/replace #"\*грн\." "")
-          int
-          )
-   }
-  )
-
-(defn- extract-apartment [ap]
-  (let [re #"(\d+) кім. квартира (\d*).+"
-        [_ rooms m2 ] (re-matches re ap)
-        ]
-    {:rooms (int rooms)
-     :m2 (int m2)
-     }
-    )
-  )
-
 (defn- extract-addr [addr]
   (let [[ap
          street
          house
          city] (str/split addr ",")]
     (merge
-      (extract-apartment ap)
-      {:street (str/trim street)
-       :house  (str/trim house)}
+      (let [re #"(\d+) кім. квартира (\d*).+"
+            [_ rooms m2 ] (re-matches re ap)]
+        {:rooms (int rooms)
+         :area_total (int m2)
+         })
+      {:addr_street (str/trim street)
+       :addr_house  (str/trim house)}
       )
     )
 
   )
 
-(defn- extract-usd [usd]
+
+(defn- extract-uah [area-total uah]
+  (let [UAH (->
+              uah
+              (str/replace #"\s" "")
+              (str/replace #"\*грн\." "")
+              int
+              )]
+    {
+     :UAH UAH
+     :UAH_M2 (.floor js/Math (/ UAH area-total))
+     }
+    )
+
+  )
+
+(defn- extract-usd [area-total usd]
   (let [[_usd
          _
-         _rate
-         ] (->
-             usd
-             (str/replace #"\s" "")
-             (str/split #"\$")
-             )]
+         _rate] (-> usd
+                   (str/replace #"\s" "")
+                   (str/split #"\$"))
+        USD (int _usd)
+        ]
 
     {
-     :usd (int _usd)
-     :usd2uah (-> _rate
+     :USD USD
+     :USD2UAH (-> _rate
                   (str/replace #"=" "")
                   (str/replace #"грн\.\)" "")
-                  js/parseFloat
-                  )
+                  js/parseFloat)
+     :USD_M2 (.floor js/Math (/ USD area-total))
+
      }
 
     )
   )
 
 
-(defn- extract-eur [eur]
-  (let [[_eur
-         _
-         _rate
-         ] (->
+(defn- extract-eur [area-total eur]
+  (let [[_eur _ _rate] (->
              eur
              (str/replace #"\s" "")
              (str/split #"€")
-             )]
+             )
+        EUR (int _eur)
+        ]
 
     {
-     :eur (int _eur)
-     :eur2uah (-> _rate
+     :EUR     EUR
+     :EUR2UAH (-> _rate
                   (str/replace #"=" "")
                   (str/replace #"грн\.\)" "")
-                  js/parseFloat
-                  )
+                  js/parseFloat)
      }
     )
   )
@@ -189,68 +184,113 @@
 
 ;; parsing implementation
 (defn parse-listing [el]
-
-
   (let [
 
-        $link (.querySelector el ".col-md-11 a.link")
-
+        $link (q el ".col-md-11 a.link")
         raw-link-text (dom/getTextContent $link)
+        link-href (attr $link "href")
 
-        link-href (.getAttribute $link "href")
-
-        $uah (.querySelector el ".price > p")
-        $eur (.querySelector el ".price > .m-euro")
-        $usd (.querySelector el ".price > .m-dollar")
+        $uah (q el ".price > p")
+        $eur (q el ".price > .m-euro")
+        $usd (q el ".price > .m-dollar")
 
         $regs (woof-dom/q* el ".info-region a")
 
-        $complex (.querySelector el ".info-complex a")
+        $complex (q el ".info-complex a")
 
         $photos (woof-dom/q* el ".house-photo img")
+        PHOTOS (vec (map-indexed (fn [i $el]
+                                   {:src (attr $el "src")
+                                    :alt (attr $el "alt")
+                                    :title (attr $el "alt")
+                                    :i i
+                                    }) $photos))
+
         $info (woof-dom/q el ".info-text .col-md-9")
+
+        REGIONS (vec (map (fn [$el]
+                            (text $el)
+                           #_{:href (attr $el "href")
+                            :t (text $el)}
+                           ) $regs))
+        [addr-district addr-district-1] REGIONS
+
         ]
 
 
     (merge
       {
        :id (:objectCode (dataset->clj el))
-       :href link-href
+       :url link-href
+       :source :blago
        }
-      (extract-addr raw-link-text)
-      (extract-uah (text $uah))
-      (extract-eur (text $eur))
-      (extract-usd (text $usd))
+      (let [data (extract-addr raw-link-text)
+            area-total (:area_total data)
+            ]
+        (merge
+          data
+          (extract-uah area-total (text $uah))
+          (extract-eur area-total (text $eur))
+          (extract-usd area-total (text $usd))
+          )
+        )
+
       {
-       :link-text raw-link-text
 
+       :info (str
+               raw-link-text " \n"
+               (text $info)  )
 
-       :short-info (text $info)
+       :addr_district     addr-district
+       :addr_district_1   addr-district-1
 
-       ;:uah (text $uah)
-       ;:eur (text $eur)
-       ;:usd (text $usd)
-
-       :region (vec (map (fn [$el]
-                           {:href (.getAttribute $el "href")
-                            :t (text $el)
-                            }
-                           ) $regs))
-
-       :photos (vec (map (fn [$el]
-                           {:src (.getAttribute $el "src")
-                            :alt (.getAttribute $el "alt")
-                            :title (.getAttribute $el "alt")
-                            }) $photos))
-
+       :imgs PHOTOS
 
        }
-
+      (reduce
+        (fn [a p]
+          (assoc a
+            (keyword (str "img-" (:i p)))
+            (:src p))
+          )
+        {} PHOTOS)
       )
+    )
+  )
 
 
 
+(defn scrape-element [params el]
+  (let [cf (&chan-factory params)
+        chan (make-chan cf (base/sid))
+        result (parse-listing el)
+        btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
+
+    (if-let [post-scrape-fn (:scraper/post-scrape-fn params)]
+      (post-scrape-fn el result))
+
+    (let [ids @(:*IDS params)]
+
+      ; (.warn js/console (:id result) ids)
+      (if-not (get ids (:id result))
+        (do
+          (swap! (:*IDS params) conj (:id result))
+          (dom/appendChild el btn)
+          (woof-dom/on-click btn
+                             (fn [e]
+                               (async/put! chan result))
+                             )
+          chan)
+        (do
+          ;; (.warn js/console "ALREADY PROCESSED!!!")
+
+          (classes/add el "WOOF-SEEN")
+          (classes/add el "WOOF-SKIP")
+
+          nil
+          )
+        )
+      )
     )
 
   )
-

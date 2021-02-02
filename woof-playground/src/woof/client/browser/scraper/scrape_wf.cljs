@@ -34,6 +34,9 @@
 
     ;; domik
     [woof.client.browser.domik.parser :as domik-parser]
+
+    ;; blago
+    [woof.client.browser.blago.listings :as blago-parser]
     ))
 
 
@@ -47,17 +50,23 @@
   (or (str/starts-with? url "http://localhost:9500/d.html")
       (str/starts-with? url "http://domik.ua/")))
 
+(defn- blago? [url]
+  (or (str/starts-with? url "http://localhost:9500/b.html")
+      (str/starts-with? url "https://blagovist.ua/")))
 
 (defn get-source [url]
   (cond
     (riel? url) :riel
-    (domik? url) :domik))
+    (domik? url) :domik
+    (blago? url) :blago
+    ))
 
 
 (defn get-container-selector [src]
   (cond
     (= :riel src) ".index-list-container"
     (= :domik src) "#divListObjects"
+    (= :blago src) "#map_fix"
     ))
 
 
@@ -67,15 +76,20 @@
     (cond
       (= :riel src)  (str ".index-list-container > .catalog-item" exclude-processed)
       (= :domik src) (str "#divListObjects .objava" exclude-processed)
+      (= :blago src) (str "#map_fix .search-item" exclude-processed)
       )
     )
   )
 
 
 (defn get-scrape-fn [src]
+  ;; these are basically the same fn
+
   (cond
     (= :riel src) riel-parser/scrape-element
     (= :domik src) domik-parser/scrape-element
+    (= :blago src) blago-parser/scrape-element
+
     )
   )
 
@@ -118,6 +132,7 @@
         *IDS (rum/cursor-in *WF-UI [:ids])
         *SENT-RESULT-IDS (atom #{})
         SCRAPE! (get-scrape-fn SRC)
+
         ]
 
 
@@ -129,6 +144,9 @@
                                 "WOOF-ASYNC"
                                 "WOOF-SEEN"
                                 "WOOF-SKIP"
+
+                                "WOOF-GIVNO"
+
 
                                 "WOOF-ERROR"
                                 "WOOF-PARSE-ERROR"
@@ -242,22 +260,31 @@
                                          (not (contains? sent-ids (:id x)))) ROWS)
                              IDS @*IDS]
 
+                         (.log js/console "TRYING TO SAVE")
+
                          (when-not (empty? IDS)
                            (.group js/console "SAVE:")
+
+                           (.warn js/console "APPEND IDS - 1 - " IDS)
+
                            ;; chain saving results
-                           (ws/POST "http://localhost:8081/kv/append"
+                           (ws/POST "http://localhost:8081/kv/append-set"
                                     (fn []
                                       (.log js/console "IDS...saved!")
-                                      (when (> (count r) 0)
-                                        (.log js/console "sending rows...")
-                                        (ws/POST "http://localhost:8081/kv/append"
-                                                 (fn []
-                                                   (.log js/console "ROWS...saved!")
-                                                   (swap! *SENT-RESULT-IDS into (map :id r))
-                                                   (.log js/console @*SENT-RESULT-IDS)
+                                      (if (> (count r) 0)
+                                        (do
+                                          (.log js/console "sending rows...")
+                                          (ws/POST "http://localhost:8081/kv/append"
+                                                   (fn []
+                                                     (.log js/console "ROWS...saved!")
+                                                     (swap! *SENT-RESULT-IDS into (map :id r))
+                                                     (.log js/console @*SENT-RESULT-IDS)
 
-                                                   (.groupEnd js/console))
-                                                 {:k :rows :v r})
+                                                     (.groupEnd js/console))
+                                                   {:k :rows :v r})
+                                          )
+                                        (do
+                                          (.groupEnd js/console))
                                         )
                                       )
                                     {:k SRC :v IDS})
@@ -268,7 +295,7 @@
           ;; TODO: this is not working without service worker, so manually need to
           SAVE-DATA-ON-LEAVE? false
 
-          PERIODIC-SAVE -1 ;; 0 to disable
+          PERIODIC-SAVE 5000;; 0 to disable
           *periodic-save-id (atom nil)
           ]
       {
@@ -278,6 +305,17 @@
                  (let [cf (&chan-factory params)]
                    (own-chan cf :UPD-CHANNEL UPD-CHAN))
                  {})
+
+               (fn [_]
+                 {
+                  :scraper/post-scrape-fn (fn [el data]
+                                            (if (re-find #"Набережно" (:addr_street data))
+                                              (classes/add el "WOOF-GIVNO"))
+
+                                             )
+                  }
+                 )
+
                (fn [_]
 
                  (if SAVE-DATA-ON-LEAVE?
@@ -424,11 +462,14 @@
                                                            (.log js/console "loading ids from FS")
                                                            (ws/GET (str "http://localhost:9500/s/drv/" (name SRC) "_ids.edn")
                                                                    (fn [raw-edn]
-                                                                     (let [ids (d/to-primitive raw-edn)]
-                                                                       (ws/POST "http://localhost:8081/kv/append"
+                                                                     (let [ids (into #{} (d/to-primitive raw-edn))]
+                                                                       (.warn js/console "APPEND IDS" ids)
+
+                                                                       (swap! *WF-UI assoc :ids ids)
+
+                                                                       (ws/POST "http://localhost:8081/kv/append-set"
                                                                                 (fn []
                                                                                   (async/put! ch ids)
-                                                                                  (swap! *WF-UI assoc :ids backend-ids)
                                                                                   ) {:k SRC :v ids})
                                                                        )
                                                                      )
@@ -438,10 +479,12 @@
                                                                         (async/put! ch #{}))
                                                                       {:k SRC :v #{}})
                                                            )
-                                                         (do
-                                                           (.log js/console "loaded ids" (pr-str (count backend-ids)))
-                                                           (async/put! ch backend-ids)
-                                                           (swap! *WF-UI assoc :ids backend-ids)
+                                                         (let [set-ids (into #{} backend-ids)]
+                                                           (.warn js/console "loaded ids" set-ids
+                                                                  ; (pr-str (count backend-ids))
+                                                                  )
+                                                           (async/put! ch set-ids)
+                                                           (swap! *WF-UI assoc :ids set-ids)
                                                            )
                                                          )
                                                        )
@@ -565,12 +608,9 @@
 
        :steps [
                {
-                :WS/LOAD-IDS [:load-ids SRC]
-
-                ;; add auto start
-
-                ;; :log/loaded-ids [:log :WS/LOAD-IDS]
-                :scraping/start [:scroll-parse :WS/LOAD-IDS]
+                ;; comment out to disable auto start
+                 :WS/LOAD-IDS [:load-ids SRC]
+                 :scraping/start [:scroll-parse :WS/LOAD-IDS]
 
                 ;; debug css
                 :css/attr-0  [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
@@ -582,13 +622,19 @@
                ]
 
        :api   [
-               ;;
-               (chord-action
-                 (woof-dom/chord 49 :shift true :meta true) ;; shift+cmd+!
-                 "START(scroll)"
-                 start-parse-fn)
 
-               (<API> "START(greedy)"
+
+               (<API> "START" #(do {
+                                    :WS/LOAD-IDS [:load-ids SRC]
+                                    :zzz [:log :WS/LOAD-IDS]
+                                    :scraping/start [:scroll-parse :WS/LOAD-IDS]
+                                    }))
+
+               ["START(scroll)" start-parse-fn]
+               ;;
+
+
+               #_(<API> "START(greedy)"
                       #(do
 
                          ;; emulate
@@ -641,7 +687,7 @@
 
                ;;
                ;;
-               ["LOAD IDS FROM FS"
+               #_["LOAD IDS FROM FS"
                 (fn []
                   (ws/GET (str "http://localhost:9500/s/drv/" (name SRC) "_ids.edn")
                           (fn [raw-edn]
@@ -655,10 +701,12 @@
                   )
                 ]
                []
-               ["IDS: save"
-                (fn []
-                  (save-data!))
-                ]
+               (chord-action
+                 (woof-dom/chord 49 :shift true :meta true) ;; shift+cmd+!
+                 "IDS: save"
+                 (fn []
+                   (save-data!))
+                 )
 
                ]
        }
