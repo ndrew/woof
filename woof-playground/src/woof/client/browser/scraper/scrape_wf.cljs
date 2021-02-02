@@ -31,7 +31,7 @@
 
     ;;
     [woof.client.browser.scraper.listings :as l]
-    ))
+    [clojure.set :as set]))
 
 
 
@@ -47,22 +47,29 @@
 
 
 (defn user-confirm-scrape! [params el result]
-  (let [*IDS (:*IDS params)
+  (let [*IDS (:IDs/*current params)
+        initial-ids @(:IDs/*initial params)
 
         cf (&chan-factory params)
         chan (make-chan cf (base/sid))]
 
-    (let [ids @*IDS]
+    (let [ids (set/union initial-ids @*IDS)]
       ; (.warn js/console (:id result) ids)
       (if-not (get ids (:id result))
         (let [btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
-          (swap! *IDS conj (:id result))
+          ;; add confirm button
           (dom/appendChild el btn)
           (woof-dom/on-click btn (fn [e]
-                               (async/put! chan result)))
+                                   (async/put! chan result)))
+
+          ;;
+          (swap! *IDS conj (:id result))
+
           chan)
         (do
           (classes/add el "WOOF-SEEN")
+
+          ;; fixme: this is an ugly way to indicate that we should skip this
           (classes/add el "WOOF-SKIP")
           ;;
           nil
@@ -86,27 +93,6 @@
         (post-scrape-fn params el result))))
   )
 
-
-;; results processing aspect
-(defn _results-init [*WF-UI]
-  ;; result of scraping
-  (swap! *WF-UI assoc :scraped [])
-
-  ;; ids
-  (swap! *WF-UI merge
-         {
-          :IDs/ids #{}
-          :IDs/initial #{}
-          :IDs/sent #{}
-          })
-  )
-
-
-(defn _results-add [*WF-UI r]
-  (swap! *WF-UI update :scraped into [r]))
-
-(defn _results-read [*WF-UI]
-  (get @*WF-UI :scraped))
 
 
 
@@ -135,7 +121,7 @@
                                 (ws/POST "http://localhost:8081/kv/append-set"
                                          (fn []
                                            (async/put! ch ids)
-                                           (swap! *WF-UI merge {:IDs/ids ids
+                                           (swap! *WF-UI merge {:IDs/ids #{}
                                                                 :IDs/initial ids})
 
                                            ) {:k SRC :v ids})
@@ -144,7 +130,7 @@
                   ;; there are ids in memory
                   (let [ids (into #{} backend-ids)]
                     (async/put! ch ids)
-                    (swap! *WF-UI merge {:IDs/ids ids
+                    (swap! *WF-UI merge {:IDs/ids #{}
                                          :IDs/initial ids})
                     )
                   )
@@ -154,16 +140,138 @@
     )
   )
 
-(defn IDs-sub-wf [*wf-state *WF-UI]
-  ;; before
 
+;; todo: migrate from using cursors to params ??
+(defn save-ids-impl! [SRC ROWS
+                      *SENT-RESULT-IDS
+                      *IDS]
+  (let [sent-ids @*SENT-RESULT-IDS
 
-  ;; todo: extract all the id stuff to be a subworkflow
-  {}
+        IDS @*IDS
+        r (filter (fn [x]
+                    (not (contains? sent-ids (:id x)))) ROWS)
+
+        ;;
+        ]
+    (.log js/console "TRYING TO SAVE")
+    (when-not (empty? IDS)
+      (.warn js/console "APPEND IDS - 1 - " IDS)
+
+      ;; chain saving results
+      (ws/POST "http://localhost:8081/kv/append-set"
+               (fn []
+                 (swap! *SENT-RESULT-IDS into IDS)
+
+                 (.log js/console "IDS...saved!")
+                 (if (> (count r) 0)
+                   (do
+                     ;;(.group js/console "SAVE:")
+
+                     (.log js/console "sending rows...")
+                     (ws/POST "http://localhost:8081/kv/append"
+                              (fn []
+                                (.log js/console "ROWS...saved!")
+                                ;(.groupEnd js/console)
+                                )
+                              {:k :rows :v r})
+                     )
+                   )
+                 )
+               {:k SRC :v IDS})
+      )
+    )
   )
 
 
-;;
+
+(defn IDs-sub-wf [*wf-state *WF-UI]
+  ;; before
+
+  ;; ids
+  (swap! *WF-UI merge
+         {
+          :IDs/ids #{}
+          :IDs/initial #{}
+          :IDs/sent #{}
+          }
+
+  (let [SRC (l/get-source)
+
+        *IDS (rum/cursor-in *WF-UI [:IDs/ids])
+        *SENT-RESULT-IDS (rum/cursor-in *WF-UI [:IDs/sent])
+
+
+        _save-data! (fn [params]
+                      ;; todo: store which results had been already send
+
+                      (let [ROWS (get @*WF-UI :scraped)]
+                        (save-ids-impl! SRC ROWS *SENT-RESULT-IDS *IDS)
+                        )
+                      )
+
+        ;; TODO: this is not working without service worker, so manually need to
+        SAVE-DATA-ON-LEAVE? false
+
+        PERIODIC-SAVE 5000;; 0 to disable
+        *periodic-save-id (atom nil)]
+
+    ;; todo: extract all the id stuff to be a subworkflow
+
+    {
+     :init [(fn [params]
+
+              ;; makes no sense - as two requests won't be send
+              (if SAVE-DATA-ON-LEAVE?
+                (js/addEventListener "beforeunload" (partial _save-data! params) false))
+
+              (if (> PERIODIC-SAVE 0)
+                (reset! *periodic-save-id (js/setInterval (partial _save-data! params) PERIODIC-SAVE)))
+
+              {
+               :IDs/*current *IDS
+               :IDs/*initial (rum/cursor-in *WF-UI [:IDs/initial])
+               })]
+
+     :ctx  [(fn [params]
+              {:load-ids {:fn (fn [SRC]
+                                (load-ids-impl! params SRC))}
+               }
+              )]
+
+     :steps []
+
+     :opts [(base/build-opt-on-done (fn [params]
+                                      (let [save-data! (partial _save-data! params)]
+                                        (if SAVE-DATA-ON-LEAVE?
+                                          (js/removeEventListener "beforeunload" save-data! false))
+
+                                        (if (> PERIODIC-SAVE 0)
+                                          (js/clearInterval @*periodic-save-id))
+                                        )
+                                      ))
+            ]
+     }
+
+    )
+  )
+  )
+
+
+  ;; results processing aspect
+  (defn _results-init [*WF-UI]
+    ;; result of scraping
+    (swap! *WF-UI assoc :scraped [])
+    )
+
+  (defn _results-add [*WF-UI r]
+    (swap! *WF-UI update :scraped into [r]))
+
+  (defn _results-read [*WF-UI]
+    (get @*WF-UI :scraped))
+
+
+
+  ;;
 ;; scraping implementation
 (defn scraping-sub-wf [*wf-state *WF-UI]
 
@@ -296,52 +404,6 @@
                          }]
               (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))
 
-
-          save-data! (fn []
-                       ;; todo: store which results had been already send
-                       (let [ROWS (RESULTS_READ)
-
-                             sent-ids @*SENT-RESULT-IDS
-
-                             r (filter (fn [x]
-                                         (not (contains? sent-ids (:id x)))) ROWS)
-                             IDS @*IDS]
-
-                         (.log js/console "TRYING TO SAVE")
-                         (when-not (empty? IDS)
-                           (.group js/console "SAVE:")
-                           (.warn js/console "APPEND IDS - 1 - " IDS)
-
-                           ;; chain saving results
-                           (ws/POST "http://localhost:8081/kv/append-set"
-                                    (fn []
-                                      (.log js/console "IDS...saved!")
-                                      (if (> (count r) 0)
-                                        (do
-                                          (.log js/console "sending rows...")
-                                          (ws/POST "http://localhost:8081/kv/append"
-                                                   (fn []
-                                                     (.log js/console "ROWS...saved!")
-                                                     (swap! *SENT-RESULT-IDS into (map :id r))
-                                                     (.log js/console @*SENT-RESULT-IDS)
-
-                                                     (.groupEnd js/console))
-                                                   {:k :rows :v r})
-                                          )
-                                        (do
-                                          (.groupEnd js/console))
-                                        )
-                                      )
-                                    {:k SRC :v IDS})
-                           )
-                         )
-                       )
-
-          ;; TODO: this is not working without service worker, so manually need to
-          SAVE-DATA-ON-LEAVE? false
-
-          PERIODIC-SAVE 5000;; 0 to disable
-          *periodic-save-id (atom nil)
           ]
       {
 
@@ -351,16 +413,6 @@
                    (own-chan cf :UPD-CHANNEL UPD-CHAN))
                  {})
 
-               (fn [_]
-
-                 ;; makes no sense - as two requests won't be send
-                 (if SAVE-DATA-ON-LEAVE?
-                   (js/addEventListener "beforeunload" save-data! false))
-
-                 (if (> PERIODIC-SAVE 0)
-                   (reset! *periodic-save-id (js/setInterval save-data! PERIODIC-SAVE)))
-
-                 {:*IDS *IDS})
                ]
 
        ;;
@@ -487,11 +539,6 @@
                                         :started
                                         )}
 
-                  :load-ids       {:fn (fn [SRC]
-                                           (load-ids-impl! params SRC )
-
-                                         )}
-
                   ;; attaches scroll observers on scraped elements
                   :queue-in-view! {:fn (fn [ticker]
                                          ;(.log js/console ":observe!" ticker)
@@ -591,13 +638,7 @@
                  )
                ]
 
-       :opts  [(base/build-opt-on-done (fn [_]
-                                         (if SAVE-DATA-ON-LEAVE?
-                                           (js/removeEventListener "beforeunload" save-data! false))
-
-                                         (if (> PERIODIC-SAVE 0)
-                                           (js/clearInterval @*periodic-save-id))
-
+       :opts  [(base/build-opt-on-done (fn [params]
                                          ;; stop the ticker
                                          (reset! *ticker-ready? true)
                                          ;; disconnect observers
@@ -607,9 +648,6 @@
 
        :steps [
                {
-                ;; comment out to disable auto start
-                 :WS/LOAD-IDS [:load-ids SRC]
-                 :scraping/start [:scroll-parse :WS/LOAD-IDS]
 
                 ;; debug css
                 :css/attr-0  [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
@@ -626,6 +664,7 @@
                (<API> "START" #(do {
                                     :WS/LOAD-IDS [:load-ids SRC]
                                     :zzz [:log :WS/LOAD-IDS]
+
                                     :scraping/start [:scroll-parse :WS/LOAD-IDS]
                                     }))
 
@@ -688,10 +727,17 @@
                   )
                 ]
                []
-               (chord-action
+               ;; for now use auto-save
+               #_(chord-action
                  (woof-dom/chord 49 :shift true :meta true) ;; shift+cmd+!
                  "IDS: save"
-                 (fn [] (save-data!))
+                 (fn []
+                   (let [params (get @*wf-state :WF/params {})]
+                     (_save-data! params)
+                     )
+
+
+                   )
                  )
 
                ]
@@ -729,7 +775,11 @@
         ;; todo: extract all configuration to here, so there will be single place of configuring wf
 
         _SCRAPE_ (scraping-sub-wf *WF-STATE *WF-UI)
+
+        _CONFIRM_ (IDs-sub-wf *WF-STATE *WF-UI)
+
         api (get _SCRAPE_ :api [])
+
 
         _UI_ (ui-sub-wf *WF-UI api)
         _API_ (api-wf/actions-impl! api api-wf/default-on-chord)
@@ -741,25 +791,37 @@
                         (get _UI_  :init [])
                         (get _API_ :init [])
                         (get _SCRAPE_ :init [])
+                        (get _CONFIRM_ :init [])
                         )
 
      :ctx             (concat
                         (get _UI_     :ctx [])
                         (get _API_    :ctx [])
                         (get _SCRAPE_ :ctx [])
+                        (get _CONFIRM_ :ctx [])
                         )
 
      :steps           (concat
                         (get _UI_  :steps [])
                         (get _API_ :steps [])
                         (get _SCRAPE_ :steps [])
+                        (get _CONFIRM_ :steps [])
+
+                        ;; glue steps
+                        [{
+                          ;; comment out to disable auto start after :WS/LOAD-IDS
+                          :WS/LOAD-IDS [:load-ids (l/get-source)]
+                          :scraping/start [:scroll-parse :WS/LOAD-IDS]
+                          }
+                         ]
+
                         )
 
      :opts            (concat
                         (get _UI_  :opts [])
                         (get _API_ :opts [])
                         (get _SCRAPE_ :opts [])
-                        ;(get _RUN_ :opts [])
+                        (get _CONFIRM_ :opts [])
                         )
 
      ;; expose some wf API

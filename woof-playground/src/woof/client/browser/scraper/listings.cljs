@@ -54,11 +54,14 @@
       (str/starts-with? url "https://blagovist.ua/")))
 
 
-(defn get-source [url]
+(defn get-source
+  ([]
+   (get-source (.. js/document -location -href)))
+  ([url]
   (cond
     (riel? url) :riel
     (domik? url) :domik
-    (blago? url) :blago))
+    (blago? url) :blago)))
 
 
 (defn get-container-selector [src]

@@ -141,7 +141,14 @@
      [:div
       [:header (str "IDS (" (count ids)) ")"]
 
-      (pr-str (clojure.set/difference ids sent-ids))
+      [:.html
+       "ids:" (pr-str ids)
+       "\n"
+       "sent:" (pr-str sent-ids)
+       "\n"
+       ]
+
+      ;(pr-str (clojure.set/difference ids sent-ids))
       ]
 
      )
