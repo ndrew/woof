@@ -109,53 +109,61 @@
           :IDs/ids #{}
           :IDs/initial #{}
           :IDs/sent #{}
+
+          :IDs/sent-listings #{}
+
           }
 
   (let [SRC (l/get-source)
 
-        *IDS (rum/cursor-in *WF-UI [:IDs/ids])
-        *SENT-RESULT-IDS (rum/cursor-in *WF-UI [:IDs/sent])
+        *IDS              (rum/cursor-in *WF-UI [:IDs/ids])
+        *SENT-IDS         (rum/cursor-in *WF-UI [:IDs/sent])
 
+        *LISTING-SENT-IDS    (rum/cursor-in *WF-UI [:IDs/sent-listings])
 
-        _save-data! (fn [params]
-                      ;; todo: store which results had been already send
-
+        save-data! (fn []
+                      ;; get ROWS via shared state
                       (let [ROWS (get @*WF-UI :scraped)]
 
-                        (let [sent-ids @*SENT-RESULT-IDS
+                        (let [sent-ids @*SENT-IDS
 
                               IDS @*IDS
-                              r (filter (fn [x]
-                                          (not (contains? sent-ids (:id x)))) ROWS)
+
+                              ids2send (set/difference IDS sent-ids)
+
+
+
+                              listing2sent-ids @*LISTING-SENT-IDS
+
+                              ;; FIXME: not correct
+                              rows2send (filter (fn [x]
+                                                  (not (contains? listing2sent-ids (:id x)))) ROWS)
 
                               ;;
                               ]
-                          (.log js/console "TRYING TO SAVE")
-                          (when-not (empty? IDS)
-                            (.warn js/console "APPEND IDS - 1 - " IDS)
+                          ; (.log js/console "TRYING TO SAVE")
+                          (when-not (empty? ids2send)
+                            (.warn js/console "APPEND IDS - 1 - " ids2send)
 
                             ;; chain saving results
                             (ws/POST "http://localhost:8081/kv/append-set"
                                      (fn []
-                                       (swap! *SENT-RESULT-IDS into IDS)
-
-                                       (.log js/console "IDS...saved!")
-                                       (if (> (count r) 0)
-                                         (do
-                                           ;;(.group js/console "SAVE:")
-
-                                           (.log js/console "sending rows...")
-                                           (ws/POST "http://localhost:8081/kv/append"
-                                                    (fn []
-                                                      (.log js/console "ROWS...saved!")
-                                                      ;(.groupEnd js/console)
-                                                      )
-                                                    {:k :rows :v r})
-                                           )
-                                         )
-                                       )
-                                     {:k SRC :v IDS})
+                                       (swap! *SENT-IDS into ids2send)
+                                       (.log js/console "IDS...saved!"))
+                                     {:k SRC :v ids2send})
                             )
+
+                          (when (> (count rows2send) 0)
+                            (.log js/console "sending rows...")
+                            (ws/POST "http://localhost:8081/kv/append"
+                                     (fn []
+                                       (.log js/console "ROWS...saved!")
+                                       (swap! *LISTING-SENT-IDS into (map :id rows2send))
+                                       ;(.groupEnd js/console)
+                                       )
+                                     {:k :rows :v rows2send})
+                            )
+
                           )
                        )
                       )
@@ -163,7 +171,7 @@
         ;; TODO: this is not working without service worker, so manually need to
         SAVE-DATA-ON-LEAVE? false
 
-        PERIODIC-SAVE 5000;; 0 to disable
+        PERIODIC-SAVE 1000;; 0 to disable
         *periodic-save-id (atom nil)]
 
     ;; todo: extract all the id stuff to be a subworkflow
@@ -172,15 +180,17 @@
      :init [(fn [params]
 
               ;; makes no sense - as two requests won't be send
-              (if SAVE-DATA-ON-LEAVE?
-                (js/addEventListener "beforeunload" (partial _save-data! params) false))
+              ;(if SAVE-DATA-ON-LEAVE?
+              ;  (js/addEventListener "beforeunload" save-data! false))
 
               (if (> PERIODIC-SAVE 0)
-                (reset! *periodic-save-id (js/setInterval (partial _save-data! params) PERIODIC-SAVE)))
+                (reset! *periodic-save-id (js/setInterval save-data! PERIODIC-SAVE)))
 
               {
                :IDs/*current *IDS
                :IDs/*initial (rum/cursor-in *WF-UI [:IDs/initial])
+
+
                })]
 
      :ctx  [(fn [params]
@@ -227,13 +237,11 @@
      :steps []
 
      :opts [(base/build-opt-on-done (fn [params]
-                                      (let [save-data! (partial _save-data! params)]
-                                        (if SAVE-DATA-ON-LEAVE?
-                                          (js/removeEventListener "beforeunload" save-data! false))
+                                      (if SAVE-DATA-ON-LEAVE?
+                                        (js/removeEventListener "beforeunload" save-data! false))
 
-                                        (if (> PERIODIC-SAVE 0)
-                                          (js/clearInterval @*periodic-save-id))
-                                        )
+                                      (if (> PERIODIC-SAVE 0)
+                                        (js/clearInterval @*periodic-save-id))
                                       ))
             ]
      ;; TODO: provide sub-api

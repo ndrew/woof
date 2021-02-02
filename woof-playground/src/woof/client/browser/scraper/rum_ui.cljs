@@ -137,6 +137,9 @@
 
    (let [ids (get STATE :IDs/ids #{})
          sent-ids (get STATE :IDs/sent #{})
+
+         listings (get STATE :scraped [])
+         sent-listing-ids (get STATE :IDs/sent-listings #{})
          ]
      [:div
       ;; todo: do same stuff for listings
@@ -146,6 +149,9 @@
                                       "saved"
                                       (str "saving..."(count ids2save))) ]
          )
+
+       (if (not= (count listings) (count sent-listing-ids))
+         [:header "NOT SAVED"])
        ]
 
 
