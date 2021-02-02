@@ -132,10 +132,6 @@
 
         project (if projectEl (.getAttribute projectEl "href") nil)
 
-
-
-
-
         ]
 
     (merge
@@ -186,10 +182,8 @@
        ;:house        (if houseEls (map #(.getAttribute % "href") (array-seq houseEls)) nil)
        ;:houseTypeUrl (if houseTypeEl (.getAttribute houseTypeEl "href"))
        :house_walls    (if houseTypeEl
-                         (let [ht (dom/getTextContent houseTypeEl)]
-                           (if (= "Сталинки" ht)
-                             (classes/add el "WOOF-CANDIDATE"))
-                           ht) "")
+                         (dom/getTextContent houseTypeEl)
+                         "")
        }
 
       ;; guess rooms
@@ -220,9 +214,6 @@
                   )
          }
         )
-
-
-
 
 
       ;;

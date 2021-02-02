@@ -35,6 +35,8 @@
 
     ;; blago
     [woof.client.browser.blago.listings :as blago-parser]
+    ;; ria
+    [woof.client.browser.ria.dom :as ria-parser]
     ))
 
 ;;
@@ -53,6 +55,11 @@
   (or (str/starts-with? url "http://localhost:9500/b.html")
       (str/starts-with? url "https://blagovist.ua/")))
 
+(defn- ria? [url]
+  (or (str/starts-with? url "http://localhost:9500/ria.html")
+      (str/starts-with? url "https://dom.ria.com/"))
+  )
+
 
 (defn get-source
   ([]
@@ -61,7 +68,10 @@
   (cond
     (riel? url) :riel
     (domik? url) :domik
-    (blago? url) :blago)))
+    (blago? url) :blago
+    (ria? url) :ria
+    )
+   ))
 
 
 (defn get-container-selector [src]
@@ -69,6 +79,7 @@
     (= :riel src) ".index-list-container"
     (= :domik src) "#divListObjects"
     (= :blago src) "#map_fix"
+    (= :ria src) "#searchResults"
     ))
 
 
@@ -79,6 +90,7 @@
       (= :riel src)  (str ".index-list-container > .catalog-item" exclude-processed)
       (= :domik src) (str "#divListObjects .objava" exclude-processed)
       (= :blago src) (str "#map_fix .search-item" exclude-processed)
+      (= :ria src) (str "#searchResults .ticket-clear" exclude-processed)
       )
     )
   )
@@ -89,4 +101,7 @@
   (cond
     (= :riel src)  riel-parser/parse-listing
     (= :domik src) domik-parser/parse-listing
-    (= :blago src) blago-parser/parse-listing))
+    (= :blago src) blago-parser/parse-listing
+    (= :ria src) ria-parser/parse-listing
+    )
+  )

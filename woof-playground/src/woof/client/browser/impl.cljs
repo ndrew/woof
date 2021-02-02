@@ -94,6 +94,10 @@
     (= url "http://localhost:9500/d.html") scrape-wf/wf!
     (clojure.string/starts-with? url "http://domik.ua/") scrape-wf/wf!
 
+    (= url "http://localhost:9500/ria.html") scrape-wf/wf!
+    (clojure.string/starts-with? url "https://dom.ria.com/") scrape-wf/wf!
+
+
     ;
 
 

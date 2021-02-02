@@ -148,9 +148,7 @@
        (str "ids: " (count sent-ids) "/" (count ids))]
 
       [:span.tag {:class (if (not= (count listings) (count sent-listing-ids)) "pending")}
-       (str "listings: " (count sent-listing-ids) "/" (count listings))]
-       ]
-     )
+       (str "listings: " (count sent-listing-ids) "/" (count listings))]])
 
    ;;
    (when-let [data (:scraped STATE)]

@@ -38,8 +38,13 @@
 (defn quick-analysis-scrape! [params el data]
 
   ;; todo: add more rules
-  (if (re-find #"Набережно" (:addr_street data))
+  (when-let [street (:addr_street data) ]
+    (re-find #"Набережно" street)
     (classes/add el "WOOF-GIVNO"))
+
+  (if-let [ht (:house_walls data)]
+    (if (#{"Сталинки"} ht)
+      (classes/add el "WOOF-CANDIDATE")))
 
   nil
   )

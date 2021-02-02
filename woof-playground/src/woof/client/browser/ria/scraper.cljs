@@ -1,4 +1,4 @@
-(ns woof.client.browser.autoria.scraper
+(ns woof.client.browser.ria.scraper
   (:require
     [goog.object]
     [goog.dom :as dom]
