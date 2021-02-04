@@ -292,3 +292,38 @@ article.WOOF-ASYNC.WOOF-DONE {
     font-size: 8pt;
 }
 
+
+.WOOF-SKIP {
+    opacity: 0.1;
+}
+
+.woof-scraper-control .tag {
+    font-size: 7pt;
+    font-weight: bolder;
+    background-color: transparent;
+    border-radius: 3px;
+    padding: .1rem;
+    border: 1px solid rgba(0, 0, 0, 0.5);
+    line-height: 1.5;
+}
+
+.woof-scraper-control .tag + .tag {
+    margin-left: .5rem;
+}
+
+.woof-scraper-control .tag {
+    transition: background-color 120ms;
+}
+
+.woof-scraper-control .tag.pending {
+    background-color: rgba(246, 42, 178, 0.46);
+}
+
+
+/* custom styles */
+
+#divListObjects .objava.WOOF-WIP .adress_text {
+    font-size: 18pt;
+    font-weight: bolder;
+
+}

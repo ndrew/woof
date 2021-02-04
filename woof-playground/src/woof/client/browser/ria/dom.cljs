@@ -21,15 +21,83 @@
 
 (defn parse-listing [el]
 
-  ;; search-realty-17637657
-
-  (let [_id (.-id el )
+  (let [_id (.-id el)
         [_ id] (re-matches #"search-realty-(\d+)" _id)
+        $URL (q el "a.photo-340x220")
         ]
 
-    {
-     :id id
-     }
-    )
+    (merge
+      ;;
+      ;; GENERAL
+      {
+       :id     id
+       :url    (str "https://dom.ria.com" (attr $URL "href"))
+       :source :ria
+       }
+      ;;
+      ;; INFO
+      (let [$INFO (q el ".descriptions-ticket")]
+        {
+         :info (txt $INFO)
+         })
+      ;;
+      ;; ADDR
+      (let [$ADDR (q el ".wrap_desc .size18 A")]
+        {
+         :addr_street   (txt (q $ADDR "SPAN:nth-child(1)"))
+         :addr_district (woof-dom/txt-only $ADDR)
+         :_addr         (str/trim (txt $ADDR))
+         })
+      ;;
+      ;;
+      (let [[$rooms $area] (q* el ".wrap_desc .mb-10 li")
+            area-total (-> $area
+                           txt
+                           str/trim
+                           (str/split " ")
+                           first
+                           js/parseInt)]
+        (merge {
+                :rooms      (-> $rooms
+                                txt
+                                str/trim
+                                (str/split " ")
+                                first
+                                js/parseInt
+                                )
+                :area_total area-total
+                }
+               ;;
+               ;; PRICE
+               (let [$PRICE (q el ".mb-5 > span > span:not(.hide)")
+                     $USD (q $PRICE "b")
+                     _USD (txt $USD)
 
+                     USD (-> $USD
+                             txt
+                             (str/replace #" " "")
+                             (str/replace #"\$" "")
+                             js/parseInt)
+                     UAH (-> $PRICE
+                             woof-dom/txt-only
+                             str/trim
+                             (str/replace #" " "")
+                             (str/replace #"грн" "")
+                             js/parseInt)
+                     ]
+                 {
+                  :_price (txt $PRICE)
+
+                  :UAH    UAH
+                  :UAH_M2 (.floor js/Math (/ UAH area-total))
+
+                  :USD    USD
+                  :USD_M2 (.floor js/Math (/ USD area-total))
+                  }
+                 )
+               )
+
+        )
+      )
+    )
   )

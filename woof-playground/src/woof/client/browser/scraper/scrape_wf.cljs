@@ -39,8 +39,8 @@
 
   ;; todo: add more rules
   (when-let [street (:addr_street data) ]
-    (re-find #"Набережно" street)
-    (classes/add el "WOOF-GIVNO"))
+    (if (re-find #"Набережно" street)
+      (classes/add el "WOOF-GIVNO")))
 
   (if-let [ht (:house_walls data)]
     (if (#{"Сталинки"} ht)
@@ -58,9 +58,12 @@
         cf (&chan-factory params)
         chan (make-chan cf (base/sid))]
 
-    (let [ids (set/union initial-ids @*IDS)]
+    (let [ids (set/union initial-ids @*IDS)
+
+          process? (not (contains? ids (:id result)))
+          ]
       ; (.warn js/console (:id result) ids)
-      (if-not (get ids (:id result))
+      (if process?
         (let [btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
           ;; add confirm button
           (dom/appendChild el btn)
@@ -69,7 +72,6 @@
 
           ;;
           (swap! *IDS conj (:id result))
-
           chan)
         (do
           (classes/add el "WOOF-SEEN")
@@ -84,6 +86,33 @@
     )
   )
 
+(defn re-scrape! [params el result]
+  (let [IDS #{ "18882832"
+               "18295146"
+               "18474694"
+               "18976385"
+               "19064389"
+               "18962513"
+               "18957381"
+               "18910684"
+              }
+        process? (contains? IDS (:id result))
+
+        ]
+    (.warn js/console (pr-str result))
+
+    (if process?
+      result
+      (do
+        ;; (classes/add el "WOOF-SEEN")
+        (classes/add el "WOOF-SKIP")
+        ;;
+        nil
+        )
+      )
+    )
+  )
+
 
 (defn build-scrape-fn [src]
 
@@ -91,7 +120,12 @@
 
         post-scrape-fn (fn [params el result]
                          (quick-analysis-scrape! params el result)
-                         (user-confirm-scrape! params el result))]
+
+                         (re-scrape! params el result)
+                         ;;(user-confirm-scrape! params el result)
+
+                         ;; result
+                         )]
 
     (fn [params el]
       (let [result (parse-listing-fn el)]
@@ -670,6 +704,51 @@
                ]
 
        :api   [
+
+               ["scroll to bottom" (fn []
+                                     (let [$container (q SCRAPE-CONTAINER-SELECTOR)
+
+                                           *y (volatile! (.-scrollTop $container))
+                                           *interval-id (volatile! -1)
+
+                                           scroll-fn (fn []
+                                                       ;(.warn js/console "scrolling")
+                                                       (let [{
+                                                              prq :process-queue
+                                                              elq :el-queue
+                                                              } @*WF-UI
+                                                             h (.-innerHeight js/window)
+                                                             scroll-to (.-scrollHeight $container)
+                                                             ]
+
+                                                         (if (and (empty? elq)
+                                                                    (empty? prq))
+                                                           (do
+                                                             (.scrollTo js/window 0 @*y)
+                                                             ;(.warn js/console "scroll to " @*y)
+                                                             (vswap! *y + h)
+
+                                                             ;(.warn js/console (+ @*y h) "vs" scroll-to)
+                                                             (when (> @*y (+ h scroll-to))
+                                                               (js/clearInterval @*interval-id)
+                                                               (let [[el] (sort-by (fn [el]
+                                                                                     (.-scrollTop el))(q* ".WOOF-WIP:not(WOOF-SKIP)"))]
+                                                                 (if el
+                                                                   (.scrollIntoView el)
+                                                                   (.warn js/console "NO .WOOF-WIP found"))
+                                                                 )
+                                                               )
+                                                             )
+                                                           ; (.warn js/console "waiting")
+                                                           )
+                                                         )
+                                                       )
+                                           ]
+
+                                       (vreset! *interval-id
+                                                (js/setInterval scroll-fn 300)))
+                                )
+                              ]
 
                ;; TODO: keep this in sync with :steps
                (<API> "START" #(do {
