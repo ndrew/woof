@@ -67,7 +67,11 @@
   ([url]
   (cond
     (riel? url) :riel
-    (domik? url) :domik
+    (domik? url)
+    (cond (or
+            (str/starts-with? url "http://localhost:9500/d.html")
+            (str/starts-with? url "http://domik.ua/kompanii/kiev/rieltorskie-kompanii")) :domik-agencies
+          :else :domik)
     (blago? url) :blago
     (ria? url) :ria
     )
@@ -78,6 +82,7 @@
   (cond
     (= :riel src) ".index-list-container"
     (= :domik src) "#divListObjects"
+    (= :domik-agencies src) ".centr_left .white_round_block_content"
     (= :blago src) "#map_fix"
     (= :ria src) "#searchResults"
     ))
@@ -89,6 +94,8 @@
     (cond
       (= :riel src)  (str ".index-list-container > .catalog-item" exclude-processed)
       (= :domik src) (str "#divListObjects .objava" exclude-processed)
+      (= :domik-agencies src)
+                      (str ".centr_left .white_round_block_content .catalog_entry" exclude-processed)
       (= :blago src) (str "#map_fix .search-item" exclude-processed)
       (= :ria src) (str "#searchResults .ticket-clear" exclude-processed)
       )
@@ -101,6 +108,7 @@
   (cond
     (= :riel src)  riel-parser/parse-listing
     (= :domik src) domik-parser/parse-listing
+    (= :domik-agencies src) domik-parser/parse-agency
     (= :blago src) blago-parser/parse-listing
     (= :ria src) ria-parser/parse-listing
     )

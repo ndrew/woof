@@ -249,8 +249,31 @@
 (defn parse-listing [el]
   (let [$id (q el ".tittle_obj [clickcntid]")
         id (attr $id "clickcntid")]
-    (do-scrape! id el)
-    ))
+    (do-scrape! id el)))
+
+
+(defn parse-agency [el]
+  (let [
+        ;;$a (q el "H4 > A")
+        agency (txt (q el "H4"))
+        $site (q el ".catalog_entry_inner .a_graph")
+        site (txt $site)
+
+        $info (q el ".catalog_entry_inner .add_info")
+        ; (attr $a "href")
+        ]
+
+    {:agency agency
+     :site site
+     :info (txt $info)
+     }
+    )
+
+
+  #_(let [$id (q el ".tittle_obj [clickcntid]")
+        id (attr $id "clickcntid")]
+    (do-scrape! id el))
+  )
 
 
 

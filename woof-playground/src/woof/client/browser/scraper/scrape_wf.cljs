@@ -119,12 +119,18 @@
   (let [parse-listing-fn (l/get-parse-fn src)
 
         post-scrape-fn (fn [params el result]
-                         (quick-analysis-scrape! params el result)
 
-                         (re-scrape! params el result)
-                         ;;(user-confirm-scrape! params el result)
+                         (cond (= src :domik-agencies) result
+                               :else (do
+                                       (quick-analysis-scrape! params el result)
 
-                         ;; result
+                                       ;; (re-scrape! params el result)
+                                       (user-confirm-scrape! params el result)
+
+                                       ;; result
+
+                                       )
+                               )
                          )]
 
     (fn [params el]
@@ -161,20 +167,20 @@
         *LISTING-SENT-IDS    (rum/cursor-in *WF-UI [:IDs/sent-listings])
 
         save-data! (fn []
+
+                     ;; put scraping results to :scraped
+                     ;; put other stuff to :other
+
                       ;; get ROWS via shared state
                       (let [ROWS (get @*WF-UI :scraped)]
-
                         (let [sent-ids @*SENT-IDS
 
                               IDS @*IDS
 
                               ids2send (set/difference IDS sent-ids)
 
-
-
                               listing2sent-ids @*LISTING-SENT-IDS
 
-                              ;; FIXME: not correct
                               rows2send (filter (fn [x]
                                                   (not (contains? listing2sent-ids (:id x)))) ROWS)
 
@@ -303,16 +309,25 @@
 
 
   ;; results processing aspect
-  (defn _results-init [*WF-UI]
+  (defn _results-init [SRC *WF-UI]
     ;; result of scraping
     (swap! *WF-UI assoc :scraped [])
+
+    (if (= :domik-agencies SRC)
+      (swap! *WF-UI assoc :other [])
+      )
     )
 
-  (defn _results-add [*WF-UI r]
-    (swap! *WF-UI update :scraped into [r]))
+  (defn _results-add [SRC *WF-UI r]
+    (let [k (if (= :domik-agencies SRC) :other :scraped)]
+      (swap! *WF-UI update k into [r])
+      )
 
-  (defn _results-read [*WF-UI]
-    (get @*WF-UI :scraped))
+    )
+
+  (defn _results-read [SRC *WF-UI]
+    (let [k (if (= :domik-agencies SRC) :other :scraped)]
+      (get @*WF-UI k)))
 
 
 
@@ -326,9 +341,9 @@
 
         SRC (l/get-source url)
 
-        RESULTS_INIT (partial _results-init *WF-UI)
-        RESULTS_ADD  (partial _results-add *WF-UI)
-        RESULTS_READ (partial _results-read *WF-UI)
+        RESULTS_INIT (partial _results-init SRC *WF-UI)
+        RESULTS_ADD  (partial _results-add SRC *WF-UI)
+        RESULTS_READ (partial _results-read SRC *WF-UI)
 
         SCRAPE-CONTAINER-SELECTOR (l/get-container-selector SRC)
         SCRAPE-SELECTOR (l/get-scrape-selector SRC)
@@ -541,7 +556,7 @@
                                        (if-not @*ticker-ready?
                                          (do
 
-                                           ;; updating tick period
+                                           ;; todo: backpressure - updating tick period
                                            #_(let [t @*t
                                                    now (u/now)]
                                                (.log js/console "UPD:" (- now t) "ms")
@@ -625,7 +640,7 @@
                                                  ;; remove element from queue immediately
                                                  (swap! *WF-UI update :process-queue pop)
 
-                                                 (.log js/console "processing" el)
+                                                 ; (.log js/console "processing" el)
                                                  ;; process - res/nil/exception?
                                                  (try
                                                    (if-let [result (SCRAPE! params el)]
@@ -695,15 +710,21 @@
                {
 
                 ;; debug css
-                :css/attr-0  [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
-                :css/attr-1  [:css-rules* [".DDD > *" "z-index: 100;"]]
-                :css/attr-2  [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
-                :css/attr-3  [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+                ;:css/attr-0  [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
+                ;:css/attr-1  [:css-rules* [".DDD > *" "z-index: 100;"]]
+                ;:css/attr-2  [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+                ;:css/attr-3  [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
 
                 }
                ]
 
        :api   [
+
+               ["👀" (fn []
+                       (let [body (.-body js/document)]
+                         (classes/toggle body "DEBUG-MODE")
+                         )
+                       )]
 
                ["scroll to bottom" (fn []
                                      (let [$container (q SCRAPE-CONTAINER-SELECTOR)

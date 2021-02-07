@@ -169,6 +169,26 @@
        )
      )
 
+   (when-let [data (:other STATE)]
+     (pg-ui/<transform-list>
+       (fn [d]
+         [:span (pr-str d)]
+         )
+       data
+       ;; filters
+       {} ;(group-by :ID @*asserts)
+       :id-fn :id
+       ;:copy-fn #(dissoc % :test)
+       ;:sort-fn (fn [a b] (compare (:code a) (:code b)))
+       :filter-map {
+                    ;"test-street" (partial pg-ui/_marker-class-filter "test-street")
+                    ;"drv-street" (partial pg-ui/_marker-class-filter "drv-street")
+                    ;"non drv-street" (partial pg-ui/_marker-except-class-filter "drv-street")
+                    ;"no-house" (partial pg-ui/_marker-class-filter "no-house")
+                    }
+       )
+     )
+
    ;[:hr]
    #_[:pre
       (d/pretty! (-> STATE
