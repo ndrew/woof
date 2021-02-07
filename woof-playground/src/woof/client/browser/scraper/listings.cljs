@@ -29,14 +29,14 @@
 
     ;; riel
     [woof.client.browser.rieltor.parser :as riel-parser]
-
     ;; domik
     [woof.client.browser.domik.parser :as domik-parser]
-
     ;; blago
     [woof.client.browser.blago.listings :as blago-parser]
     ;; ria
     [woof.client.browser.ria.dom :as ria-parser]
+    ;; flatfy
+    [woof.client.browser.lun.flatfy :as flatfy]
     ))
 
 ;;
@@ -60,6 +60,10 @@
       (str/starts-with? url "https://dom.ria.com/"))
   )
 
+(defn- flatfy? [url]
+  (or (str/starts-with? url "http://localhost:9500/flat.html")
+      (str/starts-with? url "https://flatfy.ua/"))
+  )
 
 (defn get-source
   ([]
@@ -74,6 +78,7 @@
           :else :domik)
     (blago? url) :blago
     (ria? url) :ria
+    (flatfy? url) :flatfy
     )
    ))
 
@@ -85,6 +90,7 @@
     (= :domik-agencies src) ".centr_left .white_round_block_content"
     (= :blago src) "#map_fix"
     (= :ria src) "#searchResults"
+    (= :flatfy src) ".table-view"
     ))
 
 
@@ -98,6 +104,7 @@
                       (str ".centr_left .white_round_block_content .catalog_entry" exclude-processed)
       (= :blago src) (str "#map_fix .search-item" exclude-processed)
       (= :ria src) (str "#searchResults .ticket-clear" exclude-processed)
+      (= :flatfy src) (str ".table-view .realty-block__wrapper" exclude-processed)
       )
     )
   )
@@ -111,5 +118,6 @@
     (= :domik-agencies src) domik-parser/parse-agency
     (= :blago src) blago-parser/parse-listing
     (= :ria src) ria-parser/parse-listing
+    (= :flatfy src) flatfy/parse-listing
     )
   )

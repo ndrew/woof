@@ -121,6 +121,7 @@
         post-scrape-fn (fn [params el result]
 
                          (cond (= src :domik-agencies) result
+                               (= src :flatfy) result
                                :else (do
                                        (quick-analysis-scrape! params el result)
 

@@ -97,12 +97,14 @@
     (= url "http://localhost:9500/ria.html") scrape-wf/wf!
     (clojure.string/starts-with? url "https://dom.ria.com/") scrape-wf/wf!
 
+    (= url "http://localhost:9500/flat.html") scrape-wf/wf!
+
 
     ;
 
 
     ;; old domik scraping
-    (= url "http://localhost:9500/domik.html") (domik/domik-scraping! url)
+    ;(= url "http://localhost:9500/domik.html") (domik/domik-scraping! url)
     ;(clojure.string/starts-with? url "http://domik.ua/") (domik/domik-scraping! url) ;;riel/wf!
 
 
