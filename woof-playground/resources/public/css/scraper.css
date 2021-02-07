@@ -325,5 +325,9 @@ article.WOOF-ASYNC.WOOF-DONE {
 #divListObjects .objava.WOOF-WIP .adress_text {
     font-size: 18pt;
     font-weight: bolder;
+}
 
+
+body.DEBUG-MODE .WOOF-SKIP {
+    display: none;
 }
