@@ -331,3 +331,26 @@ article.WOOF-ASYNC.WOOF-DONE {
 body.DEBUG-MODE .WOOF-SKIP {
     display: none;
 }
+
+
+
+.TESTER .realty-preview {
+    margin: 1rem;
+
+    outline: 3px solid black;
+}
+
+.TESTER .realty-preview * {
+    display: block;
+}
+
+
+.TESTER .realty-preview svg,
+.TESTER .realty-preview canvas {
+    display: none !important;
+}
+
+
+.TESTER .realty-preview img {
+    max-height: 50px;
+}

@@ -104,7 +104,7 @@
                       (str ".centr_left .white_round_block_content .catalog_entry" exclude-processed)
       (= :blago src) (str "#map_fix .search-item" exclude-processed)
       (= :ria src) (str "#searchResults .ticket-clear" exclude-processed)
-      (= :flatfy src) (str ".table-view .realty-block__wrapper" exclude-processed)
+      (= :flatfy src) (str ".table-view .realty-block__wrapper .realty-preview" exclude-processed)
       )
     )
   )

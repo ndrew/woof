@@ -119,9 +119,8 @@
   (let [parse-listing-fn (l/get-parse-fn src)
 
         post-scrape-fn (fn [params el result]
-
                          (cond (= src :domik-agencies) result
-                               (= src :flatfy) result
+                               ;; (= src :flatfy) result
                                :else (do
                                        (quick-analysis-scrape! params el result)
 
@@ -138,10 +137,6 @@
       (let [result (parse-listing-fn el)]
         (post-scrape-fn params el result))))
   )
-
-
-
-
 
 
 
@@ -217,7 +212,7 @@
         ;; TODO: this is not working without service worker, so manually need to
         SAVE-DATA-ON-LEAVE? false
 
-        PERIODIC-SAVE 1000;; 0 to disable
+        PERIODIC-SAVE 0 ; 1000;; 0 to disable
         *periodic-save-id (atom nil)]
 
     ;; todo: extract all the id stuff to be a subworkflow
@@ -711,10 +706,10 @@
                {
 
                 ;; debug css
-                ;:css/attr-0  [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
-                ;:css/attr-1  [:css-rules* [".DDD > *" "z-index: 100;"]]
-                ;:css/attr-2  [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
-                ;:css/attr-3  [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+                :css/attr-0  [:css-rules* [".DDD:hover" "outline: 5px solid crimson; \n background-color: rgba(255,0,0,.5);"]]
+                :css/attr-1  [:css-rules* [".DDD > *" "z-index: 100;"]]
+                :css/attr-2  [:css-rules* [".DDD:after" "z-index: 1; \n content: \"↑\" attr(data-parse-id) \"↑\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
+                :css/attr-3  [:css-rules* [".DDD:before" "content: \"↓\" attr(data-parse-id) \"↓\"; b \n display: flex; \n background-color: red; \n font-weight: bolder; \n color: white; \n height: 20px; \n outline: 1px solid crimson;"]]
 
                 }
                ]
@@ -818,7 +813,34 @@
                ["KV: 👨🏻‍🔬 html" (fn []
                                      (let [html (woof-dom/outer-html (q SCRAPE-CONTAINER-SELECTOR))]
                                        (.log js/console html)
-                                       (ws/send-html-for-analysis html)))]
+                                       (ws/send-html-for-analysis html))
+                                     )]
+
+               ["KV: html (scraped only)" (fn []
+                                       ;; remove nodes that had been skipped (usually, it's adds)
+                                       (doseq [$details (woof-dom/q* ".WOOF-SKIP")]
+                                         (dom/removeNode $details))
+
+                                       ;; clan-up debug
+                                       (woof-dom/remove-added-css [
+                                                                   "WOOF-WIP"
+                                                                   "WOOF-DONE"
+                                                                   "WOOF-ASYNC"
+                                                                   "WOOF-SEEN"
+                                                                   "WOOF-SKIP"
+                                                                   "WOOF-GIVNO"
+
+                                                                   "WOOF-ERROR"
+                                                                   "WOOF-PARSE-ERROR"
+                                                                   ;; debug
+                                                                   "DDD"
+                                                                   ])
+
+                                       (let [html (woof-dom/outer-html (q SCRAPE-CONTAINER-SELECTOR))]
+                                         (.log js/console html)
+                                         (ws/send-html-for-analysis html))
+
+                                     )]
 
                []
 
@@ -866,6 +888,13 @@
         _UI_ (ui-sub-wf *WF-UI api)
         _API_ (api-wf/actions-impl! api api-wf/default-on-chord)
 
+
+
+        ;;
+        ;; FIXME: - for now - start manaully
+
+        START-AUTOMATIACALLY false
+
         ]
 
     {
@@ -890,12 +919,16 @@
                         (get _CONFIRM_ :steps [])
 
                         ;; glue steps
-                        [{
-                          ;; comment out to disable auto start after :WS/LOAD-IDS
-                          :WS/LOAD-IDS [:load-ids (l/get-source)]
-                          :scraping/start [:scroll-parse :WS/LOAD-IDS]
-                          }
-                         ]
+                        (if START-AUTOMATIACALLY
+                          [
+                           {
+                            ;; comment out to disable auto start after :WS/LOAD-IDS
+                            :WS/LOAD-IDS [:load-ids (l/get-source)]
+                            :scraping/start [:scroll-parse :WS/LOAD-IDS]
+                            }
+                           ]
+                          []
+                          )
 
                         )
 
