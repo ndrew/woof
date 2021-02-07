@@ -1010,12 +1010,20 @@
 
 
 (defn copy-to-clipboard [v]
-  (let [clipboard js/navigator.clipboard
+  (let [clipboard (.-clipboard js/navigator)
         copy-value (if (string? v) v (d/pretty! v))
         ]
-    (-> (.writeText clipboard copy-value)
-        (.then (fn [response] (.log js/console "Copied to clipboard!" copy-value))
-               (fn [err]      (.warn js/console "Failed to copy to clipboard" err))))
+
+    (if clipboard
+      (-> (.writeText clipboard copy-value)
+          (.then (fn [response] (.log js/console "Copied to clipboard!" copy-value))
+                 (fn [err]
+                   (.warn js/console "Failed to copy to clipboard" err))))
+      (do  ;; non-secure origin
+        (.warn js/console copy-value))
+      )
+
+
     ))
 
 
