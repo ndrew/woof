@@ -47,7 +47,15 @@
 ;; (def SELECTOR "#test-html .im_history_wrap .im_history_message_wrap")
 
 ;; history message text (kind of lensing)
-(def SELECTOR "#test-html .im_history_wrap .im_history_message_wrap .im_message_text")
+;(def SELECTOR "#test-html .im_history_wrap .im_history_message_wrap .im_message_text")
+
+;; domik
+;;(def SELECTOR "#test-html #divListObjects .objava")
+
+
+
+;;(def SELECTOR "#map_fix .search-item")
+(def SELECTOR ".table-view .realty-block__wrapper .realty-preview")
 
 
 ;;
@@ -172,7 +180,9 @@
   [local *wf]
 
   (let [wf @*wf
-        *dict (rum/cursor-in *wf [:state ::dict])]
+        *dict (rum/cursor-in *wf [:state ::dict])
+        *analysis (rum/cursor-in *wf [:state ::analysis])
+        ]
 
     [:div.playground-html-analyzer
 
@@ -234,6 +244,86 @@
              )
            ]
 
+
+          [:div.woof-toolbar.flex
+
+           ;;
+           ;; analysis part
+           ;;
+           (let [{analysis-map :selector/analysis} @*analysis
+                 ;analysis-map (get cfg :selector/analysis)
+                 ]
+             [:div.analysis
+
+              (pg-ui/menubar "ANALYSIS"
+                             [
+                              ["+" (fn []
+                                     (let [selector (js/prompt "provide selector" SELECTOR)]
+
+                                       (swap! *analysis assoc-in [:selector/analysis selector]
+                                              {
+                                               ;; todo:
+                                               :parent-selector ""
+                                               :node {}
+                                               }))
+
+                                     )]
+                              []])
+              ;; A.realty-preview__content-link
+
+              ;; [:.html (d/pretty! selector-usage-map)]
+              ;; [:hr]
+
+              [:table
+               [:thead
+                [:tr
+                 [:th ".."]
+                 (map-indexed (fn [i el]
+                                [:th (str i)]
+                                ) els)
+                 ]
+
+                ]
+
+               [:tbody
+                (map
+                  (fn [[k v]]
+                    [:tr.analysis-row
+                     [:td
+                      (pg-ui/menubar (pr-str k) [["-" (fn [] (swap! *analysis update-in [:selector/analysis] dissoc k))]])]
+
+                     (map-indexed (fn [i el]
+                                    (let [sub-els (q* el k)]
+                                      (cond
+                                        (> (count sub-els) 1)
+                                        [:td.a-item
+                                         "several"
+                                         [:hr]
+                                         [:.html (wdom/outer-html sub-els)]
+                                         ]
+                                        (= 1 (count sub-els))
+                                        (let [[sub-el] sub-els]
+                                          [:td.a-item
+                                           ; (pr-str i)
+                                           [:.html (wdom/outer-html sub-el)]
+                                           ]
+                                          )
+
+                                        :else
+                                        [:td.a-item.error
+                                         "ERROR " (pr-str i)]
+                                        )
+                                      )
+                                    ) els)
+                     ]
+                    )
+                  analysis-map
+                  )
+                ]
+               ]
+              ]
+             )
+           ]
           ;;
           ;; aggregate all :$
           (if els
@@ -243,8 +333,8 @@
                 ;; dashboard for analyzing selected
                 [:hr]
                [:header "V1: analysing all data"]
-               ; hide for now
-               (html-ui/<dashboard> all-data)
+
+               (html-ui/<dashboard> all-data *analysis)
                ]
               )
             )
@@ -298,6 +388,10 @@
              ;; just data for the ui
              ::dict {
                      }
+             ::analysis {
+                         :selector/aliases {}
+                         :selector/analysis {}
+                         }
              }
 
      :init-fns    [

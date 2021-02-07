@@ -1795,7 +1795,13 @@ pre {
 
 
 
+.analysis .error {
+    background-color: #f04932;
+}
 
-
+.analysis .a-item {
+    margin: .1rem;
+    outline: 1px solid goldenrod;
+}
 
 

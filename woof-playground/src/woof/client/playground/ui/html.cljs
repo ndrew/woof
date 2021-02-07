@@ -203,13 +203,23 @@
         idx (:idx node)
         exclusions      (get cfg :filter/exclusions #{})
         excluded?       (exclusions selector)
-        aliases         (get cfg :selector/aliases {})
-        analysis-nodes  (get cfg :selector/analysis {})
+
+        *analysis (get cfg :dom/analysis {})
+        analysis @*analysis
+
+        aliases         (get analysis :selector/aliases {})
+        analysis-nodes  (get analysis :selector/analysis {})
         analyzed?       (analysis-nodes selector)
 
         upd! (:cfg/upd! cfg)
 
         quick-menu [
+                    (if analyzed?
+                      ["cancel analysis" (fn [] (swap! *analysis assoc :selector/analysis (dissoc analysis-nodes selector)))]
+                      ["analysis"          (fn [] (swap! *analysis assoc :selector/analysis (assoc analysis-nodes selector {
+                                                                                                                            :parent-selector parent-selector
+                                                                                                                            :node node
+                                                                                                                            })))])
                     ["📋$"    (fn [] (wdom/copy-to-clipboard selector))]
                     ["p 📋$" (fn [] (wdom/copy-to-clipboard partial-selector))]
                     []
@@ -250,13 +260,6 @@
                             (if excluded?
                               ["cancel exclusion" (fn [] (upd! :filter/exclusions (disj exclusions selector)))]
                               ["exclude"          (fn [] (upd! :filter/exclusions (conj exclusions selector)))])
-
-                            (if analyzed?
-                              ["cancel analysis" (fn [] (upd! :selector/analysis (dissoc analysis-nodes selector)))]
-                              ["analysis"          (fn [] (upd! :selector/analysis (assoc analysis-nodes selector {
-                                                                                                                   :parent-selector parent-selector
-                                                                                                                   :node node
-                                                                                                                   })))])
 
                             ))
        (pg-ui/menubar "" quick-menu))
@@ -790,11 +793,12 @@
 
       :filter/exclusions #{}
 
+      ;; todo: - move these to state
       :selector/aliases {}
       :selector/analysis {}
 
       } ::cfg)
-  [st nodes]
+  [st nodes *analysis]
 
   [:div
    "FIXME: RETURN THE DASHBOARD"
@@ -811,10 +815,13 @@
         selected-filters (cfg-v st :filter/selected-ids)
 
         filter-fn  (make-filter-fn (cfg-v st :filter/all-ids))
+        ;; enrich config
         cfg     (assoc _cfg
                   ::usage selector-usage-map
                   :filter/fn filter-fn
-                  :cfg/upd! upd!)
+                  :cfg/upd! upd!
+                  :dom/analysis *analysis
+                  )
 
         show (get cfg :root-UI/mode)
 
@@ -874,32 +881,6 @@
        ]
       ]
 
-     ;;
-     ;; analysis part
-     ;;
-
-     (let [analysis-map (get cfg :selector/analysis)]
-       [:div.analysis
-        [:header "ANALYSIS"]
-
-        ;; [:.html (d/pretty! selector-usage-map)]
-        ;; [:hr]
-        (map
-          (fn [[k v]]
-            [:div.html
-             (pr-str k) "\n\n"
-
-             [:div.html (d/pretty! v)
-              "\n"
-              ]
-             ;[:hr]
-             ;[:div (pr-str (get selector-usage-map k))]
-             ]
-            )
-          analysis-map
-          )
-        ]
-       )
 
 
      ;[:.html (d/pretty! selected-filters)]
