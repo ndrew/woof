@@ -230,10 +230,14 @@
 
         routes (compojure/routes
 
-                 ;; first implementation of storing scraping session in separate atom
+                 (route/resources "/" {:root "public"})
+
+                 ;; todo: remove this scraping session implementation
+                 ;; ndrw: first implementation of storing scraping session in separate atom
+                 ;;       used in obsolete scrapers
+                 ;;       it's bad as scraper don't need all the data
 
                  ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
-                 (route/resources "/" {:root "public"})
 
                  (compojure/GET "/scraping-session" [] (d/pretty! @*SCRAPING-SESSION))
 
@@ -266,8 +270,9 @@
                    (server-ws-fn params request))
 
 
-                 ;; save scraped data
 
+                 ;;
+                 ;; save scraped data atop of KV
                  ;;
                  (compojure/GET "/scraping/:_k/ids" [_k :as request]
                    (let [k (read-string _k)
@@ -280,7 +285,6 @@
 
                      (pr-str (get @state/*kv k)))
                    )
-
 
                  (compojure/POST "/scraping/:_k/save-ids" [_k :as request]
                    (let [ids (-> request :body slurp read-string)
@@ -303,6 +307,9 @@
                      (edn! :ok)))
 
 
+                 ;;
+                 ;; TODO: simplify save implementation
+                 ;; ndrw: no need to store all listings under :rows and then re-group it by :source
                  (compojure/GET "/scraping/save" [:as request]
                    (info "[SRV] /scraping/save")
 
