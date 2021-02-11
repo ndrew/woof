@@ -28,6 +28,8 @@
     [woof.server.state :as state]
     [woof.server.transport :as tr]
     [woof.server.ws :as WS]
+
+    [woof.server.scraper.fs :as FS]
     ))
 
 
@@ -215,152 +217,191 @@
   (info "[KV] server-init-fn")
   (let [PORT (get params :port 8081)
         ;; for now, use the global scrapping session atom
-        *SCRAPING-SESSION (&scraping-session params)]
+        *SCRAPING-SESSION (&scraping-session params)
+
+        edn! (fn [data]
+              {:status  200
+               :headers {
+                         "Content-Type" "application/edn; charset=utf-8"
+                         "Access-Control-Allow-Headers" "Content-Type"
+                         "Access-Control-Allow-Origin" "*"
+                         }
+               :body (pr-str data)})
+
+        routes (compojure/routes
+
+                 ;; first implementation of storing scraping session in separate atom
+
+                 ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
+                 (route/resources "/" {:root "public"})
+
+                 (compojure/GET "/scraping-session" [] (d/pretty! @*SCRAPING-SESSION))
+
+                 (compojure/GET "/clear-scraping-session" []
+                   (reset! *SCRAPING-SESSION {})
+                   (d/pretty! @*SCRAPING-SESSION))
+
+                 (compojure/GET "/save-scraping-session" []
+                   ;; todo: handle saving of the scraping session
+                   (spit "/Users/ndrw/m/woof/woof-playground/scraping-session.edn"
+                         (d/pretty! @*SCRAPING-SESSION))
+
+                   (d/pretty! @*SCRAPING-SESSION))
+
+                 ;;
+                 ;; tests sending ws broadcast message
+                 (compojure/GET "/test" []
+                   (let [EVT-LOOP (evt-loop/&evt-loop params)
+                         msg [:broadcast (u/now)]]
+                     (go
+                       (async/put! EVT-LOOP {(base/rand-sid)
+                                             [:ws-broadcast msg]
+                                             }))
+                     (pr-str msg)))
+
+
+                 ;; ws handler
+                 (compojure/GET "/scraper-ws" [:as request]
+                   (info "[SRV] /scraper-ws" request "params" params)
+                   (server-ws-fn params request))
+
+
+                 ;; save scraped data
+
+                 ;;
+                 (compojure/GET "/scraping/:_k/ids" [_k :as request]
+                   (let [k (read-string _k)
+                         existing-ids (get @state/*kv key #{})]
+
+                     ;; not in memory - load from fs
+                     (when (empty? existing-ids)
+                       (let [all-ids (FS/get-ids k)]
+                         (swap! state/*kv update k (fnil into #{}) all-ids)))
+
+                     (pr-str (get @state/*kv k)))
+                   )
+
+
+                 (compojure/POST "/scraping/:_k/save-ids" [_k :as request]
+                   (let [ids (-> request :body slurp read-string)
+                         k (read-string _k)]
+
+                     ;; update ids
+                     (swap! state/*kv update k (fnil into #{}) ids)
+
+                     (edn! :ok)
+                     ))
+
+
+                 (compojure/POST "/scraping/:_k/save-listings" [_k :as request]
+                   (let [listings (-> request :body slurp read-string)
+                         k (read-string _k)]
+
+                     ;; for now store in :rows
+                     (swap! state/*kv update :rows into listings)
+
+                     (edn! :ok)))
+
+
+                 (compojure/GET "/scraping/save" [:as request]
+                   (info "[SRV] /scraping/save")
+
+                   (let [kv @state/*kv
+
+                         kv-ids (disj (into #{} (keys kv)) :rows)
+
+                         rows (get kv :rows [])
+                         kv-rows (group-by :source rows)
+
+                         all-ids (into kv-ids
+                                       (keys kv-rows))
+
+                         data (reduce
+                                (fn [a src]
+                                  (conj a
+                                        {
+                                         :ids      (get kv src #{})
+                                         :listings (get kv-rows src [])
+                                         :src      src
+                                         }))
+                                [] all-ids)
+                         ]
+                     (pr-str (FS/save-listings data))
+                     )
+                   )
+
+
+                 ;; more generic implm
+
+                 ;;
+                 ;; kv handler
+                 ;;
+
+                 (compojure/GET "/kv/list" [:as request]
+                   (info "[KV] /kv/list")
+                   (pr-str (keys @state/*kv)))
+
+                 (compojure/GET "/kv/clear" [:as request]
+                   (info "[KV] /kv/clear")
+                   (reset! state/*kv {}))
+
+
+                 (compojure/GET "/kv/all" [:as request]
+                   (info "[KV] /kv/all")
+
+                   (d/pretty! @state/*kv))
+
+
+                 (compojure/GET "/kv/get/:k" [k :as request]
+                   ;(info "[SRV] /scraper-ws" request "params" params)
+                   ;(server-ws-fn params request)
+                   (let [key (read-string k)]
+                     (info "[KV] " [k "vs" key])
+
+                     (pr-str (get @state/*kv key))))
+
+
+                 (compojure/POST "/kv/put" [:as request]
+
+                   (let [edn (-> request :body slurp read-string)
+                         {k :k v :v} edn]
+
+                     (info "[KV] /kv/put" k )
+
+                     (swap! state/*kv assoc k v)
+
+                     (edn! :ok)))
+
+
+                 (compojure/POST "/kv/append-set" [:as request]
+                   (let [edn (-> request :body slurp read-string)
+                         {k :k v :v} edn]
+
+                     (info "[KV] /kv/append-set" k (type v))
+                     (swap! state/*kv update k (fnil into #{}) v)
+
+                     (edn! :ok)))
+
+
+                 (compojure/POST "/kv/append" [:as request]
+                   (let [edn (-> request :body slurp read-string)
+                         {k :k v :v} edn]
+
+                     (info "[KV] /kv/append" k (type v))
+
+                     (swap! state/*kv update k into v)
+
+                     (edn! :ok)))
+                 )
+        ]
     {
      ;; define routes for scraping workflow
      ::server {
-               :routes
-                     (wrap-cors
-                         (compojure/routes
-
-                           ;; first implementation of storing scraping session in separate atom
-
-                           ;(compojure/GET "/" [] (response/resource-response "public/preview.html"))
-                           (route/resources "/" {:root "public"})
-
-                           (compojure/GET "/scraping-session" []
-                             (d/pretty! @*SCRAPING-SESSION))
-
-                           (compojure/GET "/clear-scraping-session" []
-                             (reset! *SCRAPING-SESSION {})
-                             (d/pretty! @*SCRAPING-SESSION))
-
-                           (compojure/GET "/save-scraping-session" []
-                             ;; todo: handle saving of the scraping session
-                             (spit "/Users/ndrw/m/woof/woof-playground/scraping-session.edn"
-                                   (d/pretty! @*SCRAPING-SESSION))
-
-                             (d/pretty! @*SCRAPING-SESSION)
-                             )
-
-
-                           ;; tests sending ws broadcast message
-                           (compojure/GET "/test" []
-                             (let [EVT-LOOP (evt-loop/&evt-loop params)
-                                   msg [:broadcast (u/now)]]
-                               (go
-                                 (async/put! EVT-LOOP {(base/rand-sid)
-                                                       [:ws-broadcast msg]
-                                                       })
-                                 )
-
-                               (pr-str msg)
-                               ))
-
-
-                           ;; ws handler
-                           (compojure/GET "/scraper-ws" [:as request]
-                             (info "[SRV] /scraper-ws" request "params" params)
-                             (server-ws-fn params request)
-                             )
-
-
-                           ;; more generic implm
-
-                           ;;
-                           ;; kv handler
-                           ;;
-
-                           (compojure/GET "/kv/list" [:as request]
-                             (info "[KV] /kv/list")
-                             (pr-str (keys @state/*kv)))
-
-                           (compojure/GET "/kv/clear" [:as request]
-                             (info "[KV] /kv/clear")
-                             (reset! state/*kv {}))
-
-
-                           (compojure/GET "/kv/all" [:as request]
-                             (info "[KV] /kv/all")
-
-                             (d/pretty! @state/*kv)
-                             )
-
-
-
-                           (compojure/GET "/kv/get/:k" [k :as request]
-                             ;(info "[SRV] /scraper-ws" request "params" params)
-                             ;(server-ws-fn params request)
-                             (let [key (read-string k)]
-                               (info "[KV] " [k "vs" key])
-
-                               (pr-str (get @state/*kv key))))
-
-
-                           (compojure/POST "/kv/put" [:as request]
-
-                             (let [edn (-> request :body slurp read-string)
-                                   {k :k v :v} edn]
-
-                               (info "[KV] /kv/put" k )
-
-                               (swap! state/*kv assoc k v)
-
-                               {:status  200
-                                :headers {
-                                          "Content-Type" "application/edn; charset=utf-8"
-                                          "Access-Control-Allow-Headers" "Content-Type"
-                                          "Access-Control-Allow-Origin" "*"
-                                          }
-                                :body (pr-str :ok)}
-                               )
-                             )
-
-
-                           (compojure/POST "/kv/append-set" [:as request]
-                             (let [edn (-> request :body slurp read-string)
-                                   {k :k v :v} edn]
-
-                               (info "[KV] /kv/append-set" k (type v))
-                               (swap! state/*kv update k (fnil into #{}) v)
-
-                               {:status  200
-                                :headers {
-                                          "Content-Type" "application/edn; charset=utf-8"
-                                          "Access-Control-Allow-Headers" "Content-Type"
-                                          "Access-Control-Allow-Origin" "*"
-                                          }
-                                :body (pr-str :ok)}
-                               )
-                             )
-
-
-                           (compojure/POST "/kv/append" [:as request]
-                             (let [edn (-> request :body slurp read-string)
-                                   {k :k v :v} edn]
-
-                               (info "[KV] /kv/append" k (type v))
-
-                               (swap! state/*kv update k into v)
-
-                               {:status  200
-                                :headers {
-                                          "Content-Type" "application/edn; charset=utf-8"
-                                          "Access-Control-Allow-Headers" "Content-Type"
-                                          "Access-Control-Allow-Origin" "*"
-                                          }
-                                :body (pr-str :ok)}
-                               )
-                             )
-
-                           )
-                         #".*"
-                         )
+               :routes (wrap-cors routes #".*")
                :port PORT
                }
-     }
-    )
-  )
+     }))
+
 
 (defn server-ctx-fn [params]
   (let [chan-factory (base/&chan-factory params)
@@ -528,7 +569,11 @@
                 {
                  ;; log errors
                  :op-handlers-map {
-                                   :error (fn [err] (error err))
+                                   :error (fn [err]
+                                            ;; is this really catching an exception
+                                            (error err)
+                                            ;(clojure.stacktrace/print-stack-trace err)
+                                            )
                                    ;:process (fn [result] (info ::process "\n" (d/pretty result)))
                                    :done    (fn [result]
                                               (let [*session (&scraping-session params)]

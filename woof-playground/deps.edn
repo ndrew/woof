@@ -31,6 +31,11 @@
   ;; backend logging
   com.taoensso/timbre         {:mvn/version "4.10.0"}
 
+  ;; backend csv
+  org.clojure/data.csv       {:mvn/version "1.0.0"}
+  semantic-csv/semantic-csv               {:mvn/version "0.2.1-alpha1"}
+
+
   ;; frontend
 
   cljs-http/cljs-http                  {:mvn/version "0.1.46"}

@@ -184,25 +184,26 @@
                               ]
                           ; (.log js/console "TRYING TO SAVE")
                           (when-not (empty? ids2send)
-                            (.warn js/console "APPEND IDS - 1 - " ids2send)
+                            (.warn js/console "saving ids " ids2send)
 
-                            ;; chain saving results
-                            (ws/POST "http://localhost:8081/kv/append-set"
-                                     (fn []
-                                       (swap! *SENT-IDS into ids2send)
-                                       (.log js/console "IDS...saved!"))
-                                     {:k SRC :v ids2send})
+                            (ws/POST
+                              (str "http://localhost:8081/scraping/" SRC "/save-ids")
+                              (fn []
+                                (swap! *SENT-IDS into ids2send)
+                                (.log js/console "IDS...saved!"))
+                              ids2send)
                             )
 
                           (when (> (count rows2send) 0)
                             (.log js/console "sending rows...")
-                            (ws/POST "http://localhost:8081/kv/append"
-                                     (fn []
-                                       (.log js/console "ROWS...saved!")
-                                       (swap! *LISTING-SENT-IDS into (map :id rows2send))
-                                       ;(.groupEnd js/console)
-                                       )
-                                     {:k :rows :v rows2send})
+
+                            (ws/POST
+                              (str "http://localhost:8081/scraping/" SRC "/save-listings")
+                              (fn []
+                                (.log js/console "ROWS...saved!")
+                                (swap! *LISTING-SENT-IDS into (map :id rows2send)))
+                              rows2send)
+
                             )
 
                           )
@@ -212,7 +213,7 @@
         ;; TODO: this is not working without service worker, so manually need to
         SAVE-DATA-ON-LEAVE? false
 
-        PERIODIC-SAVE 0 ; 1000;; 0 to disable
+        PERIODIC-SAVE 1000;; 0 to disable
         *periodic-save-id (atom nil)]
 
     ;; todo: extract all the id stuff to be a subworkflow
@@ -238,37 +239,14 @@
               {:load-ids {:fn (fn [SRC]
                                 (let [ch (make-chan (&chan-factory params) (rand-sid))
                                       *WF-UI (:wf/*UI params)]
-                                  (ws/GET (str "http://localhost:8081/kv/get/" SRC)
+
+                                  (ws/GET (str "http://localhost:8081/scraping/" SRC "/ids")
                                           (fn [_data]
-                                            (let [backend-ids (d/to-primitive _data)]
-                                              (if (nil? backend-ids)
-                                                (do                                       ;; no ids in-memory - load via GET request
-
-                                                  (ws/GET (str "http://localhost:9500/s/drv/" (name SRC) "_ids.edn")
-                                                          (fn [raw-edn]
-                                                            (let [ids (into #{} (d/to-primitive raw-edn))]
-
-                                                              (.warn js/console "APPEND IDS" ids)
-
-                                                              ;; put the loaded ids into server memory
-                                                              (ws/POST "http://localhost:8081/kv/append-set"
-                                                                       (fn []
-                                                                         (async/put! ch ids)
-                                                                         (swap! *WF-UI merge {:IDs/ids #{}
-                                                                                              :IDs/initial ids})
-
-                                                                         ) {:k SRC :v ids})
-                                                              )))
-                                                  )
-                                                ;; there are ids in memory
-                                                (let [ids (into #{} backend-ids)]
-                                                  (async/put! ch ids)
-                                                  (swap! *WF-UI merge {:IDs/ids #{}
-                                                                       :IDs/initial ids})
-                                                  )
-                                                )
-                                              )
-                                            ))
+                                            (let [ids (into #{} (d/to-primitive _data))]
+                                              (async/put! ch ids)
+                                              (swap! *WF-UI merge {:IDs/ids #{}
+                                                                   :IDs/initial ids})
+                                              )))
                                   ch
                                   )
                                 )}
