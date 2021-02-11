@@ -11,9 +11,12 @@
 
     ;;     [me.raynes.fs :as fs]
 
+    [taoensso.timbre :as timbre :refer [log trace debug info warn error fatal report logf tracef debugf infof warnf errorf fatalf reportf spy get-env]]
+
     ))
 
 
+;; hard-coded rank map for CSV export
 (defonce ranks
          (array-map
            :ok 1
@@ -83,17 +86,15 @@
 
 
 (defn get-ids [src]
-
-  ;; fixme: handle creating new file, if there is no one
-
-  ;; load ids from fs
+  ;; todo: nicer string joining
   (let [file-name (str base-dir
                        (name src) "_" "ids.edn")]
-    (if-not (.exists (io/file file-name))
-      (spit file-name #{}))
+    (when-not (.exists (io/file file-name))
+      (spit file-name #{})
+      (info file-name "created"))
 
-    (read-string (slurp file-name)))
-  )
+    (read-string (slurp file-name))))
+
 
 
 (defn save-listings [data]
@@ -114,26 +115,27 @@
                                                   keys
                                                   set
                                                   (into #{:img-1 :img-2 :img-3})
-                                                  sort-fn
-                                                  )
+                                                  sort-fn)
                        }
             ]
 
 
         (let [src (name src)
-              file-name (str base-dir src "_" "here_should_be data.csv")
+              file-name (str base-dir src "_" (.format (new java.text.SimpleDateFormat "dd-MM-yyyy") (java.util.Date.))  ".csv")
               ids-file-name (str base-dir src "_ids.edn")]
 
           (when-not (empty? ids)
             (spit ids-file-name ids)
-            (vswap! *log conj (str ids-file-name "written!"))
-            (println ids-file-name "written!"))
+
+            (info ids-file-name " written!")
+            (vswap! *log conj (str ids-file-name " written!")))
 
 
           (when-not (empty? listings)
             (with-open [out-file (io/writer file-name)]
               (->> listings
                    (sc/cast-with {
+                                  ;;
                                   :img-1 (fnil #(str "=IMAGE(" (pr-str %) ")") "")
                                   :img-2 (fnil #(str "=IMAGE(" (pr-str %) ")") "")
                                   :img-3 (fnil #(str "=IMAGE(" (pr-str %) ")") "")
@@ -142,8 +144,9 @@
                    (sc/vectorize VECT-OPTS)
                    (cd-csv/write-csv out-file))
               )
-            (println file-name "written!")
-            (vswap! *log conj (str file-name "written!"))
+
+            (info file-name " written!")
+            (vswap! *log conj (str file-name " written!"))
             )
           )
         )

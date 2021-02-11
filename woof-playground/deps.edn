@@ -33,7 +33,7 @@
 
   ;; backend csv
   org.clojure/data.csv       {:mvn/version "1.0.0"}
-  semantic-csv/semantic-csv               {:mvn/version "0.2.1-alpha1"}
+  semantic-csv/semantic-csv  {:mvn/version "0.2.1-alpha1"}
 
 
   ;; frontend
