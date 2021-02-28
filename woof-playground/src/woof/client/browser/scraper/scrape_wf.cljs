@@ -86,6 +86,7 @@
     )
   )
 
+;; temporary
 (defn re-scrape! [params el result]
   (let [IDS #{ "18882832"
                "18295146"

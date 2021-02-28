@@ -27,8 +27,8 @@
 
     ))
 
-(defn choose-workflow-meta [url META-INFO]
 
+(defn choose-workflow-meta [url META-INFO]
   (cond
     (clojure.string/starts-with? url "https://web.telegram.org")
     (assoc META-INFO :ui/fixed-side :left)
@@ -37,7 +37,8 @@
     )
   )
 
-
+;;
+;; choose which browser wf to run for url
 (defn choose-workflow [url]
   (cond
 
@@ -53,25 +54,25 @@
     ;; sequential processing of dom elements
     ;(= url "http://localhost:9500/example/seq.html") ex-seq-wf/wf!
 
-    (= url "http://localhost:9500/example/seq.html") nu-seq-wf/wf!
-    (clojure.string/starts-with? url "https://web.telegram.org") nu-seq-wf/wf!
-
-    (clojure.string/starts-with? url "https://www.deezer.com/uk/playlist/") nu-seq-wf/wf!
-
     ;; scraper examples
     (clojure.string/starts-with? url "http://localhost:9500/example/scroll-inview.html") ex-scroll-wf/in-view-wf!
     (clojure.string/starts-with? url "http://localhost:9500/example/scroll-brute.html") ex-scroll-wf/brute-wf!
 
 
     ;; yt
-    (clojure.string/starts-with? url "http://localhost:9500/s/yt/y.html") yt/wf!
 
-    (clojure.string/starts-with? url "http://localhost:9500/s/yt/history.html") yt-nu/wf!
 
     ;; extract history of youtube views
     (clojure.string/starts-with? url "https://www.youtube.com/feed/history") yt-nu/wf!
-
+    (clojure.string/starts-with? url "http://localhost:9500/s/yt/history.html") yt-nu/wf!
+    ;; watch later
     (clojure.string/starts-with? url "https://www.youtube.com/playlist?list=WL") yt/wf!
+    (clojure.string/starts-with? url "http://localhost:9500/s/yt/y.html") yt/wf!
+
+    ;; tg
+    (= url "http://localhost:9500/example/seq.html") nu-seq-wf/wf!
+    (clojure.string/starts-with? url "https://web.telegram.org") nu-seq-wf/wf!
+
 
     ;; kga
     (clojure.string/starts-with? url "https://mkk.kga.gov.ua/map/") kga/wf!
@@ -103,7 +104,6 @@
 
     ;
 
-
     ;; old domik scraping
     ;(= url "http://localhost:9500/domik.html") (domik/domik-scraping! url)
     ;(clojure.string/starts-with? url "http://domik.ua/") (domik/domik-scraping! url) ;;riel/wf!
@@ -116,6 +116,8 @@
     ;   (clojure.string/starts-with? url "http://domik.ua/poleznoe/photoalbum/")  domik-scraper/parse-house-steps
     ;   (clojure.string/starts-with? url "http://domik.ua/nedvizhimost/") domik-scraper/parse-listings-steps
 
+    ;;
+    (clojure.string/starts-with? url "https://www.deezer.com/uk/playlist/") nu-seq-wf/wf!
 
     )
   )

@@ -385,7 +385,7 @@
   (.log js/console "RUNNING WORKFLOW" (u/now))
   (let [url (.. js/document -location -href)
 
-
+        ;; todo: maybe store these in local storage or smth
         default-meta-nfo {
          :ws? false
          :evt-loop? true
