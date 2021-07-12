@@ -45,24 +45,25 @@
 
 ;; scraping wf example
 ;; - get watch history
+;; - process watch later
 
 
 
 
+(defn _trigger-event [*wf-state steps] (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps))
 
+(defn _action [*wf-state title steps-fn]
+   [title (fn []
+            (let [steps (steps-fn)]
+                (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))])
 
 ;;
-;; implementation of scraping
+;; implementation of scraping sub-wf for HISTORY PAGE
 ;;
-;;
-(defn scraping-sub-wf [*wf-state *WF-UI]
+(defn history-scraping-sub-wf [*wf-state *WF-UI]
   (let [; helpers
-        trigger-event (fn [steps] (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps))
-
-        action (fn [title steps-fn]
-                   [title (fn []
-                            (let [steps (steps-fn)]
-                                (evt-loop/_emit-steps (get @*wf-state :WF/params {}) steps)))])
+        trigger-event (partial _trigger-event *wf-state)
+        action (partial _action *wf-state)
 
 
         save!         (fn [k v] (ws/POST "http://localhost:8081/kv/put"
@@ -70,11 +71,12 @@
                                          {:k k :v v}))
 
 
-        ; meta
+        ;; 
+        ;; generic scraping parameters
         LINEARIZE? true
 
         ; data
-        SEQ-ID ::seq
+        SEQ-ID ::seq  ;; sequential (linear) worker id
         SCRAPE-SELECTOR (parser/history-day-selector)
 
         recurring-parse! (fn [LINEARIZE? ]
@@ -95,12 +97,14 @@
 
      :api   [
              ;; toggle details
-             (chord-action (woof-dom/chord 49 :shift true)                    ;; shift+!
-                           "👀" woof-dom/scraping-ui__togle-details)
+             (chord-action (woof-dom/chord 49 :shift true) "👀" woof-dom/scraping-ui__togle-details) ;; shift+!
+
              ["debug!" (fn []
                          (classes/toggle (.. js/document -body) "ZZZ"))]
 
              []
+
+             ;; different scraping strategies
 
              ;; pass only selector
              (action ":batch-scrape-1!" #(do {(sid) [:batch-scrape-1! SCRAPE-SELECTOR]}))
@@ -114,7 +118,6 @@
 
              ;;
              (action "parse(expand)" #(do {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))
-
              (action "parse(recurring expand)" recurring-parse!)
 
              []
@@ -348,6 +351,81 @@
   )
 
 
+;;
+;; scraper sub-wf for scraping watch later
+;;
+
+
+(defn wl-parse-ctx [SCRAPE-SELECTOR]
+		(let [
+      ;; marks element as parsed
+      scrape-start! (fn [el]
+                      ;; todo: use dataset for prod (as won't trigger css refresh)
+                      ;(dataset/set el "woof_scraped" "PROCESSING")
+
+                      (classes/add el "WOOF-WIP")
+
+                      ;; return sid or unique element id
+                      (sid)
+                      )
+      ;;
+      ;; whether element had been scraped
+      is-scraping? (fn [el]
+                     ;;(dataset/has el "woof_scraped")
+                     (classes/has el "WOOF-WIP"))
+
+  
+      CTX (scrape/make-ctx-fn
+               scrape-start!
+               is-scraping?
+
+               ;; indicates which elements to parse
+               SCRAPE-SELECTOR
+
+               (fn [el]
+               	   (classes/add el "WOOF-WIP")
+               	   (woof-dom/outer-html el))
+
+               )
+      ]
+
+     	;; (.log js/console CTX)
+      CTX
+		
+))
+
+
+(defn dbg-params-fn [f]
+	 (fn [params]
+	 		(let [R (f params)]
+	 			(.log js/console R)
+
+	 			R
+	 		)
+	 )
+)
+
+
+(defn watch-later-scraping-sub-wf [*wf-state *WF-UI]
+	(let [
+	  			 action (partial _action *wf-state)
+       SCRAPE-SELECTOR ".foo"
+
+		]
+		{
+				:api [
+							(action "SCRAPE" #(do {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))
+							]
+
+				:init []
+				:ctx [(dbg-params-fn (wl-parse-ctx SCRAPE-SELECTOR))]
+				:steps [{::hello [:prn "watch later scraper running"]}]
+			}))
+
+
+;;
+;; WF running strategies
+;; 
 (defn runner-sub-wf [& {:keys [execute-mode
                                t ; imeout
                                n ; chunk size
@@ -375,6 +453,9 @@
    })
 
 
+;;
+;; react rum-based WF UI
+;; 
 
 (def <rum-ui> (rum-wf/gen-rum-ui yt-ui/<scraping-ui>))
 
@@ -414,71 +495,57 @@
                :CSS/minimal-styles    [:css-file "http://localhost:9500/css/r.css"]
                :CSS/playground-styles [:css-file "http://localhost:9500/css/playground.css"]
                })]
-    :opts [(fn [params]
-             {:op-handlers-map {
-                                :process (fn [result]
+    :opts [
+			    {:op-handlers-map {:process (fn [result]
                                            ;; just take the results by key prefix
                                            (_ui-process-fn__extract-results *WF-UI result)
 
                                            result
-                                           )}
-              }
-             )]
+                                           )}}
+    ]
     )
   )
 
 
-;;;;;
+(defn combine [aspects k]
+		(apply concat (map #(get % k []) aspects	)))
+
+
 ;;
-;; WF
+;;
+;; WF IMPL
 ;;
 (defn wf! [*wf-state meta-info]
-  (let [;; state
-        *WF-UI (rum/cursor-in *wf-state [:wf/UI])
+  
+  ;; (.warn js/console meta-info)
+
+  (let [
+  					 *WF-UI (rum/cursor-in *wf-state [:wf/UI]) ;; state for UI updates
 
 
-        _RUN_ (runner-sub-wf
-                  :execute-mode :idle-w-timeout
-                  :t 10)
-
-        _UI_ (ui-sub-wf *WF-UI)
-
-
-        _SCRAPE_ (scraping-sub-wf *wf-state *WF-UI)
+        ;; choose scraping impl based on page - watch later/history/etc.
+  					 page-type (get meta-info :yt/t :history)
+        _SCRAPE_ (if (= :watch-later page-type) 
+        											 (watch-later-scraping-sub-wf *wf-state *WF-UI)
+        												(history-scraping-sub-wf *wf-state *WF-UI))
 
         API (get _SCRAPE_ :api [])
 
-        _API_ (api-wf/actions-impl!
-                API api-wf/default-on-chord)
+  					 ;; WF aspects
 
+        ASPECTS [(ui-sub-wf *WF-UI)
+        									(api-wf/actions-impl! API api-wf/default-on-chord) 
+        									 _SCRAPE_ 
+        									 (runner-sub-wf :execute-mode :idle-w-timeout :t 10)]
 
         ]
 
     {
-     :init            (concat
-                        (get _UI_  :init [])
-                        (get _API_ :init [])
-                        (get _SCRAPE_ :init [])
-                        )
-
-     :ctx             (concat
-                        (get _UI_     :ctx [])
-                        (get _API_ :init [])
-                        (get _SCRAPE_ :ctx [])
-                        )
-
-     :steps           (concat
-                        (get _UI_ :steps [])
-                        (get _API_ :steps [])
-                        (get _SCRAPE_ :steps [])
-                        )
-
-     :opts            (concat
-                        (get _UI_ :opts [])
-                        (get _API_ :opts [])
-                        (get _SCRAPE_ :opts [])
-                        (get _RUN_ :opts [])
-                        )
+    	;; todo: for now, sub-WFs are concatenated manually
+     :init            (combine ASPECTS :init)
+     :ctx             (combine ASPECTS :ctx)
+     :steps           (combine ASPECTS :steps)
+     :opts            (combine ASPECTS :opts)
 
      ;; expose some wf API
      :api             API

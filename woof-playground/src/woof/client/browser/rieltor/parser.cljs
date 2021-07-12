@@ -6,32 +6,17 @@
 
     [cljs.core.async :refer [go go-loop] :as async]
     [cljs.core.async.interop :refer-macros [<p!]]
-    [clojure.string :as str]
-
-    [woof.base :as base]
-    [woof.data :as d]
-
-    [woof.client.dom :as wdom :refer [q q* attr txt]]
-    [woof.client.dbg :as dbg :refer [__log]]
-    [woof.client.ws :as ws]
-
-    [woof.utils :as u]
-
-    [woof.wfs.evt-loop :as evt-loop]
-    [woof.wfs.watcher :as watcher]
 
     [cljs-time.core :as time]
     [cljs-time.format :as time-fmt]
 
-    ;; todo:
-    [woof.client.browser.scraper.scraping-ui :as sui]
-    [woof.client.browser.rieltor.ui :as wf-ui]
+    [clojure.string :as str]
 
-    [rum.core :as rum]
-    ))
+    [woof.base :as base :refer [&chan-factory make-chan]]
+    [woof.data :as d]
 
-(def ALLOW-DOUBLE-PARSE true)
-
+    [woof.client.dom :as woof-dom :refer [q q* attr txt txt-only mark!]]
+    [woof.utils :as u]))
 
 
 ;;;;;;;;;;;
@@ -41,35 +26,18 @@
     (attr sub-el "href")
     (do
       (.log js/console "can't find element for selector: " selector "parent-el" el)
-      (classes/add el "parsed-error")
-      ""
-      )
-    )
-  )
+      (classes/add el "WOOF-PARSE-ERROR")
+      "")))
 
 
 (defn safe-txt [el selector]
   (if-let [sub-el (q el selector)]
-
-    ;; don't trim for now
-    (txt sub-el)
+    (txt sub-el) ;; don't trim for now
     (do
       (.log js/console "can't find element for selector: " selector "parent-el" el)
-      (classes/add el "parsed-error")
-      ""
-      )
-    )
-  )
+      (classes/add el "WOOF-PARSE-ERROR")
+      "")))
 
-
-;;
-(defn mark! [el parse-id]
-  (when el
-    (classes/set el "DDD")
-    (dataset/set el "parseId" parse-id)
-    ))
-
-;;
 
 
 (defn ->price [$PRICE $PRICE-M2]
@@ -137,9 +105,11 @@
      :rooms rooms-n
 
      ;; " 66.7 / 32 / 10 м² " total bedrooms kitchen
+     :area _area
+
      :_floor _floor
      :_rooms _room_n
-     :_area _area
+
      }
     )
   )
@@ -169,9 +139,9 @@
 
   )
 
-(defn ->upd [$UPD]
+(defn parse-UPD [$UPD]
   (let [t (-> $UPD
-              (txt)
+              txt
               (js/decodeURI)
               (str/replace " " "")
               )
@@ -186,9 +156,9 @@
   )
 
 
-(defn ->agent [$AGENT]
-  (let [n (wdom/txt $AGENT)
-        tel (-> (wdom/attr $AGENT "href"))
+(defn parse-AGENT [$AGENT]
+  (let [n   (txt $AGENT)
+        tel (-> (attr $AGENT "href"))
 
         [_ _tel] (re-find #"(\d+)\.rieltor.ua" tel)
         ]
@@ -200,22 +170,30 @@
   )
 
 
+(defn safe-process! [f el]
+  (try
+    (f el)
+    (catch js/Error e
+      (dataset/set el "exception" (str (.-stack e)))
+      (classes/add el "WOOF-PARSE-ERROR")
+
+      (u/throw! e)
+      )
+    )
+  )
+
 (defn ->addr [$ADDR]
   (let [t (-> $ADDR
-              (wdom/txt)
-              ;(js/decodeURI)
-              ;(str/replace " " "")
-              )
+              txt)
         [_str _house-n _district] (str/split t ",")
-
         ;;[_ _upd _added] (re-find #"^Онов:(.+)\sДод:(.+)$" t)
         ]
     {
-     :_ADDR t
+     :addr t
 
-     :addr_street (str/trim _str)
-     :addr_house (str/trim _house-n)
-     :addr_district (str/trim _district)
+     :addr_street   (str/trim _str)
+     :addr_house    (str/trim _house-n)
+     :addr_district ((fnil str/trim "") _district)
      }
     )
   )
@@ -223,130 +201,166 @@
 
 (defn ->img [$IMG $IMG-NUM]
 
-  (let [src (wdom/attr $IMG "src")
-        src-set (wdom/attr $IMG "srcset")
-        alt (wdom/attr $IMG "alt")
+  (let [src (attr $IMG "src")
+        ;src-set (attr $IMG "srcset")
+        ;alt (attr $IMG "alt")
 
         img-n (-> $IMG-NUM
-                  (wdom/txt-only)
+                  (txt-only)
                   (str/trim)
-                  (d/to-primitive)
-                  )
+                  (d/to-primitive))
         ]
 
     {
-     :imgs [src
-            ; src-set
-            ]
-     :img-n img-n
-     :img-alt alt
+     :img-1 src
+
+     :_imgs [src] ; ; maybe use src-set
+     :_img-n img-n
+     ;:img-alt alt
      }
     )
   )
 
+
 ;;
-;; element scraping function
-(defn scrape-element [el]
-  ;; saving parsing status in dom
-  #_(if-not ALLOW-DOUBLE-PARSE
-      (when (classes/has el "parsed")
-        (.warn js/console "PARSE WAS CALLED TWICE")
-        (classes/add el "parsed-twice"))
-      )
-  ;(classes/add el "parsed")
+;; todo: analyze labels
+(defn parse-LABELS [$LABELS label-map ]
+  (reduce (fn [m $lbl]
+            (let [classes' (attr $lbl "class")
+                  classes (into #{} (str/split classes' #"\s"))]
+              (merge
+                m
+                (if (classes "label_no_commission") {:commission "0"})
+                (if (classes "label_attention")
+                  {
+                   ;:paid true
+                   :paid_info (str/trim (txt $lbl))
+                   })
 
-  ;; *PROCESSING-MAP
-  (if-let [id (safe-href el ".catalog-item__img A")]
-    (let [$ID (wdom/q el ".catalog-item__img A")            ; "DIV:nth-child(1) > DIV > A:nth-child(1)" -> ".catalog-item__img A"
+                (if (or (classes "label_location")
+                        (classes "label_location_subway"))
+                  (let [distr (txt $lbl)
+                        distr-url (attr $lbl "href")]
+                    (merge
+                      {
+                       :addr_district_1    distr
+                       :_url_district distr-url
+                       }
+                      (if (classes "label_location_subway")
+                        {:addr_subway distr}))))
+                (if (classes "label_new-building") {:house_new true})))
+            )
+          label-map
+          $LABELS)
+  )
 
-          $IMG (wdom/q el ".catalog-item__img IMG")         ; "DIV:nth-child(1) > DIV > A:nth-child(1) > IMG"
-          $IMG-NUM (wdom/q el ".catalog-item__img .catalog-item__img-num")
+(defn gen-id [href]
+  (last (str/split href "/")))
 
 
-          $ADDR (wdom/q el ".catalog-item__general-info > H2:nth-child(1) > A:nth-child(1)") ; "DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > H2:nth-child(1) > A:nth-child(1)"
-          $HOUSE (wdom/q el ".catalog-item__general-info .catalog-item_info-item-row") ; "DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(2)"
-
-          $LABELS (wdom/q* el ".catalog-item__general-info > H2:nth-child(1) > DIV .label")
-
-          $DESCR (wdom/q el ".catalog-item__info .catalog-item_info-description") ;;
-
-          $PRICE (wdom/q el ".catalog-item__price-column .catalog-item__price") ; "DIV:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(2) > STRONG:nth-child(1)"
-          $PRICE-M2 (wdom/q el ".catalog-item__price-column .catalog-item__price-per-sqm")
-
-          $UPD (wdom/q el ".catalog-item__additional-info-container .catalog-item__additional-info")
-
-          $AGENT (wdom/q el ".ov-author__info .ov-author__name A")
-          ]
-      ;;(mark! (wdom/q el ".catalog-item__general-info H2 DIV A.label") "LBL")
-      ;;(mark! $HOUSE "HOUSE-DETAILS")
-      ;;(mark! $DESCR "DESCR")
+(defn do-scrape! [id el]
+  (merge
+    ;;
+    ;; GENERAL
+    {
+     :source :riel
+     :id     id
+     :url    (str "https://rieltor.ua" (safe-href el ".catalog-item__img A"))
+     }
+    ;;
+    ;; INFO
+    (if-let [$INFO (q el ".catalog-item__info .catalog-item_info-description") ]
+      {:info (-> $INFO
+                 ; (mark! "DESCR")
+                 (txt)
+                 (str/replace "... далі" "…")
+                 (str/trim))}
+      {:info ""})
+    ;;
+    ;; ADDR
+    (when-let [$ADDR (q el ".catalog-item__general-info > H2:nth-child(1) > A:nth-child(1)")]
+      (-> $ADDR ;(mark! "ADDR")
+          ((partial safe-process! ->addr))
+          ))
+    ;;
+    ;; PRICE
+    (let [$PRICE    (q el ".catalog-item__price-column .catalog-item__price")
+          $PRICE-M2 (q el ".catalog-item__price-column .catalog-item__price-per-sqm")]
       ;;(mark! $PRICE "PRICE USD")
       ;;(mark! $PRICE-M2 "PRICE M^2")
-      ;;(mark! $UPD "UPD")
-      ;;(mark! $AGENT "RIELTOR")
-      ;;$LABELS
 
+      ;; todo: commision
+      (->price $PRICE $PRICE-M2))
 
-      (merge {
-              :source :riel
-              :id     id
-              :url    (str "https://rieltor.ua" id)
-              }
-             ;; meta info block
-             (reduce (fn [m $lbl]
-                       (let [classes' (wdom/attr $lbl "class")
-                             classes (into #{} (str/split classes' #"\s"))]
+    ;;
+    ;; IMG
+    (let [$IMG     (q el ".catalog-item__img IMG")
+          $IMG-NUM (q el ".catalog-item__img .catalog-item__img-num")]
+      (->img $IMG $IMG-NUM))
 
-                         ;(.log js/console classes $lbl)
-                         (merge
-                           m
-                           (if (classes "label_no_commission") {:no_commission true})
+    ;;
+    ;; HOUSE
+    (when-let [$HOUSE (q el ".catalog-item__general-info .catalog-item_info-item-row")]
+      (-> $HOUSE ;(mark! "HOUSE")
+          ->house))
 
-                           (if (classes "label_attention")
-                             {
-                              ;:paid true
-                              :paid_info (str/trim (wdom/txt $lbl))
-                              })
+    ;;
+    ;; META
+    (when-let [$AGENT (q el ".ov-author__info .ov-author__name A")]
+      (-> $AGENT ;(mark! "AGENT")
+          parse-AGENT))
 
-                           (if (or (classes "label_location")
-                                   (classes "label_location_subway"))
-                             (let [distr-url (wdom/attr $lbl "href")
-                                   distr (wdom/txt $lbl)]
-                               (merge
-                                 {
-                                  :district_1     distr
-                                  :district_1_url distr-url
-                                  }
-                                 (if (classes "label_location_subway")
-                                   {:subway distr}))))
-                           (if (classes "label_new-building") {:house_new true})
+    (when-let [$UPD (q el ".catalog-item__additional-info-container .catalog-item__additional-info")]
+      (-> $UPD ;(mark! "UPD")
+          parse-UPD))
 
-                           )
-                         )
-                       )
-                     (if (wdom/q el ".paid")
-                       {:paid true}
-                       {})
-                     $LABELS)
-
-             (->addr $ADDR)
-             (->price $PRICE $PRICE-M2)
-
-             ;; todo: commision
-             (->img $IMG $IMG-NUM)
-
-             (->house $HOUSE)
-
-             (->agent $AGENT)
-             (->upd $UPD)
-             (if $DESCR
-               {:info (-> $DESCR
-                          (wdom/txt)
-                          (str/replace "... далі" "…")
-                          (str/trim))}
-               {:info ""}
-               )
-             )
-      )
+    (when-let [$LABELS (q* el ".catalog-item__general-info > H2:nth-child(1) > DIV .label")]
+      (let [initial (if (q el ".paid") {:paid true} {})
+            ;dbg! (fn [v] (.warn js/console v)  v)
+            ]
+        (-> $LABELS ;(mark! "LABELS")
+            (parse-LABELS initial)
+            ;dbg!
+            )))
     )
+  )
+
+
+;;
+;; element scraping function
+(defn scrape-element [params el]
+  (if-let [_id (safe-href el ".catalog-item__img A")]
+    (do
+      (let [cf (&chan-factory params)
+            chan (make-chan cf (base/sid))
+            result (do-scrape! (gen-id _id) el)
+            btn (dom/createDom "button" "ok-btn WOOF-DOM" "✅OK")]
+
+        (let [ids @(:*IDS params)]
+          ; (.warn js/console (:id result) ids)
+          (if-not (get ids (:id result))
+            (do
+              (swap! (:*IDS params) conj (:id result))
+              (dom/appendChild el btn)
+              (woof-dom/on-click btn
+                                 (fn [e]
+                                   (async/put! chan result))
+                                 )
+              chan)
+            (do
+              (.warn js/console "ALREADY PROCESSED!!!")
+
+              (classes/add el "WOOF-SEEN")
+              (classes/add el "WOOF-SKIP")
+
+              nil
+              )
+            )
+          )
+        )
+      )
+    (u/throw! "CAN'T FIND IN ELEMENT")
+    )
+
+  ;; todo: handle errors and nils?
   )

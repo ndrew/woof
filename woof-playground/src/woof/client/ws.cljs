@@ -120,8 +120,7 @@
 (defn POST [url handler data]
   (go
     (let [response (async/<! (http/post url {:edn-params data}))]
-      (.log js/console response)
-
+      ;; (.log js/console response)
       (handler response)
       )
     )
