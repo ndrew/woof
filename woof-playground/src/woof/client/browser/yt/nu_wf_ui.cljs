@@ -145,7 +145,7 @@
 
 ;;
 ;; UI WF
-(defn ui-sub-wf [*WF-UI]
+(defn ui-sub-wf [page-type *WF-UI]
   (assoc
     (rum-wf/ui-impl! *WF-UI <rum-ui>)
     :steps [(fn [params]

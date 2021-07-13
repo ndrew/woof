@@ -398,8 +398,15 @@
 	 			R)))
 
 
+(rum/defc <item> < rum/static
+  [a]
+
+  [:div.foo (pr-str a)]
+  )
+
+
 (defn watch-later-scraping-sub-wf [*wf-state *WF-UI]
-	(let [SCRAPE-SELECTOR ".foo"
+		(let [SCRAPE-SELECTOR ".foo"
 						 ;; generate scraping handlers 
 						 SCRAPE-CTX (wl-parse-ctx SCRAPE-SELECTOR)
 
@@ -411,8 +418,8 @@
 										
 										(action ":expand-scrape" #(do {(sid) [:expand-scrape SCRAPE-SELECTOR]}))
 
-										(action ":step-scrape" #(let [k (sid)] 
-																																	{k [:find-els SCRAPE-SELECTOR]
+										(action ":step-scrape" #(let [k (sid)]
+ 																																	{k [:find-els SCRAPE-SELECTOR]
 																																		(base/rand-sid) [:step-scrape k]
 																																		}))
 
@@ -421,6 +428,15 @@
 																																		(base/rand-sid) [:8-step-scrape k]
 																																		}))
 
+										[]
+
+										["Add Items" (fn []
+																											(let [container-el (woof-dom/q ".container")]
+
+                                      (dotimes [n (rand-int 15)]
+                                        (let [h (rum/render-static-markup (<item> (str n "__" (rand-nth ["A" "B" "C" "D" "E" "F" "G"]))))]
+                                          (.insertAdjacentHTML container-el "beforeend" h))))
+										)]
 										; 
 									]
 
@@ -433,6 +449,40 @@
 				]
 			}))
 
+
+
+(defn video-scraping-sub-wf [*wf-state *WF-UI]
+		(let [
+							action (partial _action *wf-state)]
+		{
+				:api [
+
+										(chord-action (woof-dom/chord 49 :shift true) "👀" 
+													(fn [] 
+												 		(let [selector "h1.title.ytd-video-primary-info-renderer"
+												 							 el (woof-dom/q selector)
+
+												 							 TITLE (str 
+												 							 	 "[" (woof-dom/txt el) "]"
+												 							 	 "(" (str (.-location js/window)) ")") 
+												 							 ]
+
+												 							 (woof-dom/copy-to-clipboard TITLE)
+												 							(.log js/console TITLE)
+												 		))
+											  
+										) ;; shift+!
+										; 
+									]
+
+				:init  []
+				:ctx   []
+				:steps [
+							{
+								::hello [:prn "watch later scraper running"]
+							}
+				]
+			}))
 
 ;;
 ;; WF running strategies
@@ -479,15 +529,17 @@
 
         ;; choose scraping impl based on page - watch later/history/etc.
   					 page-type (get meta-info :yt/t :history)
-        _SCRAPE_ (if (= :watch-later page-type) 
-        											 (watch-later-scraping-sub-wf *wf-state *WF-UI)
-        												(history-scraping-sub-wf *wf-state *WF-UI))
+        _SCRAPE_ (condp = page-type
+        												:watch-later (watch-later-scraping-sub-wf *wf-state *WF-UI)
+        												:video (video-scraping-sub-wf *wf-state *WF-UI)
+        												(history-scraping-sub-wf *wf-state *WF-UI)
+        												)
 
         API (get _SCRAPE_ :api [])
 
   					 ;; WF aspects
 
-        ASPECTS [(yt-ui/ui-sub-wf *WF-UI)
+        ASPECTS [(yt-ui/ui-sub-wf page-type *WF-UI)
         									(api-wf/actions-impl! API api-wf/default-on-chord) 
         									 _SCRAPE_ 
         									 (runner-sub-wf :execute-mode :idle-w-timeout :t 10)]

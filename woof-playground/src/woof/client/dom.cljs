@@ -1100,3 +1100,7 @@
           (classes/set el "DDD")
           (dataset/set el "parseId" parse-id)))))
   el)
+
+
+(defn has-class? [el class]
+		(classes/has el class))

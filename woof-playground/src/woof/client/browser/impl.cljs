@@ -6,6 +6,8 @@
     [woof.data :as d]
     [woof.utils :as u]
 
+    [woof.client.dom :as woof-dom]
+
     ;; example workflows
     [woof.client.browser.example.ui-wf :as ex-ui-wf]
     [woof.client.browser.example.seq-wf :as ex-seq-wf]
@@ -21,6 +23,8 @@
     [woof.client.browser.kga.scraper :as kga]
 
     [woof.client.browser.scraper.scrape-wf :as scrape-wf]
+
+    [woof.client.browser.scraper.generic :as default-scraper]
     ; [woof.client.browser.domik.scraper :as domik]
     ))
 
@@ -29,7 +33,12 @@
   (cond
     (str/starts-with? url "https://web.telegram.org") (assoc META-INFO :ui/fixed-side :left)
 
-    (str/starts-with? url "http://localhost:9500/s/yt/wl.html") (merge META-INFO {:yt/t :watch-later})
+    ; (str/starts-with? url "http://localhost:9500/s/yt/wl.html") (merge META-INFO {:yt/t :watch-later})
+    ;(str/starts-with? url "http://localhost:9500/s/yt/wl.html")   (merge META-INFO {:yt/t :video})
+
+    (str/starts-with? url "https://www.youtube.com/watch?v=")   (merge META-INFO {:yt/t :video })
+
+
     :else META-INFO
     )
   )
@@ -39,7 +48,8 @@
 ;;
 (defn choose-workflow [url]
   (cond
-
+		  ;; document.body.classList.add("GENERIC-SCRAPER")
+  	 (woof-dom/has-class? (.-body js/document) "GENERIC-SCRAPER") default-scraper/wf!
   	 ;; 
     ;; youtube
     ;; 
@@ -50,6 +60,8 @@
     (str/starts-with? url "http://localhost:9500/s/yt/wl.html") yt-nu/wf! 
     (str/starts-with? url "http://localhost:9500/s/yt/history.html") yt-nu/wf!
     (str/starts-with? url "https://www.youtube.com/feed/history") yt-nu/wf! 
+    (str/starts-with? url "https://www.youtube.com/watch?v=") yt-nu/wf!
+
 
     ;;
     ;; examples
@@ -85,7 +97,6 @@
     ; (= url "http://localhost:9500/domik.html") (domik/domik-scraping! url)
     ;(str/starts-with? url "http://domik.ua/") (domik/domik-scraping! url) ;;riel/wf!
 
-
     ;; domik
     ; (= url "http://localhost:9500/domik.html") domik-scraper/parse-listings-steps
     ; (= url "http://localhost:9500/domik_house.html") domik-scraper/parse-house-steps
@@ -93,6 +104,8 @@
     ;   (str/starts-with? url "http://domik.ua/poleznoe/photoalbum/")  domik-scraper/parse-house-steps
     ;   (str/starts-with? url "http://domik.ua/nedvizhimost/") domik-scraper/parse-listings-steps
 
+
+    ;; :else test-scraper-wf/scrapping-test-wf!
 
     )
   )
