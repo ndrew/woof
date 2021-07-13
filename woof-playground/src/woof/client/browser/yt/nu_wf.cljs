@@ -107,7 +107,7 @@
              ;; different scraping strategies
 
              ;; pass only selector
-             (action ":batch-scrape-1!" #(do {(sid) [:batch-scrape-1! SCRAPE-SELECTOR]}))
+             (action ":batch-scrape-1!" #(do {(sid) [:loop-scrape SCRAPE-SELECTOR]}))
              (action ":batch-scrape-2!" #(do {(sid) [:batch-scrape-2! SCRAPE-SELECTOR]}))
 
              (action ":scrape!!!" #(let [r (sid)]
@@ -374,24 +374,20 @@
                      ;;(dataset/has el "woof_scraped")
                      (classes/has el "WOOF-WIP"))
 
-  
-      CTX (scrape/make-ctx-fn
-               scrape-start!
-               is-scraping?
-
-               ;; indicates which elements to parse
-               SCRAPE-SELECTOR
-
-               (fn [el]
+  			 scrape-fn (fn [el]
                	   (classes/add el "WOOF-WIP")
                	   (woof-dom/outer-html el))
 
-               )
       ]
 
-     	;; (.log js/console CTX)
-      CTX
-		
+			(scrape/make-ctx-fn 
+			;; indicates which elements to parse
+               								SCRAPE-SELECTOR
+               								scrape-fn
+               								is-scraping?
+																							scrape-start!
+               							 
+               							 )		
 ))
 
 
@@ -399,27 +395,42 @@
 	 (fn [params]
 	 		(let [R (f params)]
 	 			(.log js/console R)
-
-	 			R
-	 		)
-	 )
-)
+	 			R)))
 
 
 (defn watch-later-scraping-sub-wf [*wf-state *WF-UI]
-	(let [
-	  			 action (partial _action *wf-state)
-       SCRAPE-SELECTOR ".foo"
+	(let [SCRAPE-SELECTOR ".foo"
+						 ;; generate scraping handlers 
+						 SCRAPE-CTX (wl-parse-ctx SCRAPE-SELECTOR)
 
-		]
+							action (partial _action *wf-state)]
 		{
 				:api [
-							(action "SCRAPE" #(do {(sid) [:brute-force-simple SCRAPE-SELECTOR]}))
-							]
+									 ; non-recurring scrapers
+										(action ":loop-scrape" #(do {(sid) [:loop-scrape SCRAPE-SELECTOR]}))
+										
+										(action ":expand-scrape" #(do {(sid) [:expand-scrape SCRAPE-SELECTOR]}))
 
-				:init []
-				:ctx [(dbg-params-fn (wl-parse-ctx SCRAPE-SELECTOR))]
-				:steps [{::hello [:prn "watch later scraper running"]}]
+										(action ":step-scrape" #(let [k (sid)] 
+																																	{k [:find-els SCRAPE-SELECTOR]
+																																		(base/rand-sid) [:step-scrape k]
+																																		}))
+
+										(action ":8-step-scrape" #(let [k (sid)] 
+																																	{k [:find-els SCRAPE-SELECTOR]
+																																		(base/rand-sid) [:8-step-scrape k]
+																																		}))
+
+										; 
+									]
+
+				:init  []
+				:ctx   [(dbg-params-fn SCRAPE-CTX)]
+				:steps [
+							{
+								::hello [:prn "watch later scraper running"]
+							}
+				]
 			}))
 
 
@@ -453,59 +464,6 @@
    })
 
 
-;;
-;; react rum-based WF UI
-;; 
-
-(def <rum-ui> (rum-wf/gen-rum-ui yt-ui/<scraping-ui>))
-
-(defn _ui-process-fn__extract-results [*WF-UI result]
-
-  (let [results* (select-keys result
-                              (filter #(str/starts-with? (str %) ":/SCRAPE__") (keys result)))
-        *errors (volatile! {})
-        ready-results (reduce
-                        (fn [a [k v]]
-                          (if-not (u/channel? v)
-                            (if (:error v)
-                              (do
-                                (vswap! *errors assoc k v)
-                                a
-                                )
-                              (assoc a (:d v) (count (:videos v)))
-                              )
-
-                            a))
-                        {} results*
-                        )
-        ]
-
-    ;;(.warn js/console ready-results)
-    (swap! *WF-UI assoc :SCRAPE/READY ready-results)
-    (swap! *WF-UI assoc :SCRAPE/ERROR @*errors)
-    )
-  )
-
-
-(defn ui-sub-wf [*WF-UI]
-  (assoc
-    (rum-wf/ui-impl! *WF-UI <rum-ui>)
-    :steps [(fn [params]
-              {
-               :CSS/minimal-styles    [:css-file "http://localhost:9500/css/r.css"]
-               :CSS/playground-styles [:css-file "http://localhost:9500/css/playground.css"]
-               })]
-    :opts [
-			    {:op-handlers-map {:process (fn [result]
-                                           ;; just take the results by key prefix
-                                           (_ui-process-fn__extract-results *WF-UI result)
-
-                                           result
-                                           )}}
-    ]
-    )
-  )
-
 
 (defn combine [aspects k]
 		(apply concat (map #(get % k []) aspects	)))
@@ -517,11 +475,7 @@
 ;;
 (defn wf! [*wf-state meta-info]
   
-  ;; (.warn js/console meta-info)
-
-  (let [
-  					 *WF-UI (rum/cursor-in *wf-state [:wf/UI]) ;; state for UI updates
-
+  (let [*WF-UI (rum/cursor-in *wf-state [:wf/UI]) ;; state for UI updates
 
         ;; choose scraping impl based on page - watch later/history/etc.
   					 page-type (get meta-info :yt/t :history)
@@ -533,7 +487,7 @@
 
   					 ;; WF aspects
 
-        ASPECTS [(ui-sub-wf *WF-UI)
+        ASPECTS [(yt-ui/ui-sub-wf *WF-UI)
         									(api-wf/actions-impl! API api-wf/default-on-chord) 
         									 _SCRAPE_ 
         									 (runner-sub-wf :execute-mode :idle-w-timeout :t 10)]
@@ -553,16 +507,15 @@
      :on-stop         (fn [state]
                         (__log "ON STOP")
 
-                        ;; clean up added css
+                        ;; clean up added css during scraping
                         (woof-dom/remove-added-css [
                                                     "WOOF-WIP"
 
                                                     "PROCESSED-VIDEO"
                                                     "DOUBLE-PROCESSED-VIDEO"
-                                                    ]
-                                                   )
+                                                    ])
 
-                        ;; for now do not return channel
+                        ;; for now do not return channel - e.g. stop immediately
                         nil)
 
      ;; for now provide custom on-run handler - as older wf APIs are a map
