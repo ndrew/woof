@@ -1,4 +1,4 @@
-(ns woof.client.browser.yt.nu-wf-ui
+(ns woof.client.browser.yt.wf-ui
   (:require
     [cljs.core.async :as async :refer [go go-loop]]
 
