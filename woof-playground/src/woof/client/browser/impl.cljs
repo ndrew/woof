@@ -17,7 +17,6 @@
 
     ;; real site scenarios
 
-    [woof.client.browser.yt.wf :as yt]
     [woof.client.browser.yt.nu-wf :as yt-nu]
 
     [woof.client.browser.kga.scraper :as kga]
@@ -33,8 +32,10 @@
   (cond
     (str/starts-with? url "https://web.telegram.org") (assoc META-INFO :ui/fixed-side :left)
 
-    ; (str/starts-with? url "http://localhost:9500/s/yt/wl.html") (merge META-INFO {:yt/t :watch-later})
-    ;(str/starts-with? url "http://localhost:9500/s/yt/wl.html")   (merge META-INFO {:yt/t :video})
+    (str/starts-with? url "http://localhost:9500/s/yt/wl.html") (merge META-INFO {:yt/t :watch-later})
+    (str/starts-with? url "https://www.youtube.com/playlist?")  (merge META-INFO {:yt/t :watch-later})
+
+    ;; (str/starts-with? url "http://localhost:9500/s/yt/wl.html")   (merge META-INFO {:yt/t :video})
 
     (str/starts-with? url "https://www.youtube.com/watch?v=")   (merge META-INFO {:yt/t :video })
 
@@ -53,10 +54,8 @@
   	 ;; 
     ;; youtube
     ;; 
-    (str/starts-with? url "http://localhost:9500/s/yt/y.html") yt/wf! 
-    (str/starts-with? url "https://www.youtube.com/playlist?list=WL") yt/wf!
 
-						;; extract history of youtube views
+    (str/starts-with? url "https://www.youtube.com/playlist") yt-nu/wf!
     (str/starts-with? url "http://localhost:9500/s/yt/wl.html") yt-nu/wf! 
     (str/starts-with? url "http://localhost:9500/s/yt/history.html") yt-nu/wf!
     (str/starts-with? url "https://www.youtube.com/feed/history") yt-nu/wf! 
