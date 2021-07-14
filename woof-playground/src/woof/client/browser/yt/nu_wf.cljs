@@ -451,32 +451,100 @@
 
 
 
+
+;; steps for simulating clicks 
+(defn menu-clicker-ctx [params]
+  {
+    :condition {:fn (fn [pred?]
+    			(let [chan-factory (base/&chan-factory params)
+											 ch (base/make-chan chan-factory (base/rand-sid))]
+										(async/go-loop [i 0]
+            
+            (if-let [v (pred?)] 
+            	(async/put! ch v)
+            	(do 
+			            (async/<! (u/timeout (get [100 500 1000 1250 3000] i)))
+			            (if (< i 5)
+			              (recur (inc i))
+			              ;; todo: figure out error handling, so no stuck steps will be left 
+			              (.warn js/console "NO CONDITION WAS MET"))
+              )
+            ))
+
+										ch
+										)
+    	)}
+
+    ;; just do click
+  		:click {:fn (fn [el]
+  			 (try 
+	  			 (.focus el)
+	  				(.click el)
+
+	  				:ok
+  			 	(catch  js/Error e (.error js/console e))
+  			 )
+  		)}
+
+
+
+  }
+)
+
+
+(defn- remove-playing-vid-from-playlist* []
+			(let [k1 (rand-sid) k2 (rand-sid)
+									c1 (rand-sid) c2 (rand-sid)
+
+		       delete-menu? (fn [x] (str/includes? (woof-dom/txt x) "Вилучити"))
+		       el-visible?  (fn [x] (not= 0 (.-clientHeight x)))
+									] 
+						{ 
+							 ;; - find menu button of selected video in playlist view
+							 k1 [:condition (fn [] (woof-dom/q "ytd-playlist-panel-video-renderer[selected] #button") )]
+								c1 [:click k1] 
+
+								;; todo: maybe add wait for first click to happen
+								;; - find delete menu item in popup menu and select it
+								k2 [:condition (fn []
+																									 (let [_els (woof-dom/q* "ytd-menu-popup-renderer ytd-menu-service-item-renderer")
+																									 					 els (filter (fn [x] (and (delete-menu? x) (el-visible? x))) _els)
+																														[el] els
+																									    ]
+																								 el))]
+								c2 [:click k2]
+								} )
+)
+
+(defn copy-video-title* [] 
+		(let [selector "h1.title.ytd-video-primary-info-renderer"
+							 el (woof-dom/q selector)
+
+							 TITLE (str 
+							 	 "[" (woof-dom/txt el) "]"
+							 	 "(" (str (.-location js/window)) ")") 
+							 ]
+
+							 (woof-dom/copy-to-clipboard TITLE)
+		))
+
 (defn video-scraping-sub-wf [*wf-state *WF-UI]
-		(let [
-							action (partial _action *wf-state)]
+		(let [action (partial _action *wf-state)
+
+						]
 		{
 				:api [
+									 ;; extract YT video name in roam format
+										(chord-action (woof-dom/chord 49 :shift true) "📋 video title" copy-video-title*) ;; shift+!
 
-										(chord-action (woof-dom/chord 49 :shift true) "👀" 
-													(fn [] 
-												 		(let [selector "h1.title.ytd-video-primary-info-renderer"
-												 							 el (woof-dom/q selector)
+										[]
+										;; remove YT video from playlist
+										(action "🗑️ video from playlist" remove-playing-vid-from-playlist*)
 
-												 							 TITLE (str 
-												 							 	 "[" (woof-dom/txt el) "]"
-												 							 	 "(" (str (.-location js/window)) ")") 
-												 							 ]
-
-												 							 (woof-dom/copy-to-clipboard TITLE)
-												 							(.log js/console TITLE)
-												 		))
-											  
-										) ;; shift+!
-										; 
 									]
 
 				:init  []
-				:ctx   []
+				:ctx   [menu-clicker-ctx]
 				:steps [
 							{
 								::hello [:prn "watch later scraper running"]

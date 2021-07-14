@@ -145,7 +145,7 @@ article.WOOF-ASYNC.WOOF-DONE {
     margin-left: 0;
 }
 
-.woof-scraper-ui {
+.woof-scraper-ui, .woof-scraper-control, .menubar {
     font-family: "DejaVu Sans Mono", monospace;
     font-size: 8pt;
 }
@@ -263,3 +263,4 @@ article.WOOF-ASYNC.WOOF-DONE {
     font-family: "DejaVu Sans Mono", monospace;
     font-size: 8pt;
 }
+
