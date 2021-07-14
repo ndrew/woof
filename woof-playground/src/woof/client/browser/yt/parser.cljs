@@ -50,6 +50,18 @@
   )
 
 
+(defn safe-href [el selector]
+  (if-let [sub-el (wdom/q el selector)]
+    (wdom/attr sub-el "href")
+    (do
+      (.log js/console "can't find element for selector: " selector "parent-el" el)
+      (classes/add el "parsed-error")
+      ""
+      )
+    )
+  )
+
+
 
 
 (defn history-day-scrape-impl [el]
@@ -281,3 +293,67 @@
     out-chan
     )
   )
+
+
+
+;;;;
+
+(defn parse-playlist-video [el]
+(let [id_$ "A:nth-child(1)"
+        ;channel_$ "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A"
+                 ;_  "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A"
+        ;title_$ "DIV:nth-child(3) > H3:nth-child(1) > SPAN:nth-child(2)"
+
+
+        ]
+
+    (if-let [id (safe-href el id_$)]
+      (merge
+        {
+         :id id
+
+         ;; todo: exctract WL index from the URL
+
+         ;:channel (safe-href el channel_$)
+         ;:title (safe-txt el title_$)
+
+
+         ;; :el-map (map #(dissoc % :el) (wdom/el-map el :top-selector-fn (fn [base el] { :nth-child (:i base)})))
+         }
+
+        (if-let [n (wdom/q el "YTD-CHANNEL-NAME YT-FORMATTED-STRING > A")]
+          {:channel-href (wdom/attr n "href")  }
+          {"YTD-CHANNEL-NAME YT-FORMATTED-STRING > A" false })
+
+        (if-let [n (wdom/q el "A YT-IMG-SHADOW:nth-child(1) IMG")]
+          {:img-src (wdom/attr n "src")  }
+          {"A YT-IMG-SHADOW:nth-child(1) IMG" false		   })
+
+        (if-let [n (wdom/q el "#channel-name #text a")]
+          {:channel-title (.-innerText n)  }
+          {"#channel-name #text a" false   })
+
+        (if-let [n (wdom/q el "DIV:nth-child(3)  H3:nth-child(1)  SPAN:nth-child(2)")]
+          {:title (.-innerText n)}
+          {"DIV:nth-child(3)  H3:nth-child(1)  SPAN:nth-child(2)" false})
+
+        (if-let [n (wdom/q el "YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER > SPAN:nth-child(2)")]
+          {:duration (.-innerText n)}
+          {"YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER > SPAN:nth-child(2)" false})
+
+
+        #_(if-let [n (wdom/q el "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A")]
+          {:innerText (.-innerText n)}
+          {"DIV:nth-child(3) > H3:nth-child(1) > SPAN:nth-child(2)" false})
+
+
+        )
+
+      (do
+        (.warn js/console "cannot find the id for element " el)
+        )
+      )
+
+
+    )
+)

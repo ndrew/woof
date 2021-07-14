@@ -356,7 +356,7 @@
 ;;
 
 
-(defn wl-parse-ctx [SCRAPE-SELECTOR]
+(defn playlist-parse-ctx [SCRAPE-SELECTOR]
 		(let [
       ;; marks element as parsed
       scrape-start! (fn [el]
@@ -375,8 +375,20 @@
                      (classes/has el "WOOF-WIP"))
 
   			 scrape-fn (fn [el]
-               	   (classes/add el "WOOF-WIP")
-               	   (woof-dom/outer-html el))
+  			 										   (.log js/console "SCRAPING" el)
+
+  			 										   (try
+  			 										   		(do 
+  			 										   			  
+		  			 										   		;; (classes/remove el "WOOF-WIP") 
+		  			 										   		(let [r (parser/parse-playlist-video el)]
+																									(classes/add el "WOOF-DONE")
+																									(.log js/console "SRAPED" (d/pretty! r))
+		  																					r )
+  			 										   				)
+  			 										   	(catch js/Error e
+  			 										   					(do (.error js/console e) :err)))
+               )
 
       ]
 
@@ -406,9 +418,9 @@
 
 
 (defn watch-later-scraping-sub-wf [*wf-state *WF-UI]
-		(let [SCRAPE-SELECTOR ".foo"
+		(let [SCRAPE-SELECTOR "ytd-playlist-video-renderer:not(.WOOF-WIP)"
 						 ;; generate scraping handlers 
-						 SCRAPE-CTX (wl-parse-ctx SCRAPE-SELECTOR)
+						 SCRAPE-CTX (playlist-parse-ctx SCRAPE-SELECTOR)
 
 							action (partial _action *wf-state)]
 		{
@@ -516,6 +528,7 @@
 								} )
 )
 
+
 (defn copy-video-title* [] 
 		(let [selector "h1.title.ytd-video-primary-info-renderer"
 							 el (woof-dom/q selector)
@@ -527,6 +540,7 @@
 
 							 (woof-dom/copy-to-clipboard TITLE)
 		))
+
 
 (defn video-scraping-sub-wf [*wf-state *WF-UI]
 		(let [action (partial _action *wf-state)
@@ -630,6 +644,8 @@
                         ;; clean up added css during scraping
                         (woof-dom/remove-added-css [
                                                     "WOOF-WIP"
+                                                    "WOOF-DONE"
+                                                    "WOOF-SEEN"
 
                                                     "PROCESSED-VIDEO"
                                                     "DOUBLE-PROCESSED-VIDEO"
