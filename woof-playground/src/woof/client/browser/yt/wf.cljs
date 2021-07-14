@@ -366,7 +366,7 @@
                       (classes/add el "WOOF-WIP")
 
                       ;; return sid or unique element id
-                      (sid)
+                      (sid "SCRAPE__")
                       )
       ;;
       ;; whether element had been scraped
@@ -423,8 +423,12 @@
 						 SCRAPE-CTX (playlist-parse-ctx SCRAPE-SELECTOR)
 
 							action (partial _action *wf-state)]
+
+							(.log js/console *wf-state)
 		{
 				:api [
+										(chord-action (woof-dom/chord 49 :shift true) "👀" woof-dom/scraping-ui__togle-details) ;; shift+!
+
 									 ; non-recurring scrapers
 										(action ":loop-scrape" #(do {(sid) [:loop-scrape SCRAPE-SELECTOR]}))
 										

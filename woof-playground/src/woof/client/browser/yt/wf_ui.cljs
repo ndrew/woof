@@ -50,7 +50,9 @@
 
    (if-let [ready (:SCRAPE/READY STATE)]
      [:div
-      [:header "SCRAPED"]
+      (ui/menubar "SCRAPED" [["copy vids" (fn []
+      	 (woof-dom/copy-to-clipboard (d/pretty (:vids ready)))
+      )]])
       [:pre.html (d/pretty! ready)]])
 
    (if-let [err (:SCRAPE/ERROR STATE)]
@@ -74,7 +76,6 @@
    (when (seq (:api STATE))
      (ui/menubar "API" (:api STATE)
                  :class "woof_api") )
-
 
 
 
@@ -116,22 +117,32 @@
 
 (defn _ui-process-fn__extract-results [*WF-UI result]
 
+
+	;; automated way of extracting results by scraping key, but a bit wasteful
+	;; 
+		;; (.warn js/console (keys result))
+		;; TODO:
   (let [results* (select-keys result
                               (filter #(str/starts-with? (str %) ":/SCRAPE__") (keys result)))
-        *errors (volatile! {})
+        
+        *errors (volatile! {}) ;; return errors along side
+
         ready-results (reduce
                         (fn [a [k v]]
                           (if-not (u/channel? v)
                             (if (:error v)
                               (do
                                 (vswap! *errors assoc k v)
-                                a
-                                )
-                              (assoc a (:d v) (count (:videos v)))
+                                a)
+                              (do 
+                              	 ; (.log js/console "V=" v)
+                              		;(assoc a (:id v) (count (:videos v)))
+                              		(update-in a [:vids] conj v)
+                              		)
                               )
 
                             a))
-                        {} results*
+                        {:vids []} results*
                         )
         ]
 
@@ -151,6 +162,7 @@
     :steps [(fn [params]
               {
                :CSS/minimal-styles    [:css-file "http://localhost:9500/css/r.css"]
+               
                :CSS/playground-styles [:css-file "http://localhost:9500/css/playground.css"]
                })]
     :opts [

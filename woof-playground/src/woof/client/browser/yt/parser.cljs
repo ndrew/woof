@@ -320,26 +320,43 @@
 
          ;; :el-map (map #(dissoc % :el) (wdom/el-map el :top-selector-fn (fn [base el] { :nth-child (:i base)})))
          }
+ ; 
 
+ 						 ;; CHANNEL
         (if-let [n (wdom/q el "YTD-CHANNEL-NAME YT-FORMATTED-STRING > A")]
           {:channel-href (wdom/attr n "href")  }
           {"YTD-CHANNEL-NAME YT-FORMATTED-STRING > A" false })
 
-        (if-let [n (wdom/q el "A YT-IMG-SHADOW:nth-child(1) IMG")]
-          {:img-src (wdom/attr n "src")  }
-          {"A YT-IMG-SHADOW:nth-child(1) IMG" false		   })
-
+        ;; CHANNEL-NAME
         (if-let [n (wdom/q el "#channel-name #text a")]
           {:channel-title (.-innerText n)  }
           {"#channel-name #text a" false   })
 
-        (if-let [n (wdom/q el "DIV:nth-child(3)  H3:nth-child(1)  SPAN:nth-child(2)")]
+        ;; THUMB
+        (if-let [n (wdom/q el "A YT-IMG-SHADOW:nth-child(1) IMG")]
+          {:img-src (wdom/attr n "src")  }
+          {"A YT-IMG-SHADOW:nth-child(1) IMG" false		   })
+
+								;; VIDEO TITLE        	
+								(if-let [n (wdom/q el "a#video-title")]
+          {:title (.-innerText n)
+          	:url (woof-dom/attr n "href")
+          	})
+
+        #_(if-let [n (wdom/q el "DIV:nth-child(3)  H3:nth-child(1)  SPAN:nth-child(2)")]
           {:title (.-innerText n)}
           {"DIV:nth-child(3)  H3:nth-child(1)  SPAN:nth-child(2)" false})
 
-        (if-let [n (wdom/q el "YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER > SPAN:nth-child(2)")]
+        ;; VIDEO DURATION
+        (if-let [n (wdom/q el "#overlays .ytd-thumbnail-overlay-time-status-renderer")]
           {:duration (.-innerText n)}
-          {"YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER > SPAN:nth-child(2)" false})
+          ; {"YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER > SPAN:nth-child(2)" false}
+          )
+
+        ;; VIDEO SEEN
+        (if-let [n (wdom/q el "#overlays YT-FORMATTED-STRING.ytd-thumbnail-overlay-playback-status-renderer")]
+        		 {:seen (woof-dom/txt el)} 
+        		)
 
 
         #_(if-let [n (wdom/q el "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A")]

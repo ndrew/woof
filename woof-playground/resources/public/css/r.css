@@ -264,3 +264,16 @@ article.WOOF-ASYNC.WOOF-DONE {
     font-size: 8pt;
 }
 
+
+
+#test-html svg {
+    display: none !important;
+}
+
+.WOOF-WIP {
+    outline:  3px solid maroon;
+}
+
+.WOOF-DONE *:hover {
+    background-color: mediumaquamarine;
+}
