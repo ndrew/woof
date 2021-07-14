@@ -17,7 +17,7 @@
 
     ;; real site scenarios
 
-    [woof.client.browser.yt.nu-wf :as yt-nu]
+    [woof.client.browser.yt.wf :as yt]
 
     [woof.client.browser.kga.scraper :as kga]
 
@@ -55,11 +55,11 @@
     ;; youtube
     ;; 
 
-    (str/starts-with? url "https://www.youtube.com/playlist") yt-nu/wf!
-    (str/starts-with? url "http://localhost:9500/s/yt/wl.html") yt-nu/wf! 
-    (str/starts-with? url "http://localhost:9500/s/yt/history.html") yt-nu/wf!
-    (str/starts-with? url "https://www.youtube.com/feed/history") yt-nu/wf! 
-    (str/starts-with? url "https://www.youtube.com/watch?v=") yt-nu/wf!
+    (str/starts-with? url "https://www.youtube.com/playlist") yt/wf!
+    (str/starts-with? url "http://localhost:9500/s/yt/wl.html") yt/wf! 
+    (str/starts-with? url "http://localhost:9500/s/yt/history.html") yt/wf!
+    (str/starts-with? url "https://www.youtube.com/feed/history") yt/wf! 
+    (str/starts-with? url "https://www.youtube.com/watch?v=") yt/wf!
 
 
     ;;

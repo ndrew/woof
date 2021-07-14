@@ -1,4 +1,4 @@
-(ns woof.client.browser.yt.nu-wf
+(ns woof.client.browser.yt.wf
   (:require
        [clojure.string :as str]
 
@@ -35,7 +35,7 @@
 
        ;; scraping wf impl
        [woof.client.browser.yt.parser :as parser]
-       [woof.client.browser.yt.nu-wf-ui :as yt-ui]
+       [woof.client.browser.yt.wf-ui :as yt-ui]
 
        )
   (:require-macros
@@ -379,7 +379,7 @@
 
   			 										   (try
   			 										   		(do 
-  			 										   			  
+
 		  			 										   		;; (classes/remove el "WOOF-WIP") 
 		  			 										   		(let [r (parser/parse-playlist-video el)]
 																									(classes/add el "WOOF-DONE")
