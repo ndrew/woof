@@ -1,0 +1,8 @@
+
+.video {
+	outline: 1px solid cornflowerblue;
+}
+
+.video:hover {
+	background-color: rgba(0, 0, 255, .133);
+}

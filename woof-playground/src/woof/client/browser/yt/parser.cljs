@@ -298,72 +298,43 @@
 
 ;;;;
 
+
 (defn parse-playlist-video [el]
-(let [id_$ "A:nth-child(1)"
+(let [id_$ "A#thumbnail"
         ;channel_$ "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A"
                  ;_  "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A"
         ;title_$ "DIV:nth-child(3) > H3:nth-child(1) > SPAN:nth-child(2)"
 
-
+        q (partial wdom/q el)
         ]
 
-    (if-let [id (safe-href el id_$)]
+    (if-let [url (safe-href el id_$)]
       (merge
         {
-         :id id
-
-         ;; todo: exctract WL index from the URL
-
-         ;:channel (safe-href el channel_$)
-         ;:title (safe-txt el title_$)
-
-
-         ;; :el-map (map #(dissoc % :el) (wdom/el-map el :top-selector-fn (fn [base el] { :nth-child (:i base)})))
+         :url url
+         ;; index from playlist
+         :idx (js/parseInt (wdom/txt (q "#index-container #index")) 10) 
+         :title (wdom/txt (q "a#video-title"))
          }
- ; 
-
- 						 ;; CHANNEL
-        (if-let [n (wdom/q el "YTD-CHANNEL-NAME YT-FORMATTED-STRING > A")]
-          {:channel-href (wdom/attr n "href")  }
-          {"YTD-CHANNEL-NAME YT-FORMATTED-STRING > A" false })
-
-        ;; CHANNEL-NAME
-        (if-let [n (wdom/q el "#channel-name #text a")]
-          {:channel-title (.-innerText n)  }
-          {"#channel-name #text a" false   })
-
-        ;; THUMB
-        (if-let [n (wdom/q el "A YT-IMG-SHADOW:nth-child(1) IMG")]
-          {:img-src (wdom/attr n "src")  }
-          {"A YT-IMG-SHADOW:nth-child(1) IMG" false		   })
-
-								;; VIDEO TITLE        	
-								(if-let [n (wdom/q el "a#video-title")]
-          {:title (.-innerText n)
-          	:url (woof-dom/attr n "href")
-          	})
-
-        #_(if-let [n (wdom/q el "DIV:nth-child(3)  H3:nth-child(1)  SPAN:nth-child(2)")]
-          {:title (.-innerText n)}
-          {"DIV:nth-child(3)  H3:nth-child(1)  SPAN:nth-child(2)" false})
 
         ;; VIDEO DURATION
-        (if-let [n (wdom/q el "#overlays .ytd-thumbnail-overlay-time-status-renderer")]
-          {:duration (.-innerText n)}
-          ; {"YTD-THUMBNAIL-OVERLAY-TIME-STATUS-RENDERER > SPAN:nth-child(2)" false}
+        (if-let [n (q "#overlays .ytd-thumbnail-overlay-time-status-renderer #text")]
+          {:duration (str/trim (.-innerText n))}
           )
 
-        ;; VIDEO SEEN
-        (if-let [n (wdom/q el "#overlays YT-FORMATTED-STRING.ytd-thumbnail-overlay-playback-status-renderer")]
-        		 {:seen (woof-dom/txt el)} 
+        ;; VIDEO %
+        (if-let [n (q "#overlays #progress")]
+        		 {:% (-> n .-style .-width)} 
         		)
 
+ 						 ;; CHANNEL
+        (if-let [n (q "#channel-name a")]
+          {:channel-href (wdom/attr n "href") 
+           :channel-title (.-innerText n) })
 
-        #_(if-let [n (wdom/q el "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A")]
-          {:innerText (.-innerText n)}
-          {"DIV:nth-child(3) > H3:nth-child(1) > SPAN:nth-child(2)" false})
-
-
+        ;; THUMB
+        (when-let [n (q "ytd-thumbnail img")]
+          {:img-src (wdom/attr n "src")  })
         )
 
       (do
