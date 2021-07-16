@@ -43,9 +43,26 @@
                        {:key-fn (fn [x] (str (:url x)))}
 
   [st x]
-  [:div.video 
-      (pr-str x)
-  ]
+  (let [{idx :idx
+  							url :url
+  							title :title
+  							ch-href :channel-href 
+  							ch-title :channel-title
+  							seen :%
+  							img :img-scr
+  							} x]
+				[:div.video 
+  				[:span.idx (pr-str idx)]
+     	[:a.channel {:href ch-href} ch-title]
+     	[:a.url {:href url} title]
+
+     	(if seen [:span seen])
+     	(if img  [:img {:src img}])
+     	
+   		 ;;(pr-str (keys x))
+  		]
+  )
+  
 )
 
 (rum/defcs <yt-vid-list> <
@@ -63,117 +80,108 @@
                                            (let [data (d/to-primitive _data)]
                                              (swap! *data assoc-in [:videos] data ))))
                                  )]
-
                    ]
                   )
 
-   (when-let [listings (:videos @*data)]
+   (when-let [vids (:videos @*data)]
 
-      [:pre (pr-str listings)]
+      [:pre (pr-str vids)]
 
      (let [<item-ui> <video>
 
-           sort-fns (array-map
-                      :USD↓ (fn [a b] (compare (:USD a) (:USD b)))
-                      :USD↑ (fn [a b] (compare (:USD b) (:USD a)))
-                      :upd↑ (fn [a b]
-                               #_(compare
-                                        (.getTime (:d/upd b))
-                                        (.getTime (:d/upd a)))
-                              0
-                              )
-                      :upd↓ (fn [a b]
-                              #_(compare
-                                (.getTime (:d/upd a))
-                                (.getTime (:d/upd b)))
-                              0
-                              )
-                      )
-
-           sorters (into #{} (keys sort-fns))
-
-           sort-fn (get sort-fns @(::sort-key st)
-                (get sort-fns :USD↓))
 
            *asserts (volatile! [])
 
-           __cheap (fn [item]
-                          (if (< (:USD item) 80000)
-                            {:id (:id item) :class #{"cheap"}}))
-           __recent (fn [item]
-                          (if (< (time/in-days (:d/added-ago item)) 10)
-                            {:id (:id item) :class #{"recent"}}))
+           __seen (fn [item]
+           															(if-not (nil? (:% item))
+                            (do 
+                            	 ;(.log js/console "seen" item)
+                            		{:id (:url item) :class #{"seen"}
+                            		})))
+
+           
+           ;; filter channels that have > 5 vidds
+           __channel (fn [item]
+                          {:id (:id item) :channel #{ (:channel-title item)}})
 
 
-           date-fmt (time-fmt/formatter "yyyy.MM.dd")
-           to-time (partial time-fmt/parse date-fmt)
 
-           curr-t (time/now)
-
+           *groups (volatile! {})
+           ;; transducer that builds 
            xs (comp
                 ;identity
                 (map-indexed #(assoc %2 :i %1))
 
                 (data/z-map-1
-                  (data/juxt-mapper
-                    __cheap
-                    __recent
-                    ;;__drv-street
-                    ;;__test-street
-                    )
-                  #(vswap! *asserts into %)
+                  (data/juxt-mapper __seen )
+                  #(vswap! *asserts into %) 
                   (fn [x]
-                    (let [upd (to-time (get x :upd))
-                          added (to-time (get x :added))]
+ 																			(vswap! *groups update (:channel-title x) (fnil conj #{}) (:url x))
+                  	 x)
+                  ))
 
-                      ;(.log js/console (- (.getTime curr-t) (.getTime added)))
+           ui-vids (into []
+                         xs
+                         vids ;(take 50 vids)
+                         )
 
-                      (-> x
-                          (assoc :d/upd upd
-                                 :d/added added
-                                 ;:d/between-add-and-update (safe-interval added upd )
-                                 ;:d/updated-ago (safe-interval upd curr-t   )
-                                 ;:d/added-ago (safe-interval added curr-t  )
-                                 )
+           popular-channels (reduce (fn [a [k v]] 
 
-                          )
+           																					;{:id (:url item) :class #{"LLLLLL"}}
+           																					) [] @*groups)
+
+           ;; sort
+
+           sort-fns (array-map
+                      :idx↓ (fn [a b] (compare (:idx a) (:idx b)))
+                      :idx↑ (fn [a b] (compare (:idx b) (:idx a)))
+                      :channel (fn [a b] (compare (:channel-title b) (:channel-title a)))
                       )
 
+           sorters (into #{} (keys sort-fns))
 
-                    )
-                  )
-                )
-           ;ui-listings (into []
-           ;                  xs
-           ;                  listings)
+           sort-fn (get sort-fns @(::sort-key st) (get sort-fns :idx↓))
+
 
            ]
 
-       
+           [:div 
+			
+
+           ;; todo: document usage of transform list
        (pg-ui/<transform-list>
          <item-ui>
          
-         listings
-          ; ui-listings
-         ;(group-by :id @*asserts)
-         {}
+         ;; vids
+         ui-vids
+
+         (group-by :id @*asserts) 
+         
 
          :id-fn :url
 
-         :filter-map {}
-         ;; :sort-fn sort-fn
+         :filter-map {
+													"seen" (partial pg-ui/_marker-class-filter "seen")
 
-         ;:filter-map {
-         ;             "recent" (partial pg-ui/_marker-class-filter "recent")
-         ;             "cheap" (partial pg-ui/_marker-class-filter "cheap")
-         ;             }
-         ;:api-fns (concat [[]]
-         ;                 (map (fn [sk]
-         ;                        [(name sk) (fn []
-         ;                                     (reset! (::sort-key st) sk)
-         ;                                     )]
-         ;                        ) sorters))
+													"popular" (fn [item st] 
+																		;; todo: how to propagate data fro *groups to st ???
+																 (> (count (get @*groups (:channel-title item) [])) 3)
+															)
+
+         }
+         
+         
+         :sort-fn sort-fn
+
+         :api-fns (concat [[]]
+                          (map (fn [sk]
+                                 [(name sk) (fn []
+                                              (reset! (::sort-key st) sk)
+                                              )]
+                                 ) sorters))
          )
+           ]
+      
 
        )
 

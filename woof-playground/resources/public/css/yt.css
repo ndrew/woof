@@ -1,6 +1,12 @@
 
 .video {
 	outline: 1px solid cornflowerblue;
+
+	padding: .5rem 0 ;
+}
+
+.video > * {
+	margin-right: 1rem;
 }
 
 .video:hover {
