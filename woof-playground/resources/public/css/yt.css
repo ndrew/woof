@@ -1,9 +1,19 @@
+:root {
+	--progress-color: rgba(255,128,0,.1333);
+}
 
 .video {
 	outline: 1px solid cornflowerblue;
 
-	padding: .5rem 0 ;
+	padding: .1rem 0 ;
+	
+	border-left: 3px solid transparent;
 }
+
+.video:hover {
+	border-left: 3px solid red;
+}
+
 
 .video > * {
 	margin-right: 1rem;
@@ -11,4 +21,24 @@
 
 .video:hover {
 	background-color: rgba(0, 0, 255, .133);
+}
+
+
+.video a {
+	padding: .33rem;
+}
+
+.video a:hover {
+	outline: 1px solid red;
+}
+
+span.idx {
+	display: inline-block;
+	min-width: 30px;
+}
+
+a.channel {
+	font-weight: bolder;
+	display: inline-block;
+	min-width: 225px;
 }

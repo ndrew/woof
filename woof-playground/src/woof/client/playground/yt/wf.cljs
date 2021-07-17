@@ -52,9 +52,10 @@
   							img :img-scr
   							} x]
 				[:div.video 
+						{:style (if seen {:background (str "linear-gradient(to right, var(--progress-color) " seen ", transparent " seen " 100%)") } {})}
   				[:span.idx (pr-str idx)]
-     	[:a.channel {:href ch-href} ch-title]
-     	[:a.url {:href url} title]
+     	[:a.channel {:href ch-href :target "_blank"} ch-title]
+     	[:a.url {:href url :target "_blank"} title]
 
      	(if seen [:span seen])
      	(if img  [:img {:src img}])
@@ -135,7 +136,14 @@
            sort-fns (array-map
                       :idx↓ (fn [a b] (compare (:idx a) (:idx b)))
                       :idx↑ (fn [a b] (compare (:idx b) (:idx a)))
-                      :channel (fn [a b] (compare (:channel-title b) (:channel-title a)))
+                      :channel (fn [a b] 
+                      				(let [c (compare (:channel-title a) (:channel-title b))]
+                      						(if (= 0 c)
+                      							 (compare (:idx a) (:idx b))
+                      							 c
+                      						)
+                      					)
+                      				)
                       )
 
            sorters (into #{} (keys sort-fns))
@@ -171,6 +179,7 @@
          }
          
          
+         ;; :copy-fn
          :sort-fn sort-fn
 
          :api-fns (concat [[]]

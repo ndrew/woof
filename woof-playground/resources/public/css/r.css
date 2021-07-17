@@ -41,6 +41,7 @@
 .menubar > .header {
     font-weight: bolder;
     margin-right: .5rem;
+    white-space: pre-wrap;
 }
 
 .menubar .separator {

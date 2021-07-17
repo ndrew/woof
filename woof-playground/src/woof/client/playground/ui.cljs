@@ -41,10 +41,17 @@
            [:.header menu-header])
          ]
         (map (fn [[label action]]
-               (if (and (nil? label) (nil? action))
-                 [:.separator]
-                 ;; todo: menu-item handle shortcuts
-                 (menu-item label action)))
+               (let [has-label? (not (nil? label))
+               				  has-action? (not (nil? action))]
+
+               				  (cond 
+               				  		(and has-label? has-action?)		(menu-item label action)
+               				  		has-label? [:.header label]
+               				  		:else [:.separator]
+               				  )
+																	)
+               )
+               
              menu-items)))
 
 
@@ -225,7 +232,7 @@
 
 
 (defn _marker-class-filter [class item st]
-  (if st
+	 (if st
     (let [classes (reduce set/union #{} (map :class st))]
       (get classes class))
     false
@@ -241,6 +248,8 @@
   )
 
 
+;;
+;; 
 (rum/defcs <transform-list> < rum/static
                               (rum/local nil ::filter)
   [st <item> items markers-map & {:keys [id-fn sort-fn copy-fn filter-map api-fns]
@@ -265,34 +274,46 @@
 
         show-all? (= :all filter-id)
 
-        filter-rule (filter (fn [item]
+        filter-xs (filter (fn [item]
                               (let [st (&markers item)
                                     xf (get filter-map filter-id (fn [_ _] show-all?))]
                                 (xf item st))))
+
+        react-k-xs (map #(assoc % :_k (str (id-fn %))))
+
+        xs (comp filter-xs 
+        									react-k-xs)
 
         sorted-items (if sort-fn
                        (sort sort-fn items)
                        items)
 
 
-        display-items (into [] filter-rule sorted-items )
+        display-items (into [] 
+        																		xs 
+        																		sorted-items )
         ]
 
     [:div.list
-     (menubar (str (count display-items)  " ___ filters: ")
+     (menubar "" ;;(str (count display-items)  " ___ filters: ")
               (into
                 [
+                	[(str "total: " (count display-items) )]
+                 ;; todo: migrate to transducer usage
                  ["copy" (fn []
                            (woof-dom/copy-to-clipboard
                              (str "[\n" (str/join "\n"
                                                   (into []
-                                                        (comp filter-rule
+                                                        ;; copy xs
+                                                        (comp xs
                                                               (map copy-fn)
                                                               (map pr-str))
+
                                                         sorted-items)) "\n]")
                              )
                            )]
-                 []
+                 [" filters: "]
+                 ;; generic filter 
                  ["all" (fn [] (reset! *filter :all))] []]
 
                 (concat
@@ -301,6 +322,7 @@
                                (pr-str %)
                                )
                              (fn [] (reset! *filter %))]) filter-ids)
+                  [[" api (sort):"]]
                   api-fns
                   )
                 )
@@ -309,8 +331,11 @@
      (into [:.items]
            (map (fn [item]
                   (if-let [c (&markers item)]
-                    [:.item {:class (str/join " " (reduce set/union #{} (map :class c)))} (<item> item)]
-                    (<item> item))))
+                  ;; expose classes for each item in wrapper
+                    [:.item {:class (str/join " " (reduce set/union #{} (map :class c)))
+                             :key (:_k item)} (<item> item)]
+                    [:.item {:key (:_k item)} (<item> item)]
+                    )))
            display-items)
      ]
     )
