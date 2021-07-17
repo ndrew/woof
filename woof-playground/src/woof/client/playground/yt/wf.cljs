@@ -66,8 +66,19 @@
   
 )
 
+(defn- copy-as-edn-list [items]
+	 (woof-dom/copy-to-clipboard
+ 			(str "[\n" (str/join "\n"
+                      (into []
+                            (comp (map identity) ;; copy-fn
+                                  (map pr-str))
+
+                            items)) "\n]")))
+
+
 (rum/defcs <yt-vid-list> <
   (rum/local nil ::sort-key)
+  (rum/local true ::group?)
   rum/reactive
 
   [st *data]
@@ -81,13 +92,14 @@
                                            (let [data (d/to-primitive _data)]
                                              (swap! *data assoc-in [:videos] data ))))
                                  )]
+                   []
+                   [(pg-ui/shorten-bool " group" @(::group? st)) (fn [] (swap! (::group? st) not))]
                    ]
                   )
 
    (when-let [vids (:videos @*data)]
 
-      [:pre (pr-str vids)]
-
+     ;; [:pre (pr-str vids)]
      (let [<item-ui> <video>
 
 
@@ -156,6 +168,8 @@
            [:div 
 			
 
+							;;[:pre (d/pretty @*asserts)]
+
            ;; todo: document usage of transform list
        (pg-ui/<transform-list>
          <item-ui>
@@ -167,6 +181,16 @@
          
 
          :id-fn :url
+
+         :global-fn-map (array-map "!COPY" copy-as-edn-list
+         																									 "LOG" (fn [items] (.log js/console items)))
+
+         ;; grouping
+         :group-fn-map {"!COPY" copy-as-edn-list
+         															"LOG" (fn [items] (.log js/console items))}
+         :group-fn (if @(::group? st) :channel-title)
+
+         ;; 
 
          :filter-map {
 													"seen" (partial pg-ui/_marker-class-filter "seen")

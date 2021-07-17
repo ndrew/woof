@@ -172,9 +172,12 @@
 
 ;;;
 
-(defn shorten-bool [b]
+(defn shorten-bool 
+	([b]
   (if b
     "✓" "✕"))
+ ([s b]
+ 	 (str (if b "✓" "✕") s)))
 
 
 (defonce OPENING-BRACKETS
@@ -252,11 +255,27 @@
 ;; 
 (rum/defcs <transform-list> < rum/static
                               (rum/local nil ::filter)
-  [st <item> items markers-map & {:keys [id-fn sort-fn copy-fn filter-map api-fns]
+  [st <item> items markers-map & {:keys [id-fn  ;; each item should have unique id
+  																																							
+  																																							sort-fn 
+  																																							
+  																																							copy-fn 
+  																																							filter-map 
+  																																							api-fns
+
+  																																							group-fn
+
+  																																							global-fn-map 
+  																																							group-fn-map
+  																																]
                                   :or  {id-fn identity
                                         copy-fn identity
                                         filter-map {}
                                         api-fns []
+                                        group-fn nil
+
+                                        global-fn-map {}
+                                        group-fn-map {}
                                         }
                                   }]
 
@@ -273,17 +292,26 @@
         filter-id @*filter
 
         show-all? (= :all filter-id)
+								grouping? (not (nil? group-fn))
+        
 
         filter-xs (filter (fn [item]
                               (let [st (&markers item)
                                     xf (get filter-map filter-id (fn [_ _] show-all?))]
                                 (xf item st))))
 
+        
         react-k-xs (map #(assoc % :_k (str (id-fn %))))
+        group-xs   (map #(assoc % :_g (if grouping? (group-fn %))))
+        markers-xs (map #(assoc % :_m (get markers-map (id-fn %))))
 
         xs (comp filter-xs 
-        									react-k-xs)
+        									react-k-xs
+        									group-xs
+        									markers-xs
+        									)
 
+        ;; as sort cannot be handled via trasducer
         sorted-items (if sort-fn
                        (sort sort-fn items)
                        items)
@@ -291,27 +319,25 @@
 
         display-items (into [] 
         																		xs 
-        																		sorted-items )
-        ]
+        																		sorted-items)
+      
 
-    [:div.list
-     (menubar "" ;;(str (count display-items)  " ___ filters: ")
-              (into
+        global-menu (into
                 [
                 	[(str "total: " (count display-items) )]
-                 ;; todo: migrate to transducer usage
-                 ["copy" (fn []
+
+                 ["copy" (fn [] ;; deprecated
                            (woof-dom/copy-to-clipboard
                              (str "[\n" (str/join "\n"
                                                   (into []
-                                                        ;; copy xs
-                                                        (comp xs
-                                                              (map copy-fn)
+                                                        (comp (map copy-fn)
                                                               (map pr-str))
 
-                                                        sorted-items)) "\n]")
+                                                        display-items)) "\n]")
                              )
                            )]
+                 
+
                  [" filters: "]
                  ;; generic filter 
                  ["all" (fn [] (reset! *filter :all))] []]
@@ -319,24 +345,59 @@
                 (concat
                   (map #(do [(if (= filter-id %)
                                (str "✅️" (pr-str %))
-                               (pr-str %)
-                               )
+                               (pr-str %))
                              (fn [] (reset! *filter %))]) filter-ids)
                   [[" api (sort):"]]
                   api-fns
+                  ;; 
+                  [[" GLOBAL "]]
+																  (map (fn [[k f]]
+                 	 	 [k (fn [] (f display-items) )]
+                 	 ) global-fn-map)
                   )
                 )
-              )
 
-     (into [:.items]
-           (map (fn [item]
-                  (if-let [c (&markers item)]
-                  ;; expose classes for each item in wrapper
-                    [:.item {:class (str/join " " (reduce set/union #{} (map :class c)))
-                             :key (:_k item)} (<item> item)]
-                    [:.item {:key (:_k item)} (<item> item)]
+        ;; expose classes for each item in wrapper
+        ;; todo: maybe do grouping here?
+        ;;  - no grouping: [[item][item]]
+        ;;  - grouping  [[item item item] [item item] ]
+        ;; todo: ui for item?
+        
+        render-list-xs (map (fn [item]
+                  		(if-let [c (get item :_m)]
+                    			[:.item {:class (str/join " " (reduce set/union #{} (map :class c))) :key (:_k item)} (<item> item)]
+			                    [:.item {:key (:_k item)} (<item> item)]
                     )))
-           display-items)
+
+        groupped-items (group-by :_g display-items)
+
+        ]
+
+    [:div.list
+
+     (menubar "" global-menu)
+     (if grouping? 
+      (into [:.items] 
+      	  (map (fn [[k v]]
+		      	  ;; todo: migrate to a separate component
+      	  		 (let [group-k (str k)
+      	  		 				  group-actions (into []
+      	  		 				  																				(map (fn [[k f]] [k (partial f v)]) group-fn-map))
+      	  		 					] 
+															[:.group 
+																 (rum/with-key (menubar (str group-k) group-actions) group-k)	 
+											      (into [:.items] render-list-xs v)	  		 		
+		      	  		 ]
+      	  		 )
+      	  		       	  	
+      	  ))
+      			groupped-items)
+     ;; render list
+						(into [:.items] render-list-xs display-items)
+     )
+
+     ; [:pre (pr-str (keys groupped-items))]
+     
      ]
     )
   )
