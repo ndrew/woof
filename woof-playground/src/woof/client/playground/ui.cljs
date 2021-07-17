@@ -255,18 +255,21 @@
 ;; 
 (rum/defcs <transform-list> < rum/static
                               (rum/local nil ::filter)
+                              (rum/local nil ::sort-key)
   [st <item> items markers-map & {:keys [id-fn  ;; each item should have unique id
   																																							
-  																																							sort-fn 
   																																							
   																																							copy-fn 
   																																							filter-map 
   																																							api-fns
 
-  																																							group-fn
+  																																							group-fn ;; item -> group, can be nil if no grouping is required
 
   																																							global-fn-map 
   																																							group-fn-map
+
+  																																							sort-fn 
+  																																							sort-fn-map 
   																																]
                                   :or  {id-fn identity
                                         copy-fn identity
@@ -276,6 +279,7 @@
 
                                         global-fn-map {}
                                         group-fn-map {}
+                                        sort-fn-map {}
                                         }
                                   }]
 
@@ -284,6 +288,7 @@
         filter-ids (keys filter-map)
 
         *filter (::filter st)
+        *sort   (::sort-key st)
 
         ;; select first available filter instead of displaying all
         _ (if (nil? @*filter) (reset! *filter
@@ -312,8 +317,9 @@
         									)
 
         ;; as sort cannot be handled via trasducer
-        sorted-items (if sort-fn
-                       (sort sort-fn items)
+        sorted-items (if-let [sort-key @*sort]
+        															(let [_sort-fn (get sort-fn-map sort-key)]
+																									(sort _sort-fn items))
                        items)
 
 
@@ -321,6 +327,9 @@
         																		xs 
         																		sorted-items)
       
+
+        menu-name (fn [x] (if (keyword? x) 
+        																						(name x) (str x)))
 
         global-menu (into
                 [
@@ -349,11 +358,13 @@
                              (fn [] (reset! *filter %))]) filter-ids)
                   [[" api (sort):"]]
                   api-fns
+                  [[" SORT: "]]
+                  [["none" (fn [] (reset! *sort nil))]]
+																	 (map (fn [[k f]] [(menu-name k) (fn [] 
+																		  	(reset! *sort k))]) sort-fn-map)
                   ;; 
                   [[" GLOBAL "]]
-																  (map (fn [[k f]]
-                 	 	 [k (fn [] (f display-items) )]
-                 	 ) global-fn-map)
+																  (map (fn [[k f]] [(menu-name k) (partial f display-items)]) global-fn-map)
                   )
                 )
 

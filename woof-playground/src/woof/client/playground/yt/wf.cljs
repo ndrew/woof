@@ -38,6 +38,8 @@
 
 
 
+(def YT-URL "https://youtube.com")
+
 (rum/defcs <video> < rum/static
                        (rum/local false ::details?)
                        {:key-fn (fn [x] (str (:url x)))}
@@ -54,8 +56,8 @@
 				[:div.video 
 						{:style (if seen {:background (str "linear-gradient(to right, var(--progress-color) " seen ", transparent " seen " 100%)") } {})}
   				[:span.idx (pr-str idx)]
-     	[:a.channel {:href ch-href :target "_blank"} ch-title]
-     	[:a.url {:href url :target "_blank"} title]
+     	[:a.channel {:href (str YT-URL ch-href)  :target "_blank"} ch-title]
+     	[:a.url {:href (str YT-URL url) 									:target "_blank"} title]
 
      	(if seen [:span seen])
      	(if img  [:img {:src img}])
@@ -67,17 +69,36 @@
 )
 
 (defn- copy-as-edn-list [items]
-	 (woof-dom/copy-to-clipboard
- 			(str "[\n" (str/join "\n"
-                      (into []
-                            (comp (map identity) ;; copy-fn
-                                  (map pr-str))
+	 (let [str-xs (map pr-str)
+	 				 s (str "[\n" (str/join "\n" (into [] str-xs items)) "\n]")]
 
-                            items)) "\n]")))
+	 (woof-dom/copy-to-clipboard s))
+)
+	 
+
+(defn- escape-brackets [s]
+		(->
+  		s
+  (str/replace #"\[" "{")
+  (str/replace #"\]" "}")
+  )
+)
+
+;; todo: parse url - and stip playlist 
+(defn- copy-as-roam [items]
+	 (let [str-xs (map #(str "[" (escape-brackets (:title %) )"](" YT-URL (:url %)")"))
+	 				 s (str/join "\n" (into [] str-xs items))]
+
+	 (woof-dom/copy-to-clipboard s))
+
+;TITLE (str 
+;							 	 "[" (woof-dom/txt el) "]"
+;							 	 "(" (str (.-location js/window)) ")") 
+							 
+)
 
 
 (rum/defcs <yt-vid-list> <
-  (rum/local nil ::sort-key)
   (rum/local true ::group?)
   rum/reactive
 
@@ -86,8 +107,8 @@
 
    (pg-ui/menubar "DATA"
                   [
-                   ["test data" (fn []
-                                 (ws/GET "http://localhost:9500/s/yt/wl.edn"
+                   ["load test data" (fn []
+                                 (ws/GET "http://localhost:9500/s/yt/wl-1.edn"
                                          (fn [_data]
                                            (let [data (d/to-primitive _data)]
                                              (swap! *data assoc-in [:videos] data ))))
@@ -128,6 +149,7 @@
                 (data/z-map-1
                   (data/juxt-mapper __seen )
                   #(vswap! *asserts into %) 
+                  ;; todo: how to make a filter based on grouped data
                   (fn [x]
  																			(vswap! *groups update (:channel-title x) (fnil conj #{}) (:url x))
                   	 x)
@@ -158,11 +180,6 @@
                       				)
                       )
 
-           sorters (into #{} (keys sort-fns))
-
-           sort-fn (get sort-fns @(::sort-key st) (get sort-fns :idx↓))
-
-
            ]
 
            [:div 
@@ -182,12 +199,12 @@
 
          :id-fn :url
 
-         :global-fn-map (array-map "!COPY" copy-as-edn-list
-         																									 "LOG" (fn [items] (.log js/console items)))
+         :global-fn-map (array-map "copy EDN" copy-as-edn-list
+         																										"copy ROAM" copy-as-roam)
 
          ;; grouping
-         :group-fn-map {"!COPY" copy-as-edn-list
-         															"LOG" (fn [items] (.log js/console items))}
+         :group-fn-map {"copy EDN" copy-as-edn-list
+         														 "copy ROAM" copy-as-roam}
          :group-fn (if @(::group? st) :channel-title)
 
          ;; 
@@ -204,14 +221,7 @@
          
          
          ;; :copy-fn
-         :sort-fn sort-fn
-
-         :api-fns (concat [[]]
-                          (map (fn [sk]
-                                 [(name sk) (fn []
-                                              (reset! (::sort-key st) sk)
-                                              )]
-                                 ) sorters))
+         :sort-fn-map sort-fns
          )
            ]
       

@@ -3,12 +3,11 @@
 }
 
 .video {
-	outline: 1px solid cornflowerblue;
-
-	padding: .1rem 0 ;
+	padding: .1rem 0 .1rem .5rem;
 	
 	border-left: 3px solid transparent;
 }
+
 
 .video:hover {
 	border-left: 3px solid red;
@@ -32,6 +31,10 @@
 	outline: 1px solid red;
 }
 
+.item + .item {
+	border-top: 1px solid #dfdfdf;
+}
+
 span.idx {
 	display: inline-block;
 	min-width: 30px;
@@ -41,4 +44,13 @@ a.channel {
 	font-weight: bolder;
 	display: inline-block;
 	min-width: 225px;
+}
+
+.items .group {
+	border-left: 5px solid transparent;
+	padding: .1rem 0 .1rem .5rem;
+}
+
+.items .group:hover {
+	border-left: 5px solid gray;
 }
