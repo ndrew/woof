@@ -51,10 +51,12 @@
   							ch-href :channel-href 
   							ch-title :channel-title
   							seen :%
-  							img :img-scr
+  							img :img-src
   							} x]
 				[:div.video 
 						{:style (if seen {:background (str "linear-gradient(to right, var(--progress-color) " seen ", transparent " seen " 100%)") } {})}
+
+						[:pre (pr-str img)]
   				[:span.idx (pr-str idx)]
      	[:a.channel {:href (str YT-URL ch-href)  :target "_blank"} ch-title]
      	[:a.url {:href (str YT-URL url) 									:target "_blank"} title]
@@ -105,18 +107,17 @@
   [st *data]
   [:div
 
-   (pg-ui/menubar "DATA"
+   (pg-ui/menubar ""
+   														 (let [GET #(ws/GET % (fn [_data] (let [data (d/to-primitive _data)] (swap! *data assoc-in [:videos] data ))))]                                
                   [
-                   ["load test data" (fn []
-                                 (ws/GET "http://localhost:9500/s/yt/wl-1.edn"
-                                         (fn [_data]
-                                           (let [data (d/to-primitive _data)]
-                                             (swap! *data assoc-in [:videos] data ))))
-                                 )]
-                   []
+                   ["DATA: "]
+                   ;; todo: maybe get these from kv?
+                   ["load test data" (partial GET "http://localhost:9500/s/yt/wl-1.edn")]
+                   ["cooking" (partial GET "http://localhost:9500/s/yt/cooking.edn")]
+                   [" UI: "]
                    [(pg-ui/shorten-bool " group" @(::group? st)) (fn [] (swap! (::group? st) not))]
-                   ]
-                  )
+                   ]))
+   [:hr]
 
    (when-let [vids (:videos @*data)]
 

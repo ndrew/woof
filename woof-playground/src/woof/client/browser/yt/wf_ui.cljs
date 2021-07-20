@@ -31,37 +31,46 @@
 
 
 (rum/defcs <details-ui> < rum/static
+		(rum/local false ::details?)
   [local *state STATE]
 
-  [:div.scrape.flex
-   (if-let [results (:RESULTS STATE)]
-     [:div
-      [:header "RESULTS" (str "(" (count results) ")" )]
-      (d/pretty!
-        (reduce (fn [a [k v]]
-                  (assoc a k (count (:videos v)))
-                  )  (sorted-map) results))
-      ])
+  (let [*details? (::details? local)]
+  	[:div 
+  		(ui/menubar "Scraping UI: " 
+  				[
+  						[(if @*details? "▿" "▹") (fn [] (swap! *details? not))]
+  						(if-let [ready (:SCRAPE/READY STATE)]
+ 		 						["copy vids" (fn [] (woof-dom/copy-to-clipboard (d/pretty (:vids ready))))])
+  				])
+  		(if @*details?
+  				[:div.scrape.flex
+				   (if-let [results (:RESULTS STATE)]
+				     [:div
+				      [:header "RESULTS" (str "(" (count results) ")" )]
+				      (d/pretty!
+				        (reduce (fn [a [k v]]
+				                  (assoc a k (count (:videos v)))
+				                  )  (sorted-map) results))
+				      ])
 
-   (if-let [wip (:SCRAPE/WIP STATE)]
-     [:div
-      [:header "WIP"]
-      [:pre.html (d/pretty! wip)]])
+				   (if-let [wip (:SCRAPE/WIP STATE)]
+				     [:div
+				      [:header "WIP"]
+				      [:pre.html (d/pretty! wip)]])
 
-   (if-let [ready (:SCRAPE/READY STATE)]
-     [:div
-      (ui/menubar "SCRAPED" [["copy vids" (fn []
-      	 (woof-dom/copy-to-clipboard (d/pretty (:vids ready)))
-      )]])
-      [:pre.html (d/pretty! ready)]])
+				   (if-let [ready (:SCRAPE/READY STATE)]
+				     [:div
+				      (ui/menubar "SCRAPED" [["copy vids" (fn [] (woof-dom/copy-to-clipboard (d/pretty (:vids ready))))]])
+				      [:pre.html (d/pretty! ready)]])
 
-   (if-let [err (:SCRAPE/ERROR STATE)]
-     [:div
-      [:header "ERROR"]
-      [:pre.html (d/pretty! err)]])
+				   (if-let [err (:SCRAPE/ERROR STATE)]
+				     [:div
+				      [:header "ERROR"]
+				      [:pre.html (d/pretty! err)]])
 
    ]
-  )
+  		)]
+  ))
 
 
 (rum/defc <scraping-ui> < rum/static

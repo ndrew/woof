@@ -63,7 +63,7 @@
 
 
 
-
+;; deprecated
 (defn history-day-scrape-impl [el]
 
   ;; should this be in the
@@ -182,9 +182,10 @@
 (defn make-observer [mut-chan]
   (js/MutationObserver. (partial _observe mut-chan)))
 
+
 ;;
 ;;
-(defn _history-scrape-fn [params el]
+(defn _history-scrape-fn [scrape-fn params el]
 
   ; todo: should this be a separate woof workflow?
 
@@ -202,7 +203,7 @@
 
         parse! (fn []
                  ;; each sub video should be marked as parsed
-                 (let [result (history-day-scrape-impl el)]
+                 (let [result (scrape-fn el)]
                    (.log js/console "PARSE:" result)
 
                    (if (:ready? result)
@@ -218,6 +219,7 @@
 
         mut-observer (make-observer mut-chan)
 
+        MAX-TICK 10
         ; INITIAL_EL el
         ]
 
@@ -256,7 +258,7 @@
                       ; not parseable yet
                       (not (get result :ready? false)))
                 (do
-                  (if (< 10 c)
+                  (if (< MAX-TICK c)
                     (do
                       ;; try harder)
                       (.log js/console "WAITING..." el result)
@@ -300,13 +302,10 @@
 
 
 (defn parse-playlist-video [el]
-(let [id_$ "A#thumbnail"
-        ;channel_$ "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A"
-                 ;_  "DIV:nth-child(3) > YTD-VIDEO-META-BLOCK:nth-child(2) > DIV:nth-child(1) > DIV:nth-child(1) > YTD-CHANNEL-NAME:nth-child(1) > DIV:nth-child(1) > DIV:nth-child(1) > YT-FORMATTED-STRING > A"
-        ;title_$ "DIV:nth-child(3) > H3:nth-child(1) > SPAN:nth-child(2)"
+		(let [id_$ "A#thumbnail"
+        q (partial wdom/q el)]
 
-        q (partial wdom/q el)
-        ]
+    
 
     (if-let [url (safe-href el id_$)]
       (merge
@@ -334,7 +333,13 @@
 
         ;; THUMB
         (when-let [n (q "ytd-thumbnail img")]
-          {:img-src (wdom/attr n "src")  })
+        		(let [src (wdom/attr n "src")]
+												{:img-src src
+													;; mark ready if there is a thumbnail
+          	  :ready? (not (nil? src))
+           }
+        		)
+          )
         )
 
       (do

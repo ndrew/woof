@@ -194,7 +194,7 @@
                               ;; indicates which elements to parse
                               SCRAPE-SELECTOR
 
-                              (partial parser/_history-scrape-fn params)
+                              (partial parser/_history-scrape-fn parser/history-day-scrape-impl params)
 
                               ;; NORMAL PARSING
                               ; (partial parser/_history-day-scrape-async params)
@@ -374,6 +374,8 @@
                      ;;(dataset/has el "woof_scraped")
                      (classes/has el "WOOF-WIP"))
 
+      
+;; eager scrape
   			 scrape-fn (fn [el]
   			 										   (.log js/console "SCRAPING" el)
 
@@ -390,17 +392,20 @@
   			 										   					(do (.error js/console e) :err)))
                )
 
-      ]
+  			 
 
-			(scrape/make-ctx-fn 
-			;; indicates which elements to parse
-               								SCRAPE-SELECTOR
-               								scrape-fn
-               								is-scraping?
-																							scrape-start!
-               							 
-               							 )		
-))
+      ]
+   (fn [params]
+					(let [CTX-FN (scrape/make-ctx-fn 
+								;; indicates which elements to parse
+					               								SCRAPE-SELECTOR
+					               								(partial parser/_history-scrape-fn scrape-fn params)
+					               								;; scrape-fn
+					               								is-scraping?
+																												scrape-start!)	]
+					(CTX-FN params)))
+			)
+)
 
 
 (defn dbg-params-fn [f]
@@ -427,26 +432,29 @@
 							(.log js/console *wf-state)
 		{
 				:api [
-										(chord-action (woof-dom/chord 49 :shift true) "👀" woof-dom/scraping-ui__togle-details) ;; shift+!
+									 ;; shift+!
+										(chord-action (woof-dom/chord 49 :shift true) "👀" woof-dom/scraping-ui__togle-details) 
 
 									 ; non-recurring scrapers
-										(action ":loop-scrape" #(do {(sid) [:loop-scrape SCRAPE-SELECTOR]}))
+										#_(action ":loop-scrape" #(do {(sid) [:loop-scrape SCRAPE-SELECTOR]}))
 										
-										(action ":expand-scrape" #(do {(sid) [:expand-scrape SCRAPE-SELECTOR]}))
+										#_(action ":expand-scrape" #(do {(sid) [:expand-scrape SCRAPE-SELECTOR]}))
 
-										(action ":step-scrape" #(let [k (sid)]
+										#_(action ":step-scrape" #(let [k (sid)]
  																																	{k [:find-els SCRAPE-SELECTOR]
 																																		(base/rand-sid) [:step-scrape k]
 																																		}))
 
-										(action ":8-step-scrape" #(let [k (sid)] 
+										(action "AUTO scrape" #(let [k (sid)] 
 																																	{k [:find-els SCRAPE-SELECTOR]
 																																		(base/rand-sid) [:8-step-scrape k]
 																																		}))
+										(action "♾️ scroll" #(do {(sid) [:8-scroll 10]}))
 
 										[]
 
-										["Add Items" (fn []
+										;; dev only
+										#_["Add Items" (fn []
 																											(let [container-el (woof-dom/q ".container")]
 
                                       (dotimes [n (rand-int 15)]

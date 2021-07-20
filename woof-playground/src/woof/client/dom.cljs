@@ -1014,7 +1014,7 @@
         copy-value (if (string? v) v (d/pretty! v))
         ]
     (-> (.writeText clipboard copy-value)
-        (.then (fn [response] (.log js/console "Copied to clipboard!" copy-value))
+        (.then (fn [response] (.log js/console "Copied to clipboard!"))
                (fn [err]      (.warn js/console "Failed to copy to clipboard" err))))
     ))
 
