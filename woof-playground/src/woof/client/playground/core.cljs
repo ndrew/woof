@@ -24,10 +24,10 @@
 
     ;; apt playground
     [woof.client.playground.apt.wf :as apt-wf]
+
     ;;
     [woof.client.playground.scraper.cc :as scraper-wf]
     [woof.client.playground.scraper.tw :as tw-wf]
-    [woof.client.playground.yt.wf :as yt-wf]
 
     ;; examples
     ;;
@@ -157,19 +157,11 @@
      }
 
     {
-     :wf-apt (playground-wf! {::wf-id    :apt-wf
+     :wf-apt (playground-wf! {::wf-id    :atp-wf
                               ::init-fn  (fn [*swf] (apt-wf/wf! *swf))
                               ::update?  update?
                               ::auto-run true})
      }
-
-    {
-     :wf-yt (playground-wf! {::wf-id    :yt-wf
-                              ::init-fn  (fn [*swf] (yt-wf/wf! *swf))
-                              ::update?  update?
-                              ::auto-run true})
-     }
-
 
     ;; old workflows - todo: go through them
     #_{

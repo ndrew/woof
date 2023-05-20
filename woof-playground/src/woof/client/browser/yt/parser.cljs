@@ -50,20 +50,8 @@
   )
 
 
-(defn safe-href [el selector]
-  (if-let [sub-el (wdom/q el selector)]
-    (wdom/attr sub-el "href")
-    (do
-      (.log js/console "can't find element for selector: " selector "parent-el" el)
-      (classes/add el "parsed-error")
-      ""
-      )
-    )
-  )
 
 
-
-;; deprecated
 (defn history-day-scrape-impl [el]
 
   ;; should this be in the
@@ -182,10 +170,9 @@
 (defn make-observer [mut-chan]
   (js/MutationObserver. (partial _observe mut-chan)))
 
-
 ;;
 ;;
-(defn _history-scrape-fn [scrape-fn params el]
+(defn _history-scrape-fn [params el]
 
   ; todo: should this be a separate woof workflow?
 
@@ -203,7 +190,7 @@
 
         parse! (fn []
                  ;; each sub video should be marked as parsed
-                 (let [result (scrape-fn el)]
+                 (let [result (history-day-scrape-impl el)]
                    (.log js/console "PARSE:" result)
 
                    (if (:ready? result)
@@ -219,7 +206,6 @@
 
         mut-observer (make-observer mut-chan)
 
-        MAX-TICK 10
         ; INITIAL_EL el
         ]
 
@@ -258,7 +244,7 @@
                       ; not parseable yet
                       (not (get result :ready? false)))
                 (do
-                  (if (< MAX-TICK c)
+                  (if (< 10 c)
                     (do
                       ;; try harder)
                       (.log js/console "WAITING..." el result)
@@ -295,58 +281,3 @@
     out-chan
     )
   )
-
-
-
-;;;;
-
-
-(defn parse-playlist-video [el]
-		(let [id_$ "A#thumbnail"
-        q (partial wdom/q el)]
-
-    
-
-    (if-let [url (safe-href el id_$)]
-      (merge
-        {
-         :url url
-         ;; index from playlist
-         :idx (js/parseInt (wdom/txt (q "#index-container #index")) 10) 
-         :title (wdom/txt (q "a#video-title"))
-         }
-
-        ;; VIDEO DURATION
-        (if-let [n (q "#overlays .ytd-thumbnail-overlay-time-status-renderer #text")]
-          {:duration (str/trim (.-innerText n))}
-          )
-
-        ;; VIDEO %
-        (if-let [n (q "#overlays #progress")]
-        		 {:% (-> n .-style .-width)} 
-        		)
-
- 						 ;; CHANNEL
-        (if-let [n (q "#channel-name a")]
-          {:channel-href (wdom/attr n "href") 
-           :channel-title (.-innerText n) })
-
-        ;; THUMB
-        (when-let [n (q "ytd-thumbnail img")]
-        		(let [src (wdom/attr n "src")]
-												{:img-src src
-													;; mark ready if there is a thumbnail
-          	  :ready? (not (nil? src))
-           }
-        		)
-          )
-        )
-
-      (do
-        (.warn js/console "cannot find the id for element " el)
-        )
-      )
-
-
-    )
-)

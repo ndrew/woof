@@ -43,12 +43,6 @@
 
 
 
-;; todo: is this generic enough to be here
-
-;; iterate index-map 
-  ;; index-map: {k [0 2]}
-  ;; source-vector: [A B C]  => {0 A 2 C}
-
 (defn map-1-1 [source-vector index-map f]
   (reduce (fn [a [k v]]
             (let [vs (map f (vals (select-keys source-vector v)))]
@@ -65,8 +59,7 @@
             ) {} index-map)
   )
 
- ;; trasducer that iterates + collects additional data meta data and persists it 
- 
+
 (defn z-map-1
   ([meta-xf persist-fn f]
    (let [_meta-results (transient (meta-xf)) ;; always use vector for meta log
@@ -107,7 +100,6 @@
        ))
     )
   )
-
 
 (defn cond-juxt-mapper [cond? & fns]
   (fn
