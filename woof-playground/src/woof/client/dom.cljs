@@ -1010,20 +1010,12 @@
 
 
 (defn copy-to-clipboard [v]
-  (let [clipboard (.-clipboard js/navigator)
+  (let [clipboard js/navigator.clipboard
         copy-value (if (string? v) v (d/pretty! v))
         ]
-
-    (if clipboard
-      (-> (.writeText clipboard copy-value)
-          (.then (fn [response] (.log js/console "Copied to clipboard!" copy-value))
-                 (fn [err]
-                   (.warn js/console "Failed to copy to clipboard" err))))
-      (do  ;; non-secure origin
-        (.warn js/console copy-value))
-      )
-
-
+    (-> (.writeText clipboard copy-value)
+        (.then (fn [response] (.log js/console "Copied to clipboard!"))
+               (fn [err]      (.warn js/console "Failed to copy to clipboard" err))))
     ))
 
 
@@ -1108,3 +1100,7 @@
           (classes/set el "DDD")
           (dataset/set el "parseId" parse-id)))))
   el)
+
+
+(defn has-class? [el class]
+		(classes/has el class))

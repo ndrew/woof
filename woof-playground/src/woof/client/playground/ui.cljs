@@ -41,10 +41,17 @@
            [:.header menu-header])
          ]
         (map (fn [[label action]]
-               (if (and (nil? label) (nil? action))
-                 [:.separator]
-                 ;; todo: menu-item handle shortcuts
-                 (menu-item label action)))
+               (let [has-label? (not (nil? label))
+               				  has-action? (not (nil? action))]
+
+               				  (cond 
+               				  		(and has-label? has-action?)		(menu-item label action)
+               				  		has-label? [:.header label]
+               				  		:else [:.separator]
+               				  )
+																	)
+               )
+               
              menu-items)))
 
 
@@ -165,9 +172,12 @@
 
 ;;;
 
-(defn shorten-bool [b]
+(defn shorten-bool 
+	([b]
   (if b
     "✓" "✕"))
+ ([s b]
+ 	 (str (if b "✓" "✕") s)))
 
 
 (defonce OPENING-BRACKETS
@@ -225,7 +235,7 @@
 
 
 (defn _marker-class-filter [class item st]
-  (if st
+	 (if st
     (let [classes (reduce set/union #{} (map :class st))]
       (get classes class))
     false
@@ -241,13 +251,35 @@
   )
 
 
+;;
+;; 
 (rum/defcs <transform-list> < rum/static
                               (rum/local nil ::filter)
-  [st <item> items markers-map & {:keys [id-fn sort-fn copy-fn filter-map api-fns]
+                              (rum/local nil ::sort-key)
+  [st <item> items markers-map & {:keys [id-fn  ;; each item should have unique id
+  																																							
+  																																							
+  																																							copy-fn 
+  																																							filter-map 
+  																																							api-fns
+
+  																																							group-fn ;; item -> group, can be nil if no grouping is required
+
+  																																							global-fn-map 
+  																																							group-fn-map
+
+  																																							sort-fn 
+  																																							sort-fn-map 
+  																																]
                                   :or  {id-fn identity
                                         copy-fn identity
                                         filter-map {}
                                         api-fns []
+                                        group-fn nil
+
+                                        global-fn-map {}
+                                        group-fn-map {}
+                                        sort-fn-map {}
                                         }
                                   }]
 
@@ -256,6 +288,7 @@
         filter-ids (keys filter-map)
 
         *filter (::filter st)
+        *sort   (::sort-key st)
 
         ;; select first available filter instead of displaying all
         _ (if (nil? @*filter) (reset! *filter
@@ -264,54 +297,118 @@
         filter-id @*filter
 
         show-all? (= :all filter-id)
+								grouping? (not (nil? group-fn))
+        
 
-        filter-rule (filter (fn [item]
+        filter-xs (filter (fn [item]
                               (let [st (&markers item)
                                     xf (get filter-map filter-id (fn [_ _] show-all?))]
                                 (xf item st))))
 
-        sorted-items (if sort-fn
-                       (sort sort-fn items)
+        
+        react-k-xs (map #(assoc % :_k (str (id-fn %))))
+        group-xs   (map #(assoc % :_g (if grouping? (group-fn %))))
+        markers-xs (map #(assoc % :_m (get markers-map (id-fn %))))
+
+        xs (comp filter-xs 
+        									react-k-xs
+        									group-xs
+        									markers-xs
+        									)
+
+        ;; as sort cannot be handled via trasducer
+        sorted-items (if-let [sort-key @*sort]
+        															(let [_sort-fn (get sort-fn-map sort-key)]
+																									(sort _sort-fn items))
                        items)
 
 
-        display-items (into [] filter-rule sorted-items )
-        ]
+        display-items (into [] 
+        																		xs 
+        																		sorted-items)
+      
 
-    [:div.list
-     (menubar (str (count display-items)  " ___ filters: ")
-              (into
+        menu-name (fn [x] (if (keyword? x) 
+        																						(name x) (str x)))
+
+        global-menu (into
                 [
-                 ["copy" (fn []
+                	[(str "total: " (count display-items) )]
+
+                 ["copy" (fn [] ;; deprecated
                            (woof-dom/copy-to-clipboard
                              (str "[\n" (str/join "\n"
                                                   (into []
-                                                        (comp filter-rule
-                                                              (map copy-fn)
+                                                        (comp (map copy-fn)
                                                               (map pr-str))
-                                                        sorted-items)) "\n]")
+
+                                                        display-items)) "\n]")
                              )
                            )]
-                 []
+                 
+
+                 [" filters: "]
+                 ;; generic filter 
                  ["all" (fn [] (reset! *filter :all))] []]
 
                 (concat
                   (map #(do [(if (= filter-id %)
                                (str "✅️" (pr-str %))
-                               (pr-str %)
-                               )
+                               (pr-str %))
                              (fn [] (reset! *filter %))]) filter-ids)
+                  [[" api (sort):"]]
                   api-fns
+                  [[" SORT: "]]
+                  [["none" (fn [] (reset! *sort nil))]]
+																	 (map (fn [[k f]] [(menu-name k) (fn [] 
+																		  	(reset! *sort k))]) sort-fn-map)
+                  ;; 
+                  [[" GLOBAL "]]
+																  (map (fn [[k f]] [(menu-name k) (partial f display-items)]) global-fn-map)
                   )
                 )
-              )
 
-     (into [:.items]
-           (map (fn [item]
-                  (if-let [c (&markers item)]
-                    [:.item {:class (str/join " " (reduce set/union #{} (map :class c)))} (<item> item)]
-                    (<item> item))))
-           display-items)
+        ;; expose classes for each item in wrapper
+        ;; todo: maybe do grouping here?
+        ;;  - no grouping: [[item][item]]
+        ;;  - grouping  [[item item item] [item item] ]
+        ;; todo: ui for item?
+        
+        render-list-xs (map (fn [item]
+                  		(if-let [c (get item :_m)]
+                    			[:.item {:class (str/join " " (reduce set/union #{} (map :class c))) :key (:_k item)} (<item> item)]
+			                    [:.item {:key (:_k item)} (<item> item)]
+                    )))
+
+        groupped-items (group-by :_g display-items)
+
+        ]
+
+    [:div.list
+
+     (menubar "" global-menu)
+     (if grouping? 
+      (into [:.items] 
+      	  (map (fn [[k v]]
+		      	  ;; todo: migrate to a separate component
+      	  		 (let [group-k (str k)
+      	  		 				  group-actions (into []
+      	  		 				  																				(map (fn [[k f]] [k (partial f v)]) group-fn-map))
+      	  		 					] 
+															[:.group 
+																 (rum/with-key (menubar (str group-k) group-actions) group-k)	 
+											      (into [:.items] render-list-xs v)	  		 		
+		      	  		 ]
+      	  		 )
+      	  		       	  	
+      	  ))
+      			groupped-items)
+     ;; render list
+						(into [:.items] render-list-xs display-items)
+     )
+
+     ; [:pre (pr-str (keys groupped-items))]
+     
      ]
     )
   )

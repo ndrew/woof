@@ -41,6 +41,7 @@
 .menubar > .header {
     font-weight: bolder;
     margin-right: .5rem;
+    white-space: pre-wrap;
 }
 
 .menubar .separator {
@@ -145,7 +146,7 @@ article.WOOF-ASYNC.WOOF-DONE {
     margin-left: 0;
 }
 
-.woof-scraper-ui {
+.woof-scraper-ui, .woof-scraper-control, .menubar {
     font-family: "DejaVu Sans Mono", monospace;
     font-size: 8pt;
 }
@@ -264,93 +265,16 @@ article.WOOF-ASYNC.WOOF-DONE {
     font-size: 8pt;
 }
 
-.WOOF-CANDIDATE {
-    outline: 3px dashed #29a99f;
-}
-
-.WOOF-CANDIDATE:before {
-    text-decoration: none;
-    line-height: 1.5;
-    display: block;
-    white-space: pre-wrap;
-    content: "↓↓↓ CANDIDATE";
-    background-color: #29a99f;
-    color: white;
-    font-family: "DejaVu Sans Mono", monospace;
-    font-size: 8pt;
-}
-
-.WOOF-GIVNO:before {
-    text-decoration: none;
-    line-height: 1.5;
-    display: block;
-    white-space: pre-wrap;
-    content: "↓↓↓ 💩💩💩💩💩";
-    background-color: #a97547;
-    color: white;
-    font-family: "DejaVu Sans Mono", monospace;
-    font-size: 8pt;
-}
 
 
-.WOOF-SKIP {
-    opacity: 0.1;
-}
-
-.woof-scraper-control .tag {
-    font-size: 7pt;
-    font-weight: bolder;
-    background-color: transparent;
-    border-radius: 3px;
-    padding: .1rem;
-    border: 1px solid rgba(0, 0, 0, 0.5);
-    line-height: 1.5;
-}
-
-.woof-scraper-control .tag + .tag {
-    margin-left: .5rem;
-}
-
-.woof-scraper-control .tag {
-    transition: background-color 120ms;
-}
-
-.woof-scraper-control .tag.pending {
-    background-color: rgba(246, 42, 178, 0.46);
-}
-
-
-/* custom styles */
-
-#divListObjects .objava.WOOF-WIP .adress_text {
-    font-size: 18pt;
-    font-weight: bolder;
-}
-
-
-body.DEBUG-MODE .WOOF-SKIP {
-    display: none;
-}
-
-
-
-.TESTER .realty-preview {
-    margin: 1rem;
-
-    outline: 3px solid black;
-}
-
-.TESTER .realty-preview * {
-    display: block;
-}
-
-
-.TESTER .realty-preview svg,
-.TESTER .realty-preview canvas {
+#test-html svg {
     display: none !important;
 }
 
+.WOOF-WIP {
+    outline:  3px solid maroon;
+}
 
-.TESTER .realty-preview img {
-    max-height: 50px;
+.WOOF-DONE *:hover {
+    background-color: mediumaquamarine;
 }

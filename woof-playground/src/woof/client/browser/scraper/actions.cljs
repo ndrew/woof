@@ -55,11 +55,18 @@
   ;; (.log js/console chord SHORTCUTS)
   (cond
     ;; cmd + shift + up
-    (= chord {:shift true :ctrl false :alt false :meta true :code  38})
+    (or 
+    		(= chord {:shift true :ctrl false :alt false :meta true :code  38})
+    		(= chord {:shift true :ctrl true :alt false :meta false :code  38})
+    		)
     (woof-dom/scraping-ui__inc 50)
 
     ;; cmd + shift + down
-    (= chord {:shift true :ctrl false :alt false :meta true :code  40})
+    (or 
+    	(= chord {:shift true :ctrl false :alt false :meta true :code  40})
+    	(= chord {:shift true :ctrl true :alt false :meta false :code  40})
+    )
+    
     (woof-dom/scraping-ui__inc -50)
 
     (contains? SHORTCUTS chord) ((get SHORTCUTS chord))
